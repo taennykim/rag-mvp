@@ -32,11 +32,12 @@
   - RAG 서버에 Node.js 20, npm, pip3, python3.10-venv 설치 완료
   - frontend/backend 의존성 설치 및 import 검증 완료
   - upload API와 upload UI 최소 기능 구현 완료
+  - frontend runtime page 응답 및 backend upload API 응답 검증 완료
+  - `localhost:3001` 기준 CORS 허용 반영 완료
+  - default file 목록 확인 완료
 - 미완료:
-  - frontend/backend 실행 검증
   - parsing 기능 실제 구현
 - 다음 우선 작업:
   - 문서 상태와 실제 파일 상태 정합성 유지
-  - frontend, backend 실행 검증
   - parsing API와 parsing 테스트 응답 구현
   - upload 이후 parsing 흐름 연결

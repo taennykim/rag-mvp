@@ -51,10 +51,12 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Documentation baseline is in place under `docs/`
 - AWS EC2 implementation server was created with Terraform
 - The RAG EC2 server is reachable over `ssh -p 2022`
+- The RAG EC2 instance type is `t3.xlarge`
 - Frontend and backend dependencies are installed on the RAG server
 - Upload API and upload UI are implemented
 - Backend upload flow has been verified on the RAG server
 - Frontend runtime page responds successfully on the RAG server
+- `localhost:3001` CORS is allowed for the upload UI flow
 - Parsing and later RAG stages are still pending
 
 ## Default Files
@@ -71,8 +73,8 @@ Start from these files first:
 Recommended restart order:
 1. Review `docs/status.md` for the latest completed scope and blockers.
 2. Review `docs/daily/2026-03-24.md` for today's detailed work log.
- 3. Continue with frontend runtime verification and parsing implementation.
- 4. Implement the next real feature: parsing API and extraction validation.
+3. Continue with parsing implementation from the uploaded files.
+4. Implement the next real feature: parsing API and extraction validation.
 
 ## Daily Start Checklist
 1. Review `AGENTS.md` for working rules and project operating constraints.

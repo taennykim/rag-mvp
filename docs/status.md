@@ -22,6 +22,7 @@
   - 인프라 준비 및 EC2 생성 완료
   - RAG 서버 개발 환경 준비 완료
   - Upload Phase 최소 구현 완료
+  - Upload Phase 실행 검증 완료
 - 완료된 항목:
   - `AGENTS.md`, `TODO.md`, `README.md` 확인
   - `docs/plan.md`, `docs/retrieval.md`, `docs/llm.md`, `docs/ui.md`, `docs/aws.md` 작성
@@ -54,8 +55,10 @@
   - backend `uvicorn` 실행 및 upload endpoint 실제 호출 검증 완료
   - frontend `/upload` 페이지에 파일 선택, 업로드, 목록 조회 UI 구현
   - frontend `/upload` 페이지에 `Default file` 선택 업로드 UI 구현
+  - frontend runtime page `HTTP 200` 검증 완료
+  - `localhost:3001`, `127.0.0.1:3001` CORS 허용 반영 완료
+  - default file API 응답과 드롭다운 대상 파일 목록 확인 완료
 - 미완료 항목:
-  - frontend 실행 검증
   - parsing / chunking / indexing / retrieval / answer / evaluation 기능
 
 ## 4. 문서와 실제 상태 차이
@@ -80,11 +83,11 @@
 
 ## 6. 다음 작업
 - 1차 우선순위:
-  - frontend 실제 실행 검증을 완료한다.
   - parsing API와 parsing 테스트 응답을 구현한다.
+  - 업로드된 default file/PDF/DOCX에서 텍스트 추출을 시작한다.
 - 2차 우선순위:
-  - 업로드된 파일에서 PDF/DOCX 텍스트 추출을 연결한다.
   - 추출 텍스트 비어 있음 검증을 추가한다.
+  - parsing 결과를 API 응답으로 확인할 수 있게 한다.
 - 3차 우선순위:
   - parsing, chunking, indexing 순서로 backend 기능을 확장한다.
   - chat/evaluation 화면을 실제 API 흐름과 연결한다.

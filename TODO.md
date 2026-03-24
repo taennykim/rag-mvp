@@ -158,7 +158,7 @@
 - [ ] 내일 시작 시 `docs/status.md`부터 리로드
 - [x] frontend 의존성 설치
 - [x] backend 의존성 설치
-- [ ] frontend 실행 확인
+- [x] frontend 실행 확인
 - [x] backend 실행 확인
 - [x] upload API 실제 구현 시작
 - [x] upload API 최소 구현 완료
@@ -167,7 +167,7 @@
 
 ## Final Check
 
-- [ ] Upload works
+- [x] Upload works
 - [ ] Parsing works
 - [ ] Chunking works
 - [ ] Retrieval works
