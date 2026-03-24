@@ -1,8 +1,13 @@
 __pycache__/
 *.pyc
+backend/.venv/
+backend/data/uploads/
+backend/data/default-files/*
+!backend/data/default-files/.gitkeep
 
 .next/
 node_modules/
+*.tsbuildinfo
 
 .terraform/
 *.tfstate

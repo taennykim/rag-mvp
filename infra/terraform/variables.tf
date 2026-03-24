@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "instance_name" {
   description = "Name tag for the implementation EC2 instance"
   type        = string
-  default     = "c1an2testadmin001_RAC"
+  default     = "c1an2testadmin001_RAG"
 }
 
 variable "ami_id" {

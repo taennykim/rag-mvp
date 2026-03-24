@@ -18,21 +18,25 @@
 11. RAGAS 평가 데이터와 결과 UI 추가
 
 ## 3. 현재 진행 상태
-- 현재 단계: Phase 1 진입 전 / AWS Server Ready
+- 현재 단계: Phase 3 Upload 완료 / RAG Server Ready
 - 완료:
   - AGENTS.md, TODO.md 확인
   - 기본 계획 및 파트 문서 작성
   - AWS 구현 서버 기준 확인
   - `infra/terraform/` Terraform 코드 작성
   - Terraform init/plan 재검증 완료
-  - EC2 `c1an2testadmin001_RAC` 생성 완료
+  - EC2 `c1an2testadmin001_RAG` 생성 및 접속 준비 완료
   - frontend Next.js skeleton 생성
   - backend FastAPI skeleton 생성
+  - RAG 서버에 프로젝트 동기화 완료
+  - RAG 서버에 Node.js 20, npm, pip3, python3.10-venv 설치 완료
+  - frontend/backend 의존성 설치 및 import 검증 완료
+  - upload API와 upload UI 최소 기능 구현 완료
 - 미완료:
-  - frontend/backend 의존성 설치 및 실행 검증
-  - upload 기능 실제 구현
+  - frontend/backend 실행 검증
+  - parsing 기능 실제 구현
 - 다음 우선 작업:
   - 문서 상태와 실제 파일 상태 정합성 유지
-  - SSM 접속 확인 마무리
-  - frontend, backend 의존성 설치 및 실행 검증
-  - upload API와 upload UI 최소 기능 구현
+  - frontend, backend 실행 검증
+  - parsing API와 parsing 테스트 응답 구현
+  - upload 이후 parsing 흐름 연결

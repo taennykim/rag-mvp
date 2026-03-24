@@ -53,11 +53,13 @@
 
 ## Phase 3. Upload
 
-- [ ] Create PDF upload API
-- [ ] Create DOCX upload API
-- [ ] Save uploaded files to backend/data/uploads
-- [ ] Create uploaded file list API
-- [ ] Build upload page UI
+- [x] Create PDF upload API
+- [x] Create DOCX upload API
+- [x] Save uploaded files to backend/data/uploads
+- [x] Create uploaded file list API
+- [x] Build upload page UI
+- [x] Create default file directory for preloaded uploads
+- [x] Add default file selection flow in upload page
 
 ---
 
@@ -154,11 +156,12 @@
 
 - [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-24.md`, `TODO.md`에 반영
 - [ ] 내일 시작 시 `docs/status.md`부터 리로드
-- [ ] frontend 의존성 설치
-- [ ] backend 의존성 설치
+- [x] frontend 의존성 설치
+- [x] backend 의존성 설치
 - [ ] frontend 실행 확인
-- [ ] backend 실행 확인
-- [ ] upload API 실제 구현 시작
+- [x] backend 실행 확인
+- [x] upload API 실제 구현 시작
+- [x] upload API 최소 구현 완료
 
 ---
 

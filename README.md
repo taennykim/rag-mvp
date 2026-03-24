@@ -50,9 +50,17 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 ## Current Status
 - Documentation baseline is in place under `docs/`
 - AWS EC2 implementation server was created with Terraform
-- Frontend skeleton exists for `/upload`, `/chat`, `/evaluation`
-- Backend FastAPI skeleton exists for `/health`, `/upload`, `/chat`, `/evaluation`
-- Dependency installation and runtime verification are still pending
+- The RAG EC2 server is reachable over `ssh -p 2022`
+- Frontend and backend dependencies are installed on the RAG server
+- Upload API and upload UI are implemented
+- Backend upload flow has been verified on the RAG server
+- Frontend runtime page responds successfully on the RAG server
+- Parsing and later RAG stages are still pending
+
+## Default Files
+- Preload files in `backend/data/default-files`
+- These files are not committed to git by default
+- The `/upload` page can upload one of these files through the `Default file` flow
 
 ## Resume Tomorrow
 Start from these files first:
@@ -63,8 +71,8 @@ Start from these files first:
 Recommended restart order:
 1. Review `docs/status.md` for the latest completed scope and blockers.
 2. Review `docs/daily/2026-03-24.md` for today's detailed work log.
-3. Continue with dependency installation and runtime verification for `frontend/` and `backend/`.
-4. Implement the first real feature: upload API and upload UI.
+ 3. Continue with frontend runtime verification and parsing implementation.
+ 4. Implement the next real feature: parsing API and extraction validation.
 
 ## Daily Start Checklist
 1. Review `AGENTS.md` for working rules and project operating constraints.
