@@ -10,7 +10,7 @@
   - instance name: `c1an2testadmin001_RAG`
   - region: `ap-northeast-2`
   - availability zone: `ap-northeast-2a`
-  - instance type: `t2.micro`
+  - instance type: `t3.xlarge`
   - AMI: `ami-09e1f7f5fee1f6d4a`
   - subnet: `subnet-0e1132f0332a1c9d7`
   - security groups:
@@ -39,6 +39,7 @@
 - 생성 결과:
   - instance id: `i-09c547c2adaefff77`
   - private ip: `10.160.98.178`
+  - instance type: `t3.xlarge`
   - state: `running`
   - public ip: 없음
   - SSM agent: `Online`

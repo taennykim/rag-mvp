@@ -29,6 +29,7 @@
   - `infra/terraform/` 구조 생성
   - EC2 생성용 Terraform 코드 작성
   - instance name을 `c1an2testadmin001_RAG`로 정정
+  - Terraform 기본 instance type을 `t3.xlarge`로 정정
   - Terraform plan 재검증 완료
   - EC2 `c1an2testadmin001_RAG` 상태 반영 완료
   - `frontend/` Next.js skeleton 생성

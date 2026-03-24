@@ -19,7 +19,7 @@ variable "ami_id" {
 variable "instance_type" {
   description = "EC2 instance type copied from the reference instance"
   type        = string
-  default     = "t2.micro"
+  default     = "t3.xlarge"
 }
 
 variable "availability_zone" {
