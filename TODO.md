@@ -4,32 +4,50 @@
 
 ## Phase 0. Project Initialization (문서 + 구조)
 
-- [ ] docs 폴더 생성
-- [ ] docs/daily 폴더 생성
-- [ ] docs/plan.md 생성
-- [ ] docs/retrieval.md 생성
-- [ ] docs/llm.md 생성
-- [ ] docs/ui.md 생성
+- [x] docs 폴더 생성
+- [x] docs/daily 폴더 생성
+- [x] docs/plan.md 생성
+- [x] docs/retrieval.md 생성
+- [x] docs/llm.md 생성
+- [x] docs/ui.md 생성
+- [x] docs/aws.md 생성
+
+---
+
+## Phase 0.5 AWS Implementation Server
+
+- [x] 기준 EC2 스펙 확인
+- [x] Terraform 파일 생성
+- [x] terraform init 산출물 확인
+- [x] terraform plan 산출물 확인
+- [x] terraform plan 재검증
+- [x] 사용자 승인 후 terraform apply
+- [x] 생성된 EC2 상태 확인
 
 ---
 
 ## Phase 1. Project Setup
 
-- [ ] Create frontend with Next.js
-- [ ] Create backend with FastAPI
-- [ ] Connect basic routing
-- [ ] Add README.md
-- [ ] Add AGENTS.md
-- [ ] Add TODO.md
+- [x] Create frontend with Next.js skeleton
+- [x] Create backend with FastAPI skeleton
+- [x] Connect basic routing skeleton
+- [x] Add frontend pages for `/upload`, `/chat`, `/evaluation`
+- [x] Add frontend root redirect from `/` to `/upload`
+- [x] Add shared frontend layout and global styles
+- [x] Add backend status routes for `/health`, `/upload`, `/chat`, `/evaluation`
+- [x] Add backend dependency manifest
+- [x] Add README.md
+- [x] Add AGENTS.md
+- [x] Add TODO.md
 
 ---
 
 ## Phase 2. Initial Documentation 작성
 
-- [ ] plan.md에 MVP 계획 작성
-- [ ] retrieval.md에 검색 설계 작성
-- [ ] llm.md에 RAG 구조 작성
-- [ ] ui.md에 화면 구조 작성
+- [x] plan.md에 MVP 계획 작성
+- [x] retrieval.md에 검색 설계 작성
+- [x] llm.md에 RAG 구조 작성
+- [x] ui.md에 화면 구조 작성
 
 ---
 
@@ -125,10 +143,22 @@
 
 ## Phase 13. Daily Management (중요)
 
-- [ ] daily 기록 생성
-- [ ] 작업 내용 기록
-- [ ] 이슈 기록
-- [ ] 다음 작업 정의
+- [x] daily 기록 생성
+- [x] 작업 내용 기록
+- [x] 이슈 기록
+- [x] 다음 작업 정의
+
+---
+
+## Next Session Start Point
+
+- [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-24.md`, `TODO.md`에 반영
+- [ ] 내일 시작 시 `docs/status.md`부터 리로드
+- [ ] frontend 의존성 설치
+- [ ] backend 의존성 설치
+- [ ] frontend 실행 확인
+- [ ] backend 실행 확인
+- [ ] upload API 실제 구현 시작
 
 ---
 

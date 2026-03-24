@@ -46,3 +46,22 @@ Upload → Parse → Chunk → Embed → Store → Retrieve → Answer → Evalu
 
 ## Goal
 Deliver a small, readable, end-to-end MVP before adding advanced features.
+
+## Current Status
+- Documentation baseline is in place under `docs/`
+- AWS EC2 implementation server was created with Terraform
+- Frontend skeleton exists for `/upload`, `/chat`, `/evaluation`
+- Backend FastAPI skeleton exists for `/health`, `/upload`, `/chat`, `/evaluation`
+- Dependency installation and runtime verification are still pending
+
+## Resume Tomorrow
+Start from these files first:
+- `docs/status.md`
+- `docs/daily/2026-03-24.md`
+- `TODO.md`
+
+Recommended restart order:
+1. Review `docs/status.md` for the latest completed scope and blockers.
+2. Review `docs/daily/2026-03-24.md` for today's detailed work log.
+3. Continue with dependency installation and runtime verification for `frontend/` and `backend/`.
+4. Implement the first real feature: upload API and upload UI.

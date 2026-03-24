@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+
+.next/
+node_modules/
+
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+
+.DS_Store

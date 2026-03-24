@@ -1,0 +1,7 @@
+instance_name         = "c1an2testadmin001_RAC"
+owner_tag             = "taenny"
+legacy_owner_tag      = "taenny.kim"
+class0_tag            = "POC"
+class1_tag            = "CL"
+root_volume_size      = 50
+root_volume_type      = "gp2"
