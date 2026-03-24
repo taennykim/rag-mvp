@@ -65,3 +65,10 @@ Recommended restart order:
 2. Review `docs/daily/2026-03-24.md` for today's detailed work log.
 3. Continue with dependency installation and runtime verification for `frontend/` and `backend/`.
 4. Implement the first real feature: upload API and upload UI.
+
+## Daily Start Checklist
+1. Review `AGENTS.md` for working rules and project operating constraints.
+2. Review `README.md` for project scope and restart guidance.
+3. Review `docs/status.md` for the latest actual progress and blockers.
+4. Review the latest file in `docs/daily/` for the previous session context.
+5. Review `TODO.md` and choose the first unchecked task for the day.
