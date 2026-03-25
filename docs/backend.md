@@ -14,6 +14,9 @@
   - `POST /parse`
   - `GET /parse/{stored_name}`
   - `POST /parse/quality`
+  - `GET /chunk`
+  - `POST /chunk`
+  - `GET /chunk/{stored_name}`
 - parsing 방식:
   - PDF: `PyMuPDF`
   - DOCX: `python-docx`
@@ -49,6 +52,16 @@
   - `levenshtein_distance`
   - `quality_warning`
   - `quality_warning_message`
+- chunking 응답:
+  - `stored_name`
+  - `original_name`
+  - `file_type`
+  - `text_length`
+  - `chunk_count`
+  - `chunk_target_length`
+  - `chunk_overlap_length`
+  - `summary_path`
+  - `chunks`
 
 ## 3. 현재 상태
 - 진행중
@@ -56,6 +69,7 @@
 - parsing 기능 최소 구현 및 검증 완료
 - parsing 품질 점수 및 UI 검증 완료
 - parse와 quality check 분리 완료
+- chunking 기능 최소 구현 및 검증 완료
 - chunking 이후 단계는 미구현
 
 ## 4. 이슈 및 문제
@@ -63,8 +77,10 @@
 - `.doc`와 `.xlsx` 기본 파일은 현재 지원 대상이 아니다.
 - 추출 텍스트 저장, 캐싱, 후속 chunk 연계는 아직 없다.
 - quality score는 별도 reference extractor 기준 비교이며 사람 검수 대체는 아니다.
+- chunking은 현재 문자 길이 기준의 규칙 기반 처리라 semantic boundary를 완벽히 보장하지 않는다.
 
 ## 5. 다음 작업
 - parsing 결과를 chunking 입력 구조로 넘긴다.
-- chunk metadata 구조를 확정한다.
-- parsing 실패 케이스별 응답을 더 세분화한다.
+- chunk metadata 구조를 indexing 입력에 맞춰 다듬는다.
+- indexing API를 구현한다.
+- parsing/chunking 실패 케이스별 응답을 더 세분화한다.

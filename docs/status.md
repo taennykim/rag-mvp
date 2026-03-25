@@ -25,6 +25,7 @@
   - Upload Phase 실행 검증 완료
   - Parsing Phase 최소 구현 완료
   - Parsing 검증 UI 및 품질 지표 추가 완료
+  - Chunking Phase 최소 구현 완료
 - 완료된 항목:
   - `AGENTS.md`, `TODO.md`, `README.md` 확인
   - `docs/plan.md`, `docs/retrieval.md`, `docs/llm.md`, `docs/ui.md`, `docs/aws.md` 작성
@@ -82,8 +83,13 @@
   - RAG 서버에서 upload 이후 parsing API 실제 호출 검증 완료
   - RAG 서버에서 DOCX parsing length가 `1087`에서 `22887`로 증가한 것 확인
   - RAG 서버에서 DOCX sample의 `Jaccard Similarity`가 약 `0.994`로 확인됨
+  - backend `GET /chunk`, `POST /chunk`, `GET /chunk/{stored_name}` 구현
+  - backend chunk target length `800`, overlap length `120` 기준 chunking 구현
+  - backend chunk metadata `chunk_index`, `text`, `text_length`, `start_char`, `end_char`, `preview` 구현
+  - backend 파일별 chunk count summary 저장 구현
+  - RAG 서버에서 DOCX sample chunking 결과 `38`개 chunk 생성 검증 완료
 - 미완료 항목:
-  - chunking / indexing / retrieval / answer / evaluation 기능
+  - indexing / retrieval / answer / evaluation 기능
 
 ## 4. 문서와 실제 상태 차이
 - 문서상 AWS 상태:
@@ -109,13 +115,13 @@
 
 ## 6. 다음 작업
 - 1차 우선순위:
-  - chunking 함수와 metadata 구조를 구현한다.
-  - parsing 결과를 chunk list로 변환하는 최소 흐름을 만든다.
+  - embedding 생성 로직을 구현한다.
+  - chunk를 Chroma에 저장하는 최소 indexing 흐름을 만든다.
 - 2차 우선순위:
-  - chunk list와 chunk count를 API 응답으로 확인할 수 있게 한다.
-  - 파일별 chunk count 저장 방식 초안을 정한다.
+  - indexing API 응답으로 저장 건수와 대상 파일을 확인할 수 있게 한다.
+  - 최소 1개 파일 검색 가능 여부를 검증한다.
 - 3차 우선순위:
-  - chunking, indexing 순서로 backend 기능을 확장한다.
+  - indexing, retrieval 순서로 backend 기능을 확장한다.
   - chat/evaluation 화면을 실제 API 흐름과 연결한다.
 
 ## 7. 추천 실행 순서

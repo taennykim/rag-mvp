@@ -74,10 +74,10 @@
 
 ## Phase 5. Chunking
 
-- [ ] Split extracted text into chunks
-- [ ] Add metadata to each chunk
-- [ ] Verify chunk list output
-- [ ] Store chunk count per file
+- [x] Split extracted text into chunks
+- [x] Add metadata to each chunk
+- [x] Verify chunk list output
+- [x] Store chunk count per file
 
 ---
 
@@ -169,7 +169,7 @@
 
 - [x] Upload works
 - [x] Parsing works
-- [ ] Chunking works
+- [x] Chunking works
 - [ ] Retrieval works
 - [ ] Answer generation works
 - [ ] Sources are visible

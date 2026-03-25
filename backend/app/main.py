@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import re
 from uuid import uuid4
@@ -36,10 +37,14 @@ app.add_middleware(
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "data" / "uploads"
 DEFAULT_FILE_DIR = BASE_DIR / "data" / "default-files"
+CHUNK_METADATA_DIR = BASE_DIR / "data" / "chunk-metadata"
 ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 PREVIEW_LENGTH = 300
 QUALITY_WARNING_THRESHOLD = 0.8
 WORD_NAMESPACE = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+CHUNK_TARGET_LENGTH = 800
+CHUNK_OVERLAP_LENGTH = 120
+CHUNK_PREVIEW_LENGTH = 160
 
 
 def ensure_upload_dir() -> None:
@@ -48,6 +53,10 @@ def ensure_upload_dir() -> None:
 
 def ensure_default_file_dir() -> None:
     DEFAULT_FILE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def ensure_chunk_metadata_dir() -> None:
+    CHUNK_METADATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def get_extension(filename: str) -> str:
@@ -342,6 +351,154 @@ def build_parsing_quality_result(path: Path) -> dict[str, object]:
     return metadata
 
 
+def split_long_segment(segment: str, max_length: int) -> list[str]:
+    normalized_segment = segment.strip()
+    if not normalized_segment:
+        return []
+
+    if len(normalized_segment) <= max_length:
+        return [normalized_segment]
+
+    sentences = [
+        part.strip()
+        for part in re.split(r"(?<=[.!?])\s+|(?<=[.!?])\n+|\n+", normalized_segment)
+        if part.strip()
+    ]
+
+    if len(sentences) == 1 and len(sentences[0]) > max_length:
+        chunks: list[str] = []
+        start = 0
+        while start < len(normalized_segment):
+            end = min(start + max_length, len(normalized_segment))
+            chunks.append(normalized_segment[start:end].strip())
+            start = end
+        return [chunk for chunk in chunks if chunk]
+
+    segments: list[str] = []
+    current = ""
+    for sentence in sentences:
+        candidate = sentence if not current else f"{current} {sentence}"
+        if len(candidate) <= max_length:
+            current = candidate
+            continue
+        if current:
+            segments.append(current)
+        if len(sentence) > max_length:
+            segments.extend(split_long_segment(sentence, max_length))
+            current = ""
+            continue
+        current = sentence
+
+    if current:
+        segments.append(current)
+
+    return segments
+
+
+def build_chunk_segments(text: str) -> list[str]:
+    raw_segments = [line.strip() for line in text.splitlines() if line.strip()]
+    segments: list[str] = []
+
+    for raw_segment in raw_segments:
+        segments.extend(split_long_segment(raw_segment, CHUNK_TARGET_LENGTH))
+
+    return segments
+
+
+def build_overlap_text(chunk_text: str, overlap_length: int) -> str:
+    if len(chunk_text) <= overlap_length:
+        return chunk_text
+    return chunk_text[-overlap_length:].strip()
+
+
+def create_chunks(text: str) -> list[dict[str, object]]:
+    segments = build_chunk_segments(text)
+    if not segments:
+        return []
+
+    chunks: list[dict[str, object]] = []
+    current = ""
+    current_start = 0
+    cursor = 0
+
+    for segment in segments:
+        segment_start = cursor
+        cursor += len(segment)
+
+        candidate = segment if not current else f"{current}\n{segment}"
+        if current and len(candidate) > CHUNK_TARGET_LENGTH:
+            chunk_end = current_start + len(current)
+            chunks.append(
+                {
+                    "chunk_index": len(chunks),
+                    "text": current,
+                    "text_length": len(current),
+                    "start_char": current_start,
+                    "end_char": chunk_end,
+                    "preview": current[:CHUNK_PREVIEW_LENGTH],
+                }
+            )
+            overlap = build_overlap_text(current, CHUNK_OVERLAP_LENGTH)
+            current = segment if not overlap else f"{overlap}\n{segment}"
+            current_start = max(chunk_end - len(overlap), 0)
+            cursor = max(cursor, current_start + len(current))
+            continue
+
+        if not current:
+            current_start = segment_start
+        current = candidate
+
+    if current:
+        chunk_end = current_start + len(current)
+        chunks.append(
+            {
+                "chunk_index": len(chunks),
+                "text": current,
+                "text_length": len(current),
+                "start_char": current_start,
+                "end_char": chunk_end,
+                "preview": current[:CHUNK_PREVIEW_LENGTH],
+            }
+        )
+
+    return chunks
+
+
+def write_chunk_summary(path: Path, chunk_count: int) -> Path:
+    ensure_chunk_metadata_dir()
+    summary_path = CHUNK_METADATA_DIR / f"{path.name}.json"
+    summary = {
+        "stored_name": path.name,
+        "original_name": path.name.split("__", 1)[1] if "__" in path.name else path.name,
+        "chunk_count": chunk_count,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    return summary_path
+
+
+def build_chunking_result(path: Path) -> dict[str, object]:
+    parsed = build_parsing_result(path)
+    chunks = create_chunks(parsed["extracted_text"])
+
+    if not chunks:
+        raise HTTPException(status_code=400, detail="No chunks were created from extracted text.")
+
+    summary_path = write_chunk_summary(path, len(chunks))
+    return {
+        "status": "chunked",
+        "stored_name": parsed["stored_name"],
+        "original_name": parsed["original_name"],
+        "file_type": parsed["file_type"],
+        "text_length": parsed["text_length"],
+        "chunk_count": len(chunks),
+        "chunk_target_length": CHUNK_TARGET_LENGTH,
+        "chunk_overlap_length": CHUNK_OVERLAP_LENGTH,
+        "summary_path": str(summary_path),
+        "chunks": chunks,
+    }
+
+
 class DefaultFileUploadRequest(BaseModel):
     filename: str
 
@@ -454,6 +611,31 @@ def parse_uploaded_file_by_name(stored_name: str) -> dict[str, object]:
 def parse_uploaded_file_quality(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
     return build_parsing_quality_result(path)
+
+
+@app.get("/chunk")
+def get_chunk_status() -> dict[str, object]:
+    files = list_uploaded_files()
+    return {
+        "page": "chunk",
+        "status": "ready",
+        "message": "Chunking API is available for parsed uploaded files.",
+        "file_count": len(files),
+        "chunk_target_length": CHUNK_TARGET_LENGTH,
+        "chunk_overlap_length": CHUNK_OVERLAP_LENGTH,
+    }
+
+
+@app.post("/chunk")
+def chunk_uploaded_file(payload: ParseRequest) -> dict[str, object]:
+    path = get_uploaded_file_path(payload.stored_name)
+    return build_chunking_result(path)
+
+
+@app.get("/chunk/{stored_name}")
+def chunk_uploaded_file_by_name(stored_name: str) -> dict[str, object]:
+    path = get_uploaded_file_path(stored_name)
+    return build_chunking_result(path)
 
 
 @app.get("/chat")

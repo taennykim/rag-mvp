@@ -62,7 +62,8 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Parsing text extraction validation has been verified on the RAG server
 - DOCX parser now includes table and header/footer text extraction
 - Upload page includes in-browser parse test, full extracted text view, and separate quality-check action
-- Chunking and later RAG stages are still pending
+- Chunking API and chunk metadata output are implemented
+- Chunking and later indexing/RAG stages are still pending
 
 ## Default Files
 - Preload files in `backend/data/default-files`
@@ -78,8 +79,8 @@ Start from these files first:
 Recommended restart order:
 1. Review `docs/status.md` for the latest completed scope and blockers.
 2. Review `docs/daily/2026-03-25.md` for today's detailed work log.
-3. Continue with chunking implementation from parsed uploaded files.
-4. Implement the next real feature: chunking API and chunk metadata validation.
+3. Continue with indexing implementation from chunked uploaded files.
+4. Implement the next real feature: embeddings, Chroma storage, and indexing API validation.
 
 ## Daily Start Checklist
 1. Review `AGENTS.md` for working rules and project operating constraints.

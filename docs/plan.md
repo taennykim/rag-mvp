@@ -18,7 +18,7 @@
 11. RAGAS 평가 데이터와 결과 UI 추가
 
 ## 3. 현재 진행 상태
-- 현재 단계: Phase 4 Parsing 완료 / Chunking 대기
+- 현재 단계: Phase 5 Chunking 완료 / Indexing 대기
 - 완료:
   - AGENTS.md, TODO.md 확인
   - 기본 계획 및 파트 문서 작성
@@ -39,9 +39,11 @@
   - PDF/DOCX parsing API 구현 완료
   - 추출 텍스트 비어 있음 검증 완료
   - parsing API 실제 응답 검증 완료
+  - chunking API 구현 완료
+  - chunk metadata와 chunk count 저장 구현 완료
 - 미완료:
-  - chunking 기능 실제 구현
+  - indexing 기능 실제 구현
 - 다음 우선 작업:
-  - chunking 함수와 metadata 구조를 구현
-  - parsing 결과를 chunking 입력으로 연결
-  - chunk list 테스트 응답 구현
+  - chunk embedding 생성 로직을 구현
+  - Chroma 저장 구조를 구현
+  - indexing API와 검색 가능 여부를 검증
