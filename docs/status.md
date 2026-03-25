@@ -70,11 +70,13 @@
   - backend DOCX table 및 header/footer text extraction 구현
   - backend 빈 추출 텍스트 검증 구현
   - backend parse 응답에 full extracted text 추가
-  - backend parse 응답에 `Jaccard Similarity`, `Levenshtein Distance` 추가
-  - backend parse 응답에 `Jaccard Similarity < 0.8` 경고 플래그 추가
+  - backend `POST /parse/quality` 구현
+  - backend quality 응답에 `Jaccard Similarity`, `Levenshtein Distance` 추가
+  - backend quality 응답에 `Jaccard Similarity < 0.8` 경고 플래그 추가
   - frontend `/upload` 페이지에 파일별 `Parse test` 버튼 추가
   - frontend `/upload` 페이지에 parsing test result 카드 추가
   - frontend `/upload` 페이지에서 full extracted text 및 raw JSON 확인 UI 추가
+  - frontend `/upload` 페이지에서 `Check parsing quality` 버튼으로 품질 계산 분리
   - frontend `/upload` 페이지에서 품질 경고 문구 `파싱 품질주의` 빨간색 표시 추가
   - RAG 서버에서 PDF/DOCX parsing 함수 실제 호출 검증 완료
   - RAG 서버에서 upload 이후 parsing API 실제 호출 검증 완료
@@ -103,6 +105,7 @@
 - frontend `next@15.2.4`는 보안 경고가 있으므로 추후 패치 버전 업그레이드가 필요하다.
 - upload 검증 중 생성되는 `backend/data/uploads`와 RAG 서버의 `.venv`는 git 추적 대상이 아니다.
 - quality score는 원본 기반 reference extractor와의 자동 비교이므로 최종 품질 판단에는 사람 검수가 여전히 필요하다.
+- quality 점수 계산은 reference 추출이 포함돼 parse보다 상대적으로 느리므로 별도 호출로 분리했다.
 
 ## 6. 다음 작업
 - 1차 우선순위:

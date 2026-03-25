@@ -13,6 +13,7 @@
   - `GET /parse`
   - `POST /parse`
   - `GET /parse/{stored_name}`
+  - `POST /parse/quality`
 - parsing 방식:
   - PDF: `PyMuPDF`
   - DOCX: `python-docx`
@@ -21,6 +22,8 @@
     - 표 셀 텍스트
     - header/footer
 - parsing 품질 비교:
+  - `Parse test`는 텍스트 추출 결과만 반환
+  - 품질 점수는 `POST /parse/quality`에서 별도로 계산
   - reference extractor를 같은 원본 파일에서 별도로 실행
   - `Jaccard Similarity`
   - `Levenshtein Distance`
@@ -32,9 +35,16 @@
   - `uploaded_at`
   - `file_type`
   - `text_length`
-  - `reference_text_length`
   - `preview`
   - `extracted_text`
+- parsing 품질 응답:
+  - `stored_name`
+  - `original_name`
+  - `size_bytes`
+  - `uploaded_at`
+  - `file_type`
+  - `text_length`
+  - `reference_text_length`
   - `jaccard_similarity`
   - `levenshtein_distance`
   - `quality_warning`
@@ -45,6 +55,7 @@
 - upload 기능 구현 및 검증 완료
 - parsing 기능 최소 구현 및 검증 완료
 - parsing 품질 점수 및 UI 검증 완료
+- parse와 quality check 분리 완료
 - chunking 이후 단계는 미구현
 
 ## 4. 이슈 및 문제

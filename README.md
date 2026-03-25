@@ -61,7 +61,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Parsing API for uploaded PDF/DOCX files is implemented
 - Parsing text extraction validation has been verified on the RAG server
 - DOCX parser now includes table and header/footer text extraction
-- Upload page includes in-browser parse test, full extracted text view, and quality metrics
+- Upload page includes in-browser parse test, full extracted text view, and separate quality-check action
 - Chunking and later RAG stages are still pending
 
 ## Default Files

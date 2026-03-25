@@ -305,7 +305,6 @@ def build_quality_metrics(parsed_text: str, reference_text: str) -> dict[str, ob
 
 def build_parsing_result(path: Path) -> dict[str, object]:
     text = extract_text_from_file(path)
-    reference_text = extract_reference_text(path)
 
     if not text.strip():
         raise HTTPException(status_code=400, detail="Extracted text is empty.")
@@ -318,10 +317,28 @@ def build_parsing_result(path: Path) -> dict[str, object]:
             "text_length": len(text),
             "preview": text[:PREVIEW_LENGTH],
             "extracted_text": text,
+        }
+    )
+    return metadata
+
+
+def build_parsing_quality_result(path: Path) -> dict[str, object]:
+    parsed_text = extract_text_from_file(path)
+    reference_text = extract_reference_text(path)
+
+    if not parsed_text.strip():
+        raise HTTPException(status_code=400, detail="Extracted text is empty.")
+
+    metadata = build_file_metadata(path)
+    metadata.update(
+        {
+            "status": "quality_checked",
+            "file_type": get_extension(path.name),
+            "text_length": len(parsed_text),
             "reference_text_length": len(reference_text),
         }
     )
-    metadata.update(build_quality_metrics(text, reference_text))
+    metadata.update(build_quality_metrics(parsed_text, reference_text))
     return metadata
 
 
@@ -431,6 +448,12 @@ def parse_uploaded_file(payload: ParseRequest) -> dict[str, object]:
 def parse_uploaded_file_by_name(stored_name: str) -> dict[str, object]:
     path = get_uploaded_file_path(stored_name)
     return build_parsing_result(path)
+
+
+@app.post("/parse/quality")
+def parse_uploaded_file_quality(payload: ParseRequest) -> dict[str, object]:
+    path = get_uploaded_file_path(payload.stored_name)
+    return build_parsing_quality_result(path)
 
 
 @app.get("/chat")

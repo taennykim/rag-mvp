@@ -237,6 +237,11 @@ a {
   font-weight: 700;
 }
 
+.quality-metrics {
+  display: grid;
+  gap: 4px;
+}
+
 .parse-json summary {
   cursor: pointer;
   color: var(--ink);
