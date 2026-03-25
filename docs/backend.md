@@ -62,6 +62,16 @@
   - `chunk_overlap_length`
   - `summary_path`
   - `chunks`
+- chunk metadata:
+  - `chunk_index`: 파일 내 chunk 순서를 식별한다.
+  - `source`: 검색 결과에 원본 파일명 또는 출처를 표시한다.
+  - `text`: embedding 생성과 retrieval 대상이 되는 본문이다.
+  - `text_length`: chunk 길이 분포 확인과 분할 품질 점검에 사용한다.
+  - `start_char`: 원문 내 시작 위치를 추적한다.
+  - `end_char`: 원문 내 종료 위치를 추적한다.
+  - `page_number`: PDF parsing 등에서 페이지 정보를 추출한 경우 근거 위치를 표시한다.
+  - `section_header`: chunk가 속한 상위 조문 번호 또는 제목을 저장해 문맥 이해를 돕는다.
+  - `preview`: UI나 로그에서 chunk 내용을 짧게 미리 확인한다.
 
 ## 3. 현재 상태
 - 진행중
@@ -78,6 +88,7 @@
 - 추출 텍스트 저장, 캐싱, 후속 chunk 연계는 아직 없다.
 - quality score는 별도 reference extractor 기준 비교이며 사람 검수 대체는 아니다.
 - chunking은 현재 문자 길이 기준의 규칙 기반 처리라 semantic boundary를 완벽히 보장하지 않는다.
+- `page_number`, `section_header`는 parsing 결과에 구조 정보가 있을 때만 채울 수 있다.
 
 ## 5. 다음 작업
 - parsing 결과를 chunking 입력 구조로 넘긴다.
