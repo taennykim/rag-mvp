@@ -41,7 +41,9 @@ type ParseQualityResult = {
   quality_warning_message: string;
 };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  (typeof window === "undefined" ? "http://localhost:8000" : `${window.location.protocol}//${window.location.hostname}:8000`);
 
 export default function UploadPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);

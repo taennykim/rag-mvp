@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 backend/.venv/
 backend/data/uploads/
+backend/data/chunk-metadata/
+backend/data/chroma/
 backend/data/default-files/*
 !backend/data/default-files/.gitkeep
 

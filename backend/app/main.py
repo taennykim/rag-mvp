@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -38,6 +39,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "data" / "uploads"
 DEFAULT_FILE_DIR = BASE_DIR / "data" / "default-files"
 CHUNK_METADATA_DIR = BASE_DIR / "data" / "chunk-metadata"
+CHROMA_DIR = BASE_DIR / "data" / "chroma"
 ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 PREVIEW_LENGTH = 300
 QUALITY_WARNING_THRESHOLD = 0.8
@@ -45,6 +47,8 @@ WORD_NAMESPACE = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/
 CHUNK_TARGET_LENGTH = 800
 CHUNK_OVERLAP_LENGTH = 120
 CHUNK_PREVIEW_LENGTH = 160
+EMBEDDING_DIMENSION = 256
+CHROMA_COLLECTION_NAME = "insurance_document_chunks"
 
 
 def ensure_upload_dir() -> None:
@@ -57,6 +61,10 @@ def ensure_default_file_dir() -> None:
 
 def ensure_chunk_metadata_dir() -> None:
     CHUNK_METADATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def ensure_chroma_dir() -> None:
+    CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def get_extension(filename: str) -> str:
@@ -411,7 +419,13 @@ def build_overlap_text(chunk_text: str, overlap_length: int) -> str:
     return chunk_text[-overlap_length:].strip()
 
 
-def create_chunks(text: str) -> list[dict[str, object]]:
+def create_chunks(
+    text: str,
+    *,
+    source: str,
+    page_number: int | None = None,
+    section_header: str | None = None,
+) -> list[dict[str, object]]:
     segments = build_chunk_segments(text)
     if not segments:
         return []
@@ -431,10 +445,13 @@ def create_chunks(text: str) -> list[dict[str, object]]:
             chunks.append(
                 {
                     "chunk_index": len(chunks),
+                    "source": source,
                     "text": current,
                     "text_length": len(current),
                     "start_char": current_start,
                     "end_char": chunk_end,
+                    "page_number": page_number,
+                    "section_header": section_header,
                     "preview": current[:CHUNK_PREVIEW_LENGTH],
                 }
             )
@@ -453,10 +470,13 @@ def create_chunks(text: str) -> list[dict[str, object]]:
         chunks.append(
             {
                 "chunk_index": len(chunks),
+                "source": source,
                 "text": current,
                 "text_length": len(current),
                 "start_char": current_start,
                 "end_char": chunk_end,
+                "page_number": page_number,
+                "section_header": section_header,
                 "preview": current[:CHUNK_PREVIEW_LENGTH],
             }
         )
@@ -479,7 +499,7 @@ def write_chunk_summary(path: Path, chunk_count: int) -> Path:
 
 def build_chunking_result(path: Path) -> dict[str, object]:
     parsed = build_parsing_result(path)
-    chunks = create_chunks(parsed["extracted_text"])
+    chunks = create_chunks(parsed["extracted_text"], source=parsed["original_name"])
 
     if not chunks:
         raise HTTPException(status_code=400, detail="No chunks were created from extracted text.")
@@ -505,6 +525,122 @@ class DefaultFileUploadRequest(BaseModel):
 
 class ParseRequest(BaseModel):
     stored_name: str
+
+
+def hash_token(token: str) -> int:
+    return int.from_bytes(hashlib.sha256(token.encode("utf-8")).digest()[:8], "big")
+
+
+def build_embedding(text: str, dimension: int = EMBEDDING_DIMENSION) -> list[float]:
+    vector = [0.0] * dimension
+    tokens = tokenize_text(text)
+
+    if not tokens:
+        return vector
+
+    for token in tokens:
+        token_hash = hash_token(token)
+        index = token_hash % dimension
+        sign = -1.0 if ((token_hash >> 8) & 1) else 1.0
+        vector[index] += sign
+
+    norm = sum(value * value for value in vector) ** 0.5
+    if norm == 0:
+        return vector
+
+    return [value / norm for value in vector]
+
+
+def build_chroma_metadata(
+    chunk: dict[str, object],
+    *,
+    stored_name: str,
+    original_name: str,
+    file_type: str,
+) -> dict[str, str | int]:
+    metadata: dict[str, str | int] = {
+        "stored_name": stored_name,
+        "original_name": original_name,
+        "file_type": file_type,
+        "chunk_index": int(chunk["chunk_index"]),
+        "source": str(chunk.get("source") or original_name),
+        "text_length": int(chunk["text_length"]),
+        "start_char": int(chunk["start_char"]),
+        "end_char": int(chunk["end_char"]),
+        "preview": str(chunk["preview"]),
+    }
+
+    page_number = chunk.get("page_number")
+    if isinstance(page_number, int):
+        metadata["page_number"] = page_number
+
+    section_header = chunk.get("section_header")
+    if isinstance(section_header, str) and section_header.strip():
+        metadata["section_header"] = section_header.strip()
+
+    return metadata
+
+
+def get_chroma_collection():
+    ensure_chroma_dir()
+    try:
+        import chromadb
+    except ModuleNotFoundError as exc:
+        raise HTTPException(status_code=500, detail="chromadb is not installed in the current environment.") from exc
+
+    client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+    return client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
+
+
+def index_chunks(path: Path) -> dict[str, object]:
+    chunking_result = build_chunking_result(path)
+    chunks = chunking_result["chunks"]
+
+    if not isinstance(chunks, list) or not chunks:
+        raise HTTPException(status_code=400, detail="No chunks available for indexing.")
+
+    stored_name = str(chunking_result["stored_name"])
+    original_name = str(chunking_result["original_name"])
+    file_type = str(chunking_result["file_type"])
+
+    documents: list[str] = []
+    embeddings: list[list[float]] = []
+    metadatas: list[dict[str, str | int]] = []
+    ids: list[str] = []
+
+    for chunk in chunks:
+        if not isinstance(chunk, dict):
+            continue
+
+        text = str(chunk["text"])
+        documents.append(text)
+        embeddings.append(build_embedding(text))
+        metadatas.append(
+            build_chroma_metadata(
+                chunk,
+                stored_name=stored_name,
+                original_name=original_name,
+                file_type=file_type,
+            )
+        )
+        ids.append(f"{stored_name}:{int(chunk['chunk_index'])}")
+
+    collection = get_chroma_collection()
+    if ids:
+        collection.delete(ids=ids)
+        collection.add(ids=ids, documents=documents, embeddings=embeddings, metadatas=metadatas)
+
+    return {
+        "status": "indexed",
+        "stored_name": stored_name,
+        "original_name": original_name,
+        "file_type": file_type,
+        "chunk_count": chunking_result["chunk_count"],
+        "indexed_count": len(ids),
+        "collection_name": CHROMA_COLLECTION_NAME,
+        "embedding_dimension": EMBEDDING_DIMENSION,
+        "chroma_path": str(CHROMA_DIR),
+    }
 
 
 @app.get("/health")
@@ -636,6 +772,31 @@ def chunk_uploaded_file(payload: ParseRequest) -> dict[str, object]:
 def chunk_uploaded_file_by_name(stored_name: str) -> dict[str, object]:
     path = get_uploaded_file_path(stored_name)
     return build_chunking_result(path)
+
+
+@app.get("/index")
+def get_index_status() -> dict[str, object]:
+    files = list_uploaded_files()
+    return {
+        "page": "index",
+        "status": "ready",
+        "message": "Indexing API is available for chunked uploaded files.",
+        "file_count": len(files),
+        "collection_name": CHROMA_COLLECTION_NAME,
+        "embedding_dimension": EMBEDDING_DIMENSION,
+    }
+
+
+@app.post("/index")
+def index_uploaded_file(payload: ParseRequest) -> dict[str, object]:
+    path = get_uploaded_file_path(payload.stored_name)
+    return index_chunks(path)
+
+
+@app.get("/index/{stored_name}")
+def index_uploaded_file_by_name(stored_name: str) -> dict[str, object]:
+    path = get_uploaded_file_path(stored_name)
+    return index_chunks(path)
 
 
 @app.get("/chat")

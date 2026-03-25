@@ -112,17 +112,20 @@
 - upload 검증 중 생성되는 `backend/data/uploads`와 RAG 서버의 `.venv`는 git 추적 대상이 아니다.
 - quality score는 원본 기반 reference extractor와의 자동 비교이므로 최종 품질 판단에는 사람 검수가 여전히 필요하다.
 - quality 점수 계산은 reference 추출이 포함돼 parse보다 상대적으로 느리므로 별도 호출로 분리했다.
-- 로컬 git 커밋은 완료됐지만 GitHub push는 현재 인증 문제로 실패한다.
+- chunk metadata 문서에 `source`, `page_number`, `section_header` 기준을 반영했다.
+- backend에 최소 indexing API(`GET /index`, `POST /index`, `GET /index/{stored_name}`)를 추가했다.
+- DOCX default file 기준 `38`개 chunk를 Chroma에 저장하는 실행 검증을 완료했다.
+- frontend는 다시 `/upload` 중심 구조로 유지하고 `localhost:3000`, backend `localhost:8000` 기준으로 실행한다.
 
 ## 6. 다음 작업
 - 1차 우선순위:
-  - embedding 생성 로직을 구현한다.
-  - chunk를 Chroma에 저장하는 최소 indexing 흐름을 만든다.
+  - retrieval/query API를 구현한다.
+  - Chroma 저장 metadata를 검색 응답 스키마에 맞춘다.
 - 2차 우선순위:
-  - indexing API 응답으로 저장 건수와 대상 파일을 확인할 수 있게 한다.
   - 최소 1개 파일 검색 가능 여부를 검증한다.
+  - 검색 결과에 source, section_header, page_number를 노출한다.
 - 3차 우선순위:
-  - indexing, retrieval 순서로 backend 기능을 확장한다.
+  - retrieval 이후 chat answer generation 연결을 시작한다.
   - chat/evaluation 화면을 실제 API 흐름과 연결한다.
 
 ## 7. 추천 실행 순서
