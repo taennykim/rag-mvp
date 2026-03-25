@@ -57,7 +57,12 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Backend upload flow has been verified on the RAG server
 - Frontend runtime page responds successfully on the RAG server
 - `localhost:3001` CORS is allowed for the upload UI flow
-- Parsing and later RAG stages are still pending
+- Upload page UI cleanup is complete
+- Parsing API for uploaded PDF/DOCX files is implemented
+- Parsing text extraction validation has been verified on the RAG server
+- DOCX parser now includes table and header/footer text extraction
+- Upload page includes in-browser parse test, full extracted text view, and quality metrics
+- Chunking and later RAG stages are still pending
 
 ## Default Files
 - Preload files in `backend/data/default-files`
@@ -67,14 +72,14 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 ## Resume Tomorrow
 Start from these files first:
 - `docs/status.md`
-- `docs/daily/2026-03-24.md`
+- `docs/daily/2026-03-25.md`
 - `TODO.md`
 
 Recommended restart order:
 1. Review `docs/status.md` for the latest completed scope and blockers.
-2. Review `docs/daily/2026-03-24.md` for today's detailed work log.
-3. Continue with parsing implementation from the uploaded files.
-4. Implement the next real feature: parsing API and extraction validation.
+2. Review `docs/daily/2026-03-25.md` for today's detailed work log.
+3. Continue with chunking implementation from parsed uploaded files.
+4. Implement the next real feature: chunking API and chunk metadata validation.
 
 ## Daily Start Checklist
 1. Review `AGENTS.md` for working rules and project operating constraints.

@@ -18,7 +18,7 @@
 11. RAGAS 평가 데이터와 결과 UI 추가
 
 ## 3. 현재 진행 상태
-- 현재 단계: Phase 3 Upload 완료 / RAG Server Ready
+- 현재 단계: Phase 4 Parsing 완료 / Chunking 대기
 - 완료:
   - AGENTS.md, TODO.md 확인
   - 기본 계획 및 파트 문서 작성
@@ -35,9 +35,13 @@
   - frontend runtime page 응답 및 backend upload API 응답 검증 완료
   - `localhost:3001` 기준 CORS 허용 반영 완료
   - default file 목록 확인 완료
+  - upload UI 정리 완료
+  - PDF/DOCX parsing API 구현 완료
+  - 추출 텍스트 비어 있음 검증 완료
+  - parsing API 실제 응답 검증 완료
 - 미완료:
-  - parsing 기능 실제 구현
+  - chunking 기능 실제 구현
 - 다음 우선 작업:
-  - 문서 상태와 실제 파일 상태 정합성 유지
-  - parsing API와 parsing 테스트 응답 구현
-  - upload 이후 parsing 흐름 연결
+  - chunking 함수와 metadata 구조를 구현
+  - parsing 결과를 chunking 입력으로 연결
+  - chunk list 테스트 응답 구현

@@ -65,10 +65,10 @@
 
 ## Phase 4. Parsing
 
-- [ ] Extract text from PDF using PyMuPDF
-- [ ] Extract text from DOCX using python-docx
-- [ ] Verify extracted text is not empty
-- [ ] Return simple parsing result for testing
+- [x] Extract text from PDF using PyMuPDF
+- [x] Extract text from DOCX using python-docx
+- [x] Verify extracted text is not empty
+- [x] Return simple parsing result for testing
 
 ---
 
@@ -168,7 +168,7 @@
 ## Final Check
 
 - [x] Upload works
-- [ ] Parsing works
+- [x] Parsing works
 - [ ] Chunking works
 - [ ] Retrieval works
 - [ ] Answer generation works

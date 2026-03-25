@@ -167,6 +167,13 @@ a {
   margin-bottom: 32px;
 }
 
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
 .file-list {
   list-style: none;
   margin: 24px 0 0;
@@ -178,6 +185,7 @@ a {
 .file-list li {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 16px;
   padding: 16px 18px;
   border: 1px solid var(--line);
@@ -185,8 +193,58 @@ a {
   background: rgba(255, 250, 242, 0.6);
 }
 
-.file-list span {
+.file-main {
+  min-width: 0;
+}
+
+.file-main strong {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-bottom: 10px;
+}
+
+.file-meta {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+
+.file-meta span {
   color: var(--muted);
+}
+
+.parse-result {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.parse-result pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px 18px;
+  background: rgba(255, 250, 242, 0.6);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.6;
+}
+
+.quality-warning {
+  color: #b42318 !important;
+  font-weight: 700;
+}
+
+.parse-json summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.parse-json pre {
+  margin-top: 10px;
 }
 
 @media (max-width: 640px) {
@@ -200,5 +258,15 @@ a {
 
   .upload-row {
     grid-template-columns: 1fr;
+  }
+
+  .section-header,
+  .file-list li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .file-meta {
+    justify-items: start;
   }
 }

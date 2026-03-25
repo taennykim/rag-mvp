@@ -23,6 +23,8 @@
   - RAG 서버 개발 환경 준비 완료
   - Upload Phase 최소 구현 완료
   - Upload Phase 실행 검증 완료
+  - Parsing Phase 최소 구현 완료
+  - Parsing 검증 UI 및 품질 지표 추가 완료
 - 완료된 항목:
   - `AGENTS.md`, `TODO.md`, `README.md` 확인
   - `docs/plan.md`, `docs/retrieval.md`, `docs/llm.md`, `docs/ui.md`, `docs/aws.md` 작성
@@ -58,8 +60,28 @@
   - frontend runtime page `HTTP 200` 검증 완료
   - `localhost:3001`, `127.0.0.1:3001` CORS 허용 반영 완료
   - default file API 응답과 드롭다운 대상 파일 목록 확인 완료
+  - frontend `/upload` 페이지에서 default file 전용 버튼 제거
+  - frontend `/upload` 페이지에서 uploaded file list 초기화 버튼 추가
+  - backend `DELETE /upload/files` 구현
+  - backend 업로드 파일 목록에 업로드 시간 필드 추가
+  - backend `GET /parse`, `POST /parse`, `GET /parse/{stored_name}` 구현
+  - backend PDF text extraction 구현
+  - backend DOCX text extraction 구현
+  - backend DOCX table 및 header/footer text extraction 구현
+  - backend 빈 추출 텍스트 검증 구현
+  - backend parse 응답에 full extracted text 추가
+  - backend parse 응답에 `Jaccard Similarity`, `Levenshtein Distance` 추가
+  - backend parse 응답에 `Jaccard Similarity < 0.8` 경고 플래그 추가
+  - frontend `/upload` 페이지에 파일별 `Parse test` 버튼 추가
+  - frontend `/upload` 페이지에 parsing test result 카드 추가
+  - frontend `/upload` 페이지에서 full extracted text 및 raw JSON 확인 UI 추가
+  - frontend `/upload` 페이지에서 품질 경고 문구 `파싱 품질주의` 빨간색 표시 추가
+  - RAG 서버에서 PDF/DOCX parsing 함수 실제 호출 검증 완료
+  - RAG 서버에서 upload 이후 parsing API 실제 호출 검증 완료
+  - RAG 서버에서 DOCX parsing length가 `1087`에서 `22887`로 증가한 것 확인
+  - RAG 서버에서 DOCX sample의 `Jaccard Similarity`가 약 `0.994`로 확인됨
 - 미완료 항목:
-  - parsing / chunking / indexing / retrieval / answer / evaluation 기능
+  - chunking / indexing / retrieval / answer / evaluation 기능
 
 ## 4. 문서와 실제 상태 차이
 - 문서상 AWS 상태:
@@ -80,16 +102,17 @@
 - RAG 서버에는 GitHub private repo 직접 clone 인증이 없어 현재는 `rsync` 기반 동기화를 사용했다.
 - frontend `next@15.2.4`는 보안 경고가 있으므로 추후 패치 버전 업그레이드가 필요하다.
 - upload 검증 중 생성되는 `backend/data/uploads`와 RAG 서버의 `.venv`는 git 추적 대상이 아니다.
+- quality score는 원본 기반 reference extractor와의 자동 비교이므로 최종 품질 판단에는 사람 검수가 여전히 필요하다.
 
 ## 6. 다음 작업
 - 1차 우선순위:
-  - parsing API와 parsing 테스트 응답을 구현한다.
-  - 업로드된 default file/PDF/DOCX에서 텍스트 추출을 시작한다.
+  - chunking 함수와 metadata 구조를 구현한다.
+  - parsing 결과를 chunk list로 변환하는 최소 흐름을 만든다.
 - 2차 우선순위:
-  - 추출 텍스트 비어 있음 검증을 추가한다.
-  - parsing 결과를 API 응답으로 확인할 수 있게 한다.
+  - chunk list와 chunk count를 API 응답으로 확인할 수 있게 한다.
+  - 파일별 chunk count 저장 방식 초안을 정한다.
 - 3차 우선순위:
-  - parsing, chunking, indexing 순서로 backend 기능을 확장한다.
+  - chunking, indexing 순서로 backend 기능을 확장한다.
   - chat/evaluation 화면을 실제 API 흐름과 연결한다.
 
 ## 7. 추천 실행 순서
