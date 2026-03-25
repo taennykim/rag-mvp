@@ -125,6 +125,7 @@
 - 1차 우선순위:
   - Upload 목록에서 파일별 indexing 상태를 직접 표시한다.
   - retrieval 품질을 질문 세트 기준으로 점검한다.
+  - `/chat`의 `Retrieval test` 정확도를 높이기 위해 query 예시별 결과를 비교하고 조정한다.
 - 2차 우선순위:
   - hash 기반 embedding을 실제 embedding 모델로 교체할 방식을 정한다.
   - 검색 결과에 source, section_header, page_number를 어떤 형식으로 보여줄지 고정한다.
