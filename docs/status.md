@@ -112,6 +112,7 @@
 - upload 검증 중 생성되는 `backend/data/uploads`와 RAG 서버의 `.venv`는 git 추적 대상이 아니다.
 - quality score는 원본 기반 reference extractor와의 자동 비교이므로 최종 품질 판단에는 사람 검수가 여전히 필요하다.
 - quality 점수 계산은 reference 추출이 포함돼 parse보다 상대적으로 느리므로 별도 호출로 분리했다.
+- 로컬 git 커밋은 완료됐지만 GitHub push는 현재 인증 문제로 실패한다.
 
 ## 6. 다음 작업
 - 1차 우선순위:

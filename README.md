@@ -63,6 +63,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - DOCX parser now includes table and header/footer text extraction
 - Upload page includes in-browser parse test, full extracted text view, and separate quality-check action
 - Chunking API and chunk metadata output are implemented
+- Local git commits are ahead, but GitHub push is currently blocked by missing/invalid credentials
 - Chunking and later indexing/RAG stages are still pending
 
 ## Default Files
