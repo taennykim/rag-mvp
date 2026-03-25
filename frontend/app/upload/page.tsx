@@ -41,6 +41,18 @@ type ParseQualityResult = {
   quality_warning_message: string;
 };
 
+type UploadResult = {
+  stored_name: string;
+  original_name?: string;
+  detail?: string;
+};
+
+type IndexResult = {
+  original_name: string;
+  indexed_count: number;
+  detail?: string;
+};
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ??
   (typeof window === "undefined" ? "http://localhost:8000" : `${window.location.protocol}//${window.location.hostname}:8000`);
@@ -54,6 +66,7 @@ export default function UploadPage() {
   const [parseQualityResult, setParseQualityResult] = useState<ParseQualityResult | null>(null);
   const [activeParseFile, setActiveParseFile] = useState("");
   const [activeQualityFile, setActiveQualityFile] = useState("");
+  const [activeDeleteFile, setActiveDeleteFile] = useState("");
   const [message, setMessage] = useState("Select a PDF or DOCX file to upload.");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -81,7 +94,7 @@ export default function UploadPage() {
 
       const data = (await response.json()) as { files: DefaultFile[] };
       setDefaultFiles(data.files);
-      setSelectedDefaultFile((current) => current || data.files[0]?.name || "");
+      setSelectedDefaultFile("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to load default files.");
     }
@@ -120,6 +133,23 @@ export default function UploadPage() {
     return value.toFixed(3);
   }
 
+  async function indexUploadedFile(storedName: string) {
+    const response = await fetch(`${API_BASE_URL}/index`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ stored_name: storedName }),
+    });
+
+    const data = (await response.json()) as IndexResult;
+    if (!response.ok) {
+      throw new Error(data.detail ?? "Indexing failed.");
+    }
+
+    return data;
+  }
+
   async function uploadSelectedDefaultFile() {
     const response = await fetch(`${API_BASE_URL}/upload/default-file`, {
       method: "POST",
@@ -129,12 +159,12 @@ export default function UploadPage() {
       body: JSON.stringify({ filename: selectedDefaultFile }),
     });
 
-    const data = (await response.json()) as { original_name?: string; detail?: string };
+    const data = (await response.json()) as UploadResult;
     if (!response.ok) {
       throw new Error(data.detail ?? "Default file upload failed.");
     }
 
-    setMessage(`Uploaded default file ${data.original_name ?? selectedDefaultFile}.`);
+    return data;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -146,9 +176,10 @@ export default function UploadPage() {
     }
 
     setIsLoading(true);
-    setMessage(selectedFile ? "Uploading file..." : "Uploading default file...");
+    setMessage(selectedFile ? "Uploading and indexing file..." : "Uploading and indexing default file...");
 
     try {
+      let uploadResult: UploadResult;
       if (selectedFile) {
         const formData = new FormData();
         formData.append("file", selectedFile);
@@ -158,15 +189,16 @@ export default function UploadPage() {
           body: formData,
         });
 
-        const data = (await response.json()) as { original_name?: string; detail?: string };
+        const data = (await response.json()) as UploadResult;
         if (!response.ok) {
           throw new Error(data.detail ?? "Upload failed.");
         }
-
-        setMessage(`Uploaded ${data.original_name ?? selectedFile.name}.`);
+        uploadResult = data;
       } else {
-        await uploadSelectedDefaultFile();
+        uploadResult = await uploadSelectedDefaultFile();
       }
+
+      const indexResult = await indexUploadedFile(uploadResult.stored_name);
 
       setSelectedFile(null);
       setParseResult(null);
@@ -176,8 +208,9 @@ export default function UploadPage() {
         input.value = "";
       }
       await loadFiles();
+      setMessage(`Uploaded and indexed ${indexResult.original_name}. ${indexResult.indexed_count} chunk(s) stored.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Upload failed.");
+      setMessage(error instanceof Error ? error.message : "Upload or indexing failed.");
     } finally {
       setIsLoading(false);
     }
@@ -235,6 +268,40 @@ export default function UploadPage() {
       setParseQualityResult(null);
     } finally {
       setActiveParseFile("");
+    }
+  }
+
+  async function handleDeleteFile(file: UploadedFile) {
+    setActiveDeleteFile(file.stored_name);
+    setMessage(`Deleting ${file.original_name} from uploads and index...`);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/upload/files/${file.stored_name}`, {
+        method: "DELETE",
+      });
+
+      const data = (await response.json()) as {
+        original_name?: string;
+        removed_index_count?: number;
+        detail?: string;
+      };
+      if (!response.ok) {
+        throw new Error(data.detail ?? "Failed to delete uploaded file.");
+      }
+
+      if (parseResult?.stored_name === file.stored_name) {
+        setParseResult(null);
+        setParseQualityResult(null);
+      }
+
+      await loadFiles();
+      setMessage(
+        `Deleted ${data.original_name ?? file.original_name}. Removed ${data.removed_index_count ?? 0} indexed chunk(s).`,
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to delete uploaded file.");
+    } finally {
+      setActiveDeleteFile("");
     }
   }
 
@@ -299,8 +366,11 @@ export default function UploadPage() {
               onChange={(event) => setSelectedDefaultFile(event.target.value)}
               value={selectedDefaultFile}
             >
+              <option value="">Select a file</option>
               {defaultFiles.length === 0 ? (
-                <option value="">No default files</option>
+                <option value="" disabled>
+                  No default files
+                </option>
               ) : (
                 defaultFiles.map((file) => (
                   <option key={file.name} value={file.name}>
@@ -321,20 +391,8 @@ export default function UploadPage() {
       </div>
 
       <div className="card upload-list">
-        <div className="section-header">
-          <div>
-            <p className="eyebrow">Files</p>
-            <h2>Uploaded file list</h2>
-          </div>
-          <button
-            className="upload-button secondary"
-            disabled={isLoading || files.length === 0}
-            onClick={handleClearFiles}
-            type="button"
-          >
-            Clear list
-          </button>
-        </div>
+        <p className="eyebrow">Files</p>
+        <h2>Uploaded file list</h2>
         {files.length === 0 ? (
           <p>No files uploaded yet.</p>
         ) : (
@@ -343,14 +401,24 @@ export default function UploadPage() {
               <li key={file.stored_name}>
                 <div className="file-main">
                   <strong>{file.original_name}</strong>
-                  <button
-                    className="upload-button secondary"
-                    disabled={isLoading || activeParseFile === file.stored_name}
-                    onClick={() => void handleParseTest(file)}
-                    type="button"
-                  >
-                    {activeParseFile === file.stored_name ? "Parsing..." : "Parse test"}
-                  </button>
+                  <div className="file-actions">
+                    <button
+                      className="upload-button secondary"
+                      disabled={isLoading || activeParseFile === file.stored_name || activeDeleteFile === file.stored_name}
+                      onClick={() => void handleParseTest(file)}
+                      type="button"
+                    >
+                      {activeParseFile === file.stored_name ? "Parsing..." : "Parse test"}
+                    </button>
+                    <button
+                      className="upload-button secondary danger"
+                      disabled={isLoading || activeDeleteFile === file.stored_name || activeParseFile === file.stored_name}
+                      onClick={() => void handleDeleteFile(file)}
+                      type="button"
+                    >
+                      {activeDeleteFile === file.stored_name ? "Deleting..." : "Delete upload + index"}
+                    </button>
+                  </div>
                 </div>
                 <div className="file-meta">
                   <span>{formatFileSize(file.size_bytes)}</span>

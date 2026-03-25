@@ -83,19 +83,19 @@
 
 ## Phase 6. Indexing
 
-- [ ] Generate embeddings for chunks
-- [ ] Store chunks and embeddings in Chroma
-- [ ] Create indexing API
-- [ ] Verify at least one uploaded file is searchable
+- [x] Generate embeddings for chunks
+- [x] Store chunks and embeddings in Chroma
+- [x] Create indexing API
+- [x] Verify at least one uploaded file is searchable
 
 ---
 
 ## Phase 7. Retrieval
 
-- [ ] Create question input API
-- [ ] Implement vector search
-- [ ] Return top 3 chunks
-- [ ] Include source metadata in response
+- [x] Create question input API
+- [x] Implement vector search
+- [x] Return top 3 chunks
+- [x] Include source metadata in response
 
 ---
 
@@ -110,10 +110,10 @@
 
 ## Phase 9. Chat UI
 
-- [ ] Build chat page
-- [ ] Add question input box
+- [x] Build chat page
+- [x] Add question input box
 - [ ] Show answer output
-- [ ] Show retrieved chunks and sources
+- [x] Show retrieved chunks and sources
 
 ---
 
@@ -170,7 +170,7 @@
 - [x] Upload works
 - [x] Parsing works
 - [x] Chunking works
-- [ ] Retrieval works
+- [x] Retrieval works
 - [ ] Answer generation works
-- [ ] Sources are visible
+- [x] Sources are visible
 - [ ] RAGAS evaluation works

@@ -115,15 +115,19 @@
 - chunk metadata 문서에 `source`, `page_number`, `section_header` 기준을 반영했다.
 - backend에 최소 indexing API(`GET /index`, `POST /index`, `GET /index/{stored_name}`)를 추가했다.
 - DOCX default file 기준 `38`개 chunk를 Chroma에 저장하는 실행 검증을 완료했다.
-- frontend는 다시 `/upload` 중심 구조로 유지하고 `localhost:3000`, backend `localhost:8000` 기준으로 실행한다.
+- backend에 `GET /index/files`, `DELETE /index/files`, `GET /retrieve`, `POST /retrieve`를 추가했다.
+- `/upload`는 upload 직후 자동 indexing까지 수행하도록 바뀌었다.
+- `/chat`은 index된 파일만 대상으로 retrieval 테스트를 수행할 수 있다.
+- frontend는 `/upload`, `/chat` 중심 구조로 유지하고 `localhost:3000`, backend `localhost:8000` 기준으로 실행한다.
+- Next dev 서버는 `.next` 캐시 꼬임으로 불안정해서 현재는 `build + start` 방식이 더 안정적이다.
 
 ## 6. 다음 작업
 - 1차 우선순위:
-  - retrieval/query API를 구현한다.
-  - Chroma 저장 metadata를 검색 응답 스키마에 맞춘다.
+  - Upload 목록에서 파일별 indexing 상태를 직접 표시한다.
+  - retrieval 품질을 질문 세트 기준으로 점검한다.
 - 2차 우선순위:
-  - 최소 1개 파일 검색 가능 여부를 검증한다.
-  - 검색 결과에 source, section_header, page_number를 노출한다.
+  - hash 기반 embedding을 실제 embedding 모델로 교체할 방식을 정한다.
+  - 검색 결과에 source, section_header, page_number를 어떤 형식으로 보여줄지 고정한다.
 - 3차 우선순위:
   - retrieval 이후 chat answer generation 연결을 시작한다.
   - chat/evaluation 화면을 실제 API 흐름과 연결한다.

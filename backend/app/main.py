@@ -527,6 +527,12 @@ class ParseRequest(BaseModel):
     stored_name: str
 
 
+class RetrieveRequest(BaseModel):
+    query: str
+    top_k: int = 5
+    stored_name: str | None = None
+
+
 def hash_token(token: str) -> int:
     return int.from_bytes(hashlib.sha256(token.encode("utf-8")).digest()[:8], "big")
 
@@ -643,6 +649,152 @@ def index_chunks(path: Path) -> dict[str, object]:
     }
 
 
+def build_retrieval_hits(result: dict[str, object]) -> list[dict[str, object]]:
+    ids = result.get("ids")
+    documents = result.get("documents")
+    metadatas = result.get("metadatas")
+    distances = result.get("distances")
+
+    if not all(isinstance(item, list) and item for item in [ids, documents, metadatas, distances]):
+        return []
+
+    row_ids = ids[0]
+    row_documents = documents[0]
+    row_metadatas = metadatas[0]
+    row_distances = distances[0]
+
+    hits: list[dict[str, object]] = []
+    for item_id, document, metadata, distance in zip(row_ids, row_documents, row_metadatas, row_distances):
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        hits.append(
+            {
+                "id": item_id,
+                "text": document,
+                "distance": distance,
+                "stored_name": metadata.get("stored_name"),
+                "original_name": metadata.get("original_name"),
+                "source": metadata.get("source"),
+                "chunk_index": metadata.get("chunk_index"),
+                "text_length": metadata.get("text_length"),
+                "start_char": metadata.get("start_char"),
+                "end_char": metadata.get("end_char"),
+                "page_number": metadata.get("page_number"),
+                "section_header": metadata.get("section_header"),
+                "preview": metadata.get("preview"),
+            }
+        )
+
+    return hits
+
+
+def retrieve_chunks(payload: RetrieveRequest) -> dict[str, object]:
+    query = payload.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Query text is required.")
+
+    top_k = max(1, min(payload.top_k, 20))
+    collection = get_chroma_collection()
+
+    where = None
+    if payload.stored_name:
+        where = {"stored_name": payload.stored_name}
+
+    result = collection.query(
+        query_embeddings=[build_embedding(query)],
+        n_results=top_k,
+        where=where,
+        include=["documents", "metadatas", "distances"],
+    )
+    hits = build_retrieval_hits(result)
+
+    return {
+        "status": "retrieved",
+        "query": query,
+        "top_k": top_k,
+        "hit_count": len(hits),
+        "collection_name": CHROMA_COLLECTION_NAME,
+        "hits": hits,
+    }
+
+
+def delete_indexed_chunks(stored_name: str) -> int:
+    collection = get_chroma_collection()
+    result = collection.get(where={"stored_name": stored_name}, include=[])
+    ids = result.get("ids") if isinstance(result, dict) else None
+
+    if not isinstance(ids, list) or not ids:
+        return 0
+
+    collection.delete(ids=ids)
+    return len(ids)
+
+
+def clear_indexed_chunks() -> int:
+    collection = get_chroma_collection()
+    result = collection.get(include=[])
+    ids = result.get("ids") if isinstance(result, dict) else None
+
+    if not isinstance(ids, list) or not ids:
+        return 0
+
+    collection.delete(ids=ids)
+    return len(ids)
+
+
+def delete_uploaded_file_and_index(stored_name: str) -> dict[str, object]:
+    path = get_uploaded_file_path(stored_name)
+    metadata = build_file_metadata(path)
+    removed_index_count = delete_indexed_chunks(path.name)
+
+    summary_path = CHUNK_METADATA_DIR / f"{path.name}.json"
+    summary_removed = summary_path.is_file()
+    if summary_removed:
+        summary_path.unlink()
+
+    path.unlink()
+
+    return {
+        "status": "deleted",
+        "stored_name": metadata["stored_name"],
+        "original_name": metadata["original_name"],
+        "removed_index_count": removed_index_count,
+        "removed_summary": summary_removed,
+    }
+
+
+def list_indexed_files() -> list[dict[str, object]]:
+    collection = get_chroma_collection()
+    result = collection.get(include=["metadatas"])
+
+    metadatas = result.get("metadatas") if isinstance(result, dict) else None
+    if not isinstance(metadatas, list):
+        return []
+
+    indexed: dict[str, dict[str, object]] = {}
+    for metadata in metadatas:
+        if not isinstance(metadata, dict):
+            continue
+
+        stored_name = metadata.get("stored_name")
+        if not isinstance(stored_name, str) or not stored_name:
+            continue
+
+        if stored_name in indexed:
+            indexed[stored_name]["chunk_count"] = int(indexed[stored_name]["chunk_count"]) + 1
+            continue
+
+        indexed[stored_name] = {
+            "stored_name": stored_name,
+            "original_name": metadata.get("original_name") or stored_name,
+            "file_type": metadata.get("file_type") or "",
+            "chunk_count": 1,
+        }
+
+    return sorted(indexed.values(), key=lambda item: str(item["original_name"]))
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -677,6 +829,11 @@ def clear_uploaded_files() -> dict[str, object]:
         removed_count += 1
 
     return {"status": "cleared", "removed_count": removed_count}
+
+
+@app.delete("/upload/files/{stored_name}")
+def delete_uploaded_file(stored_name: str) -> dict[str, object]:
+    return delete_uploaded_file_and_index(stored_name)
 
 
 @app.get("/upload/default-files")
@@ -787,6 +944,26 @@ def get_index_status() -> dict[str, object]:
     }
 
 
+@app.get("/index/files")
+def get_indexed_files() -> dict[str, object]:
+    files = list_indexed_files()
+    return {
+        "files": files,
+        "count": len(files),
+        "collection_name": CHROMA_COLLECTION_NAME,
+    }
+
+
+@app.delete("/index/files")
+def delete_indexed_files() -> dict[str, object]:
+    removed_count = clear_indexed_chunks()
+    return {
+        "status": "cleared",
+        "removed_count": removed_count,
+        "collection_name": CHROMA_COLLECTION_NAME,
+    }
+
+
 @app.post("/index")
 def index_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
@@ -797,6 +974,22 @@ def index_uploaded_file(payload: ParseRequest) -> dict[str, object]:
 def index_uploaded_file_by_name(stored_name: str) -> dict[str, object]:
     path = get_uploaded_file_path(stored_name)
     return index_chunks(path)
+
+
+@app.get("/retrieve")
+def get_retrieve_status() -> dict[str, object]:
+    return {
+        "page": "retrieve",
+        "status": "ready",
+        "message": "Retrieval API is available for indexed chunks.",
+        "collection_name": CHROMA_COLLECTION_NAME,
+        "embedding_dimension": EMBEDDING_DIMENSION,
+    }
+
+
+@app.post("/retrieve")
+def retrieve_indexed_chunks(payload: RetrieveRequest) -> dict[str, object]:
+    return retrieve_chunks(payload)
 
 
 @app.get("/chat")
