@@ -49,6 +49,8 @@ CHUNK_OVERLAP_LENGTH = 120
 CHUNK_PREVIEW_LENGTH = 160
 EMBEDDING_DIMENSION = 256
 CHROMA_COLLECTION_NAME = "insurance_document_chunks"
+RETRIEVAL_CANDIDATE_MULTIPLIER = 5
+RETRIEVAL_MAX_CANDIDATES = 50
 
 
 def ensure_upload_dir() -> None:
@@ -78,6 +80,30 @@ def normalize_text(text: str) -> str:
 
 def tokenize_text(text: str) -> list[str]:
     return re.findall(r"\w+", text.lower())
+
+
+def build_token_frequency(tokens: list[str]) -> dict[str, int]:
+    frequency: dict[str, int] = {}
+    for token in tokens:
+        frequency[token] = frequency.get(token, 0) + 1
+    return frequency
+
+
+def normalize_for_ngrams(text: str) -> str:
+    return re.sub(r"\s+", "", text.lower())
+
+
+def build_character_ngrams(text: str, min_n: int = 2, max_n: int = 4) -> set[str]:
+    normalized = normalize_for_ngrams(text)
+    ngrams: set[str] = set()
+
+    for size in range(min_n, max_n + 1):
+        if len(normalized) < size:
+            continue
+        for index in range(len(normalized) - size + 1):
+            ngrams.add(normalized[index : index + size])
+
+    return ngrams
 
 
 def build_file_metadata(path: Path) -> dict[str, object]:
@@ -689,6 +715,54 @@ def build_retrieval_hits(result: dict[str, object]) -> list[dict[str, object]]:
     return hits
 
 
+def score_hit(query_tokens: list[str], hit: dict[str, object]) -> float:
+    if not query_tokens:
+        return 0.0
+
+    query_token_set = set(query_tokens)
+    text = str(hit.get("text") or "")
+    preview = str(hit.get("preview") or "")
+    source = str(hit.get("source") or "")
+    section_header = str(hit.get("section_header") or "")
+    searchable_text = "\n".join([text, preview, source, section_header])
+    hit_tokens = tokenize_text(searchable_text)
+    if not hit_tokens:
+        return 0.0
+
+    hit_frequency = build_token_frequency(hit_tokens)
+    overlap_count = sum(hit_frequency.get(token, 0) for token in query_tokens)
+    unique_overlap = len(query_token_set & set(hit_tokens))
+    query_coverage = unique_overlap / len(query_token_set)
+    query_ngram_set = build_character_ngrams(" ".join(query_tokens))
+    hit_ngram_set = build_character_ngrams(searchable_text)
+    ngram_overlap = len(query_ngram_set & hit_ngram_set)
+    ngram_coverage = (ngram_overlap / len(query_ngram_set)) if query_ngram_set else 0.0
+    distance = float(hit.get("distance") or 0.0)
+
+    return (query_coverage * 2.5) + (overlap_count * 0.3) + (ngram_coverage * 3.5) - distance
+
+
+def rerank_hits(query: str, hits: list[dict[str, object]], top_k: int) -> list[dict[str, object]]:
+    query_tokens = tokenize_text(query)
+    if not query_tokens or not hits:
+        return hits[:top_k]
+
+    scored_hits: list[dict[str, object]] = []
+    for hit in hits:
+        rescored_hit = dict(hit)
+        rescored_hit["rerank_score"] = score_hit(query_tokens, hit)
+        scored_hits.append(rescored_hit)
+
+    scored_hits.sort(
+        key=lambda item: (
+            float(item.get("rerank_score") or 0.0),
+            -float(item.get("distance") or 0.0),
+        ),
+        reverse=True,
+    )
+    return scored_hits[:top_k]
+
+
 def retrieve_chunks(payload: RetrieveRequest) -> dict[str, object]:
     query = payload.query.strip()
     if not query:
@@ -701,13 +775,15 @@ def retrieve_chunks(payload: RetrieveRequest) -> dict[str, object]:
     if payload.stored_name:
         where = {"stored_name": payload.stored_name}
 
+    candidate_count = min(max(top_k * RETRIEVAL_CANDIDATE_MULTIPLIER, top_k), RETRIEVAL_MAX_CANDIDATES)
+
     result = collection.query(
         query_embeddings=[build_embedding(query)],
-        n_results=top_k,
+        n_results=candidate_count,
         where=where,
         include=["documents", "metadatas", "distances"],
     )
-    hits = build_retrieval_hits(result)
+    hits = rerank_hits(query, build_retrieval_hits(result), top_k)
 
     return {
         "status": "retrieved",

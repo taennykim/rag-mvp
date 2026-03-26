@@ -25,7 +25,6 @@ Excluded:
 - OCR
 - Excel ingestion
 - Hybrid search
-- Reranker
 - Full answer generation
 - Production-grade embedding model integration
 - Authentication
@@ -70,7 +69,11 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Indexed file list API and retrieval API are implemented
 - Chat page can query retrieved chunks and inspect sources
 - Upload list supports file-level delete of upload + index
+- Upload list shows per-file indexing status and chunk count
 - `Default file list` starts from `Select a file`
+- Retrieval test question set is documented in `docs/retrieval-test-set.md`
+- Retrieval pass/fail has been checked on representative questions
+- Pricing-method PDF retrieval remains weak in all-file search and is the main reason to replace the current embedding
 - Frontend is currently operated more stably with `build + start` than `next dev`
 - Answer generation and evaluation execution are still pending
 
@@ -82,14 +85,16 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 ## Resume Tomorrow
 Start from these files first:
 - `docs/status.md`
-- `docs/daily/2026-03-25.md`
+- `docs/daily/2026-03-26.md`
+- `docs/retrieval-test-set.md`
 - `TODO.md`
 
 Recommended restart order:
 1. Review `docs/status.md` for the latest completed scope and blockers.
-2. Review `docs/daily/2026-03-25.md` for today's detailed work log.
-3. Review `TODO.md` for remaining MVP tasks after indexing/retrieval.
-4. Continue with retrieval quality validation or actual embedding model integration.
+2. Review `docs/daily/2026-03-26.md` for today's detailed work log.
+3. Review `docs/retrieval-test-set.md` for retrieval validation 기준과 fail 케이스.
+4. Review `TODO.md` for remaining MVP tasks after retrieval stabilization.
+5. Continue with actual embedding model integration.
 
 ## Daily Start Checklist
 1. Review `AGENTS.md` for working rules and project operating constraints.

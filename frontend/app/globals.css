@@ -208,6 +208,33 @@ a {
   margin-bottom: 10px;
 }
 
+.file-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.file-status-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(19, 42, 30, 0.06);
+  color: var(--ink);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.file-status-chip.indexed {
+  background: rgba(32, 122, 79, 0.14);
+  border-color: rgba(32, 122, 79, 0.24);
+}
+
+.file-status-chip.pending {
+  background: rgba(180, 35, 24, 0.08);
+  border-color: rgba(180, 35, 24, 0.18);
+}
+
 .file-actions {
   display: flex;
   flex-wrap: wrap;

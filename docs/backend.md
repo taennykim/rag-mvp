@@ -8,6 +8,7 @@
   - `POST /upload`
   - `GET /upload/files`
   - `DELETE /upload/files`
+  - `DELETE /upload/files/{stored_name}`
   - `GET /upload/default-files`
   - `POST /upload/default-file`
   - `GET /parse`
@@ -17,6 +18,13 @@
   - `GET /chunk`
   - `POST /chunk`
   - `GET /chunk/{stored_name}`
+  - `GET /index`
+  - `POST /index`
+  - `GET /index/{stored_name}`
+  - `GET /index/files`
+  - `DELETE /index/files`
+  - `GET /retrieve`
+  - `POST /retrieve`
 - parsing 방식:
   - PDF: `PyMuPDF`
   - DOCX: `python-docx`
@@ -72,6 +80,15 @@
   - `page_number`: PDF parsing 등에서 페이지 정보를 추출한 경우 근거 위치를 표시한다.
   - `section_header`: chunk가 속한 상위 조문 번호 또는 제목을 저장해 문맥 이해를 돕는다.
   - `preview`: UI나 로그에서 chunk 내용을 짧게 미리 확인한다.
+- indexing:
+  - chunk -> embedding -> Chroma 저장 흐름이 구현되어 있다.
+  - 현재 embedding은 외부 API 없이 검증 가능한 hash 기반 최소 구현이다.
+  - indexed 파일 목록 조회와 전체 index 초기화 API를 제공한다.
+- retrieval:
+  - query embedding을 생성해 Chroma 검색을 수행한다.
+  - `stored_name`으로 검색 대상을 특정 파일에 한정할 수 있다.
+  - retrieval 응답에는 source metadata와 preview가 포함된다.
+  - ranking 보정용 lexical rerank가 추가되어 있다.
 
 ## 3. 현재 상태
 - 진행중
@@ -80,7 +97,9 @@
 - parsing 품질 점수 및 UI 검증 완료
 - parse와 quality check 분리 완료
 - chunking 기능 최소 구현 및 검증 완료
-- chunking 이후 단계는 미구현
+- indexing 기능 구현 및 검증 완료
+- retrieval 기능 구현 및 1차 품질 점검 완료
+- 실제 embedding 모델 교체 전 단계
 
 ## 4. 이슈 및 문제
 - parsing 결과는 아직 메모리 기준 단건 응답만 제공한다.
@@ -89,9 +108,12 @@
 - quality score는 별도 reference extractor 기준 비교이며 사람 검수 대체는 아니다.
 - chunking은 현재 문자 길이 기준의 규칙 기반 처리라 semantic boundary를 완벽히 보장하지 않는다.
 - `page_number`, `section_header`는 parsing 결과에 구조 정보가 있을 때만 채울 수 있다.
+- 현재 hash embedding은 retrieval 품질 검증용 최소 구현이라 실제 서비스 품질에는 부족하다.
+- 산출방법서 문서군은 전체 파일 대상 retrieval에서 오탐이 남아 있다.
+- lexical rerank는 보조 수단이며 embedding 품질 자체를 대체하지 못한다.
 
 ## 5. 다음 작업
-- parsing 결과를 chunking 입력 구조로 넘긴다.
-- chunk metadata 구조를 indexing 입력에 맞춰 다듬는다.
-- indexing API를 구현한다.
-- parsing/chunking 실패 케이스별 응답을 더 세분화한다.
+- OpenAI 기반 실제 embedding 모델로 교체한다.
+- 재인덱싱 절차와 오류 처리 방식을 정리한다.
+- retrieval 질문 세트 기준으로 개선 여부를 다시 검증한다.
+- retrieval 이후 grounded answer generation으로 연결한다.

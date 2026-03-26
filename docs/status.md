@@ -118,17 +118,24 @@
 - backend에 `GET /index/files`, `DELETE /index/files`, `GET /retrieve`, `POST /retrieve`를 추가했다.
 - `/upload`는 upload 직후 자동 indexing까지 수행하도록 바뀌었다.
 - `/chat`은 index된 파일만 대상으로 retrieval 테스트를 수행할 수 있다.
+- `/upload` 목록에 파일별 indexing 상태와 chunk count 표시를 추가했다.
+- retrieval 품질 점검용 `docs/retrieval-test-set.md` 1차 질문 세트를 작성했다.
 - frontend는 `/upload`, `/chat` 중심 구조로 유지하고 `localhost:3000`, backend `localhost:8000` 기준으로 실행한다.
 - Next dev 서버는 `.next` 캐시 꼬임으로 불안정해서 현재는 `build + start` 방식이 더 안정적이다.
 
 ## 6. 다음 작업
 - 1차 우선순위:
-  - Upload 목록에서 파일별 indexing 상태를 직접 표시한다.
-  - retrieval 품질을 질문 세트 기준으로 점검한다.
-  - `/chat`의 `Retrieval test` 정확도를 높이기 위해 query 예시별 결과를 비교하고 조정한다.
+  - 실제 embedding 모델 교체 방식을 정하고 환경 준비 항목을 정리한다.
+  - 기존 hash embedding 기반 Chroma 데이터를 재생성할 재인덱싱 절차를 정리한다.
 - 2차 우선순위:
-  - hash 기반 embedding을 실제 embedding 모델로 교체할 방식을 정한다.
+  - embedding 교체 후 retrieval 질문 세트 기준으로 품질을 재검증한다.
   - 검색 결과에 source, section_header, page_number를 어떤 형식으로 보여줄지 고정한다.
+- retrieval 점검 메모:
+  - 계약관계자변경 문서와 약관 문서는 대표 질문 기준 top 1 retrieval이 정상 동작했다.
+  - 산출방법서 문서는 파일 단독 retrieval에서는 hit 되지만 전체 파일 대상 retrieval에서는 다른 문서에 밀렸다.
+  - 현재 retrieval 약점은 산출방법서 계열 질문에서 두드러지며, 우선 원인을 hash embedding 한계와 전역 ranking 품질로 본다.
+  - candidate 확장 + lexical rerank 보정을 추가했지만 산출방법서 질문은 일부만 개선되었다.
+  - 현재 기준 다음 핵심 작업은 retrieval 미세조정보다 실제 embedding 모델 교체 쪽이다.
 - 3차 우선순위:
   - retrieval 이후 chat answer generation 연결을 시작한다.
   - chat/evaluation 화면을 실제 API 흐름과 연결한다.

@@ -1,25 +1,55 @@
 # Retrieval
 
 ## 1. 목적
-- 질문에 대해 벡터 검색으로 관련 문서 chunk를 찾아 top 3를 반환한다.
+- 질문에 대해 index된 문서 chunk를 검색하고, 근거가 되는 source metadata와 함께 상위 결과를 반환한다.
 
 ## 2. 구현 내용
-- 검색 방식: vector search only
-- 반환 개수: top 3
-- 응답에는 반드시 source metadata를 포함한다.
-- source metadata 기본 필드:
-  - file_name
-  - chunk_index
-  - section (optional)
+- API:
+  - `GET /retrieve`
+  - `POST /retrieve`
+- 검색 방식:
+  - Chroma vector search
+  - 현재는 hash 기반 최소 embedding 사용
+  - retrieval 후보를 넓게 조회한 뒤 lexical rerank를 추가로 적용
+- 기본 동작:
+  - `top_k` 기준 상위 chunk 반환
+  - `stored_name`이 있으면 특정 파일로 검색 범위를 제한
+- retrieval 응답 필드:
+  - `id`
+  - `text`
+  - `distance`
+  - `stored_name`
+  - `original_name`
+  - `source`
+  - `chunk_index`
+  - `text_length`
+  - `start_char`
+  - `end_char`
+  - `page_number`
+  - `section_header`
+  - `preview`
+- frontend 연동:
+  - `/chat` 페이지에서 retrieval test UI 사용 가능
+  - index된 파일만 `Target file` 대상으로 선택 가능
+  - `top_k`는 현재 `3`, `5`, `8` 중 선택 가능
 
 ## 3. 현재 상태
-- 미구현
+- 진행중
+- retrieval API 구현 완료
+- retrieval UI 구현 완료
+- retrieval 질문 세트 작성 완료
+- 대표 질문 기준 1차 retrieval 품질 점검 완료
+- 계약관계자변경 문서와 약관 문서는 대표 질문 기준 top 1 retrieval이 정상 동작
+- 산출방법서 문서는 파일 단독 검색은 가능하지만 전체 파일 대상 검색에서는 ranking 품질 이슈가 남아 있음
 
 ## 4. 이슈 및 문제
-- Chroma 인덱스가 아직 없음
-- embedding 생성 로직이 아직 없음
+- 현재 embedding이 hash 기반이라 의미 유사도보다 표면 키워드 신호에 더 민감하다.
+- 산출방법서처럼 표/수식/짧은 기호형 질의가 많은 문서는 전체 파일 대상 검색에서 오탐이 발생한다.
+- lexical rerank를 추가했지만 개선 폭은 제한적이다.
+- 실제 embedding 모델로 교체하기 전까지 retrieval 품질 상한이 낮다.
 
 ## 5. 다음 작업
-- chunk 저장 구조를 먼저 확정한다.
-- retriever 서비스와 `/chat` API 응답 구조를 설계한다.
-
+- OpenAI 기반 실제 embedding 모델로 교체할 준비를 한다.
+- 기존 hash embedding 기반 Chroma 데이터를 재생성할 수 있게 재인덱싱 절차를 정리한다.
+- retrieval 질문 세트 기준으로 embedding 교체 전후 결과를 비교한다.
+- 필요 시 산출방법서 문서군에 맞는 chunk 전략 보정을 추가 검토한다.

@@ -9,6 +9,13 @@ type UploadedFile = {
   uploaded_at: string;
 };
 
+type IndexedFile = {
+  stored_name: string;
+  original_name: string;
+  file_type: string;
+  chunk_count: number;
+};
+
 type DefaultFile = {
   name: string;
   size_bytes: number;
@@ -60,6 +67,7 @@ const API_BASE_URL =
 export default function UploadPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [defaultFiles, setDefaultFiles] = useState<DefaultFile[]>([]);
   const [selectedDefaultFile, setSelectedDefaultFile] = useState("");
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
@@ -71,16 +79,26 @@ export default function UploadPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   async function loadFiles() {
-    setFiles([]);
     try {
-      const response = await fetch(`${API_BASE_URL}/upload/files`, { cache: "no-store" });
-      if (!response.ok) {
+      const [uploadedResponse, indexedResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/upload/files`, { cache: "no-store" }),
+        fetch(`${API_BASE_URL}/index/files`, { cache: "no-store" }),
+      ]);
+
+      if (!uploadedResponse.ok) {
         throw new Error("Failed to load uploaded files.");
       }
+      if (!indexedResponse.ok) {
+        throw new Error("Failed to load indexed files.");
+      }
 
-      const data = (await response.json()) as { files: UploadedFile[] };
-      setFiles(data.files);
+      const uploadedData = (await uploadedResponse.json()) as { files: UploadedFile[] };
+      const indexedData = (await indexedResponse.json()) as { files: IndexedFile[] };
+      setFiles(uploadedData.files);
+      setIndexedFiles(indexedData.files);
     } catch (error) {
+      setFiles([]);
+      setIndexedFiles([]);
       setMessage(error instanceof Error ? error.message : "Failed to load uploaded files.");
     }
   }
@@ -132,6 +150,8 @@ export default function UploadPage() {
   function formatSimilarity(value: number) {
     return value.toFixed(3);
   }
+
+  const indexedFileMap = new Map(indexedFiles.map((file) => [file.stored_name, file]));
 
   async function indexUploadedFile(storedName: string) {
     const response = await fetch(`${API_BASE_URL}/index`, {
@@ -231,6 +251,7 @@ export default function UploadPage() {
       }
 
       setFiles([]);
+      setIndexedFiles([]);
       setParseResult(null);
       setParseQualityResult(null);
       setMessage(`Cleared ${data.removed_count ?? 0} uploaded file(s).`);
@@ -397,10 +418,20 @@ export default function UploadPage() {
           <p>No files uploaded yet.</p>
         ) : (
           <ul className="file-list">
-            {files.map((file) => (
-              <li key={file.stored_name}>
+            {files.map((file) => {
+              const indexedFile = indexedFileMap.get(file.stored_name);
+              const isIndexed = Boolean(indexedFile);
+
+              return (
+                <li key={file.stored_name}>
                 <div className="file-main">
                   <strong>{file.original_name}</strong>
+                  <div className="file-status-row">
+                    <span className={`file-status-chip ${isIndexed ? "indexed" : "pending"}`}>
+                      {isIndexed ? "Indexed" : "Not indexed"}
+                    </span>
+                    {indexedFile ? <span className="file-status-chip">{indexedFile.chunk_count} chunk(s)</span> : null}
+                  </div>
                   <div className="file-actions">
                     <button
                       className="upload-button secondary"
@@ -424,8 +455,9 @@ export default function UploadPage() {
                   <span>{formatFileSize(file.size_bytes)}</span>
                   <span>{formatUploadedAt(file.uploaded_at)}</span>
                 </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

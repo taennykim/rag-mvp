@@ -18,7 +18,7 @@
 11. RAGAS 평가 데이터와 결과 UI 추가
 
 ## 3. 현재 진행 상태
-- 현재 단계: Phase 5 Chunking 완료 / Indexing 대기
+- 현재 단계: Retrieval 품질 점검 완료 / 실제 embedding 교체 준비
 - 완료:
   - AGENTS.md, TODO.md 확인
   - 기본 계획 및 파트 문서 작성
@@ -41,9 +41,19 @@
   - parsing API 실제 응답 검증 완료
   - chunking API 구현 완료
   - chunk metadata와 chunk count 저장 구현 완료
+  - indexing API 구현 완료
+  - 업로드 후 자동 indexing 연결 완료
+  - indexed file list 및 retrieval API 구현 완료
+  - `/chat` retrieval UI 구현 완료
+  - `/upload` 목록의 파일별 indexing 상태 표시 완료
+  - retrieval 질문 세트 작성 완료
+  - representative retrieval 질문 기준 1차 pass/fail 점검 완료
+  - retrieval lexical rerank 보정 실험 완료
 - 미완료:
-  - indexing 기능 실제 구현
+  - 실제 embedding 모델 교체
+  - grounded answer generation
+  - evaluation dataset / RAGAS / evaluation UI
 - 다음 우선 작업:
-  - chunk embedding 생성 로직을 구현
-  - Chroma 저장 구조를 구현
-  - indexing API와 검색 가능 여부를 검증
+  - OpenAI 기반 embedding 교체 준비
+  - 기존 Chroma 인덱스 재생성 계획 정리
+  - embedding 교체 후 retrieval 질문 세트 재검증
