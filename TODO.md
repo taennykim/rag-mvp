@@ -60,6 +60,7 @@
 - [x] Build upload page UI
 - [x] Create default file directory for preloaded uploads
 - [x] Add default file selection flow in upload page
+- [x] Show indexing status per uploaded file
 
 ---
 
@@ -69,6 +70,11 @@
 - [x] Extract text from DOCX using python-docx
 - [x] Verify extracted text is not empty
 - [x] Return simple parsing result for testing
+- [x] Add parsing quality check API
+- [x] Add parser selection UI and parser catalog API
+- [ ] Install and verify Docling as primary parser
+- [ ] Implement `.doc` auxiliary parser
+- [ ] Implement Excel auxiliary parser
 
 ---
 
@@ -87,6 +93,7 @@
 - [x] Store chunks and embeddings in Chroma
 - [x] Create indexing API
 - [x] Verify at least one uploaded file is searchable
+- [ ] Rebuild index after real embedding model integration
 
 ---
 
@@ -96,6 +103,10 @@
 - [x] Implement vector search
 - [x] Return top 3 chunks
 - [x] Include source metadata in response
+- [x] Add retrieval test question set
+- [x] Add initial lexical rerank experiment
+- [ ] Replace hash embedding with real embedding model
+- [ ] Re-run retrieval question set after embedding replacement
 
 ---
 
@@ -154,8 +165,8 @@
 
 ## Next Session Start Point
 
-- [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-24.md`, `TODO.md`에 반영
-- [ ] 내일 시작 시 `docs/status.md`부터 리로드
+- [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-26.md`, `TODO.md`에 반영
+- [ ] 다음 시작 시 `docs/daily/2026-03-26.md`와 `docs/status.md`부터 확인
 - [x] frontend 의존성 설치
 - [x] backend 의존성 설치
 - [x] frontend 실행 확인

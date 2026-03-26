@@ -25,7 +25,7 @@ export default function RootLayout({
           <header className="header">
             <div>
               <p className="eyebrow">Insurance Document RAG MVP</p>
-              <h1>Grounded answers for uploaded insurance documents</h1>
+              <h1>Uploaded Insurance documents</h1>
             </div>
             <nav className="nav">
               {navItems.map((item) => (

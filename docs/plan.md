@@ -46,14 +46,18 @@
   - indexed file list 및 retrieval API 구현 완료
   - `/chat` retrieval UI 구현 완료
   - `/upload` 목록의 파일별 indexing 상태 표시 완료
+  - `/upload` parser selection UI 구현 완료
+  - backend parser catalog / fallback routing 구현 완료
   - retrieval 질문 세트 작성 완료
   - representative retrieval 질문 기준 1차 pass/fail 점검 완료
   - retrieval lexical rerank 보정 실험 완료
 - 미완료:
+  - Docling 실제 설치 및 검증
   - 실제 embedding 모델 교체
   - grounded answer generation
   - evaluation dataset / RAGAS / evaluation UI
 - 다음 우선 작업:
+  - Docling 설치 여부 검토 및 parser primary/fallback 실제 검증
   - OpenAI 기반 embedding 교체 준비
   - 기존 Chroma 인덱스 재생성 계획 정리
   - embedding 교체 후 retrieval 질문 세트 재검증

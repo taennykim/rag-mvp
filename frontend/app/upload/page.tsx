@@ -31,6 +31,10 @@ type ParseResult = {
   size_bytes: number;
   uploaded_at: string;
   status: string;
+  primary_parser: string;
+  fallback_parser: string;
+  parser_used: string;
+  fallback_used: boolean;
 };
 
 type ParseQualityResult = {
@@ -46,6 +50,10 @@ type ParseQualityResult = {
   levenshtein_distance: number;
   quality_warning: boolean;
   quality_warning_message: string;
+  primary_parser: string;
+  fallback_parser: string;
+  parser_used: string;
+  fallback_used: boolean;
 };
 
 type UploadResult = {
@@ -57,7 +65,24 @@ type UploadResult = {
 type IndexResult = {
   original_name: string;
   indexed_count: number;
+  parser_used?: string;
+  fallback_used?: boolean;
   detail?: string;
+};
+
+type ParserOption = {
+  id: string;
+  label: string;
+  available: boolean;
+  description: string;
+  supported_extensions: string[];
+};
+
+type ParserCatalog = {
+  default_primary_parser: string;
+  default_fallback_parser: string;
+  primary_parsers: ParserOption[];
+  fallback_parsers: ParserOption[];
 };
 
 const API_BASE_URL =
@@ -70,6 +95,9 @@ export default function UploadPage() {
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [defaultFiles, setDefaultFiles] = useState<DefaultFile[]>([]);
   const [selectedDefaultFile, setSelectedDefaultFile] = useState("");
+  const [parserCatalog, setParserCatalog] = useState<ParserCatalog | null>(null);
+  const [primaryParser, setPrimaryParser] = useState("docling");
+  const [fallbackParser, setFallbackParser] = useState("extension-default");
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [parseQualityResult, setParseQualityResult] = useState<ParseQualityResult | null>(null);
   const [activeParseFile, setActiveParseFile] = useState("");
@@ -118,9 +146,26 @@ export default function UploadPage() {
     }
   }
 
+  async function loadParserCatalog() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/parse/parsers`, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Failed to load parser catalog.");
+      }
+
+      const data = (await response.json()) as ParserCatalog;
+      setParserCatalog(data);
+      setPrimaryParser(data.default_primary_parser);
+      setFallbackParser(data.default_fallback_parser);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to load parser catalog.");
+    }
+  }
+
   useEffect(() => {
     void loadFiles();
     void loadDefaultFiles();
+    void loadParserCatalog();
   }, []);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -159,7 +204,11 @@ export default function UploadPage() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ stored_name: storedName }),
+      body: JSON.stringify({
+        stored_name: storedName,
+        primary_parser: primaryParser,
+        fallback_parser: fallbackParser,
+      }),
     });
 
     const data = (await response.json()) as IndexResult;
@@ -228,7 +277,10 @@ export default function UploadPage() {
         input.value = "";
       }
       await loadFiles();
-      setMessage(`Uploaded and indexed ${indexResult.original_name}. ${indexResult.indexed_count} chunk(s) stored.`);
+      const parserNote = indexResult.parser_used
+        ? ` Parser: ${indexResult.parser_used}${indexResult.fallback_used ? " (fallback)" : ""}.`
+        : "";
+      setMessage(`Uploaded and indexed ${indexResult.original_name}. ${indexResult.indexed_count} chunk(s) stored.${parserNote}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Upload or indexing failed.");
     } finally {
@@ -272,7 +324,11 @@ export default function UploadPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ stored_name: file.stored_name }),
+        body: JSON.stringify({
+          stored_name: file.stored_name,
+          primary_parser: primaryParser,
+          fallback_parser: fallbackParser,
+        }),
       });
 
       const data = (await response.json()) as ParseResult & { detail?: string };
@@ -341,7 +397,11 @@ export default function UploadPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ stored_name: parseResult.stored_name }),
+        body: JSON.stringify({
+          stored_name: parseResult.stored_name,
+          primary_parser: primaryParser,
+          fallback_parser: fallbackParser,
+        }),
       });
 
       const data = (await response.json()) as ParseQualityResult & { detail?: string };
@@ -366,6 +426,51 @@ export default function UploadPage() {
         <h2>Document intake</h2>
         <p>Upload PDF or DOCX files and store them for the next parsing step.</p>
         <form className="upload-form" onSubmit={handleSubmit}>
+          <div className="parser-grid">
+            <div className="default-file-row">
+              <label className="upload-label" htmlFor="primary-parser-select">
+                Primary parser
+              </label>
+              <select
+                className="default-file-select"
+                id="primary-parser-select"
+                onChange={(event) => setPrimaryParser(event.target.value)}
+                value={primaryParser}
+              >
+                {parserCatalog?.primary_parsers.map((parser) => (
+                  <option key={parser.id} value={parser.id}>
+                    {parser.label}
+                    {!parser.available ? " (unavailable)" : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="parser-note">
+                기본 파서는 Docling을 우선 시도합니다. 현재 환경에 없거나 실패하면 보조 파서로 넘어갑니다.
+              </p>
+            </div>
+
+            <div className="default-file-row">
+              <label className="upload-label" htmlFor="fallback-parser-select">
+                Auxiliary parser
+              </label>
+              <select
+                className="default-file-select"
+                id="fallback-parser-select"
+                onChange={(event) => setFallbackParser(event.target.value)}
+                value={fallbackParser}
+              >
+                {parserCatalog?.fallback_parsers.map((parser) => (
+                  <option key={parser.id} value={parser.id}>
+                    {parser.label}
+                    {!parser.available ? " (coming soon)" : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="parser-note">
+                PDF, DOC, DOCX, Excel용 보조 파서 슬롯을 선택할 수 있습니다. 구현되지 않은 옵션은 실행 시 안내됩니다.
+              </p>
+            </div>
+          </div>
           <label className="upload-label" htmlFor="document-upload">
             Select document
           </label>
@@ -475,6 +580,12 @@ export default function UploadPage() {
             <p>Size: {formatFileSize(parseResult.size_bytes)}</p>
             <p>Uploaded at: {formatUploadedAt(parseResult.uploaded_at)}</p>
             <p>Status: {parseResult.status}</p>
+            <p>Primary parser: {parseResult.primary_parser}</p>
+            <p>Auxiliary parser: {parseResult.fallback_parser}</p>
+            <p>
+              Parser used: {parseResult.parser_used}
+              {parseResult.fallback_used ? " (fallback used)" : ""}
+            </p>
             <p>Extracted length: {parseResult.text_length}</p>
             <button
               className="upload-button"
@@ -489,6 +600,10 @@ export default function UploadPage() {
                 <p>Reference length: {parseQualityResult.reference_text_length}</p>
                 <p>Jaccard Similarity: {formatSimilarity(parseQualityResult.jaccard_similarity)}</p>
                 <p>Levenshtein Distance: {parseQualityResult.levenshtein_distance}</p>
+                <p>
+                  Parser used: {parseQualityResult.parser_used}
+                  {parseQualityResult.fallback_used ? " (fallback used)" : ""}
+                </p>
                 {parseQualityResult.quality_warning ? (
                   <p className="quality-warning">{parseQualityResult.quality_warning_message}</p>
                 ) : null}

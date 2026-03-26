@@ -159,6 +159,19 @@ a {
   gap: 8px;
 }
 
+.parser-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.parser-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
 .default-file-select {
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -427,6 +440,10 @@ a {
   }
 
   .upload-row {
+    grid-template-columns: 1fr;
+  }
+
+  .parser-grid {
     grid-template-columns: 1fr;
   }
 

@@ -49,6 +49,7 @@
 - 실제 embedding 모델로 교체하기 전까지 retrieval 품질 상한이 낮다.
 
 ## 5. 다음 작업
+- parser 변경 시 parse/chunk 품질 변화가 retrieval 결과에 미치는 영향도 같이 확인한다.
 - OpenAI 기반 실제 embedding 모델로 교체할 준비를 한다.
 - 기존 hash embedding 기반 Chroma 데이터를 재생성할 수 있게 재인덱싱 절차를 정리한다.
 - retrieval 질문 세트 기준으로 embedding 교체 전후 결과를 비교한다.

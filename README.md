@@ -5,6 +5,7 @@ This project is a simple RAG (Retrieval-Augmented Generation) MVP for insurance 
 
 Users can:
 - Upload PDF or DOCX files
+- Choose a primary parser and auxiliary parser on the upload screen
 - Search indexed chunks based on uploaded documents
 - Inspect retrieved source chunks before answer generation
 - View evaluation page skeleton for later RAGAS integration
@@ -14,6 +15,7 @@ This is an MVP focused on core functionality only.
 
 Included:
 - PDF/DOCX upload
+- Parser selection UI
 - Text extraction
 - Chunking
 - Embedding + vector search
@@ -23,7 +25,7 @@ Included:
 
 Excluded:
 - OCR
-- Excel ingestion
+- Real Excel ingestion
 - Hybrid search
 - Full answer generation
 - Production-grade embedding model integration
@@ -36,9 +38,9 @@ Excluded:
 - `/evaluation` : evaluation page skeleton
 
 ## Tech Stack
-- Frontend: Next.js + Tailwind CSS
-- Backend: FastAPI
-- Parsing: PyMuPDF, python-docx
+- Frontend: Next.js 15 + React 19 + TypeScript + Tailwind CSS
+- Backend: FastAPI + Uvicorn
+- Parsing: PyMuPDF, python-docx, Docling-ready parser routing
 - Vector store: Chroma
 - Evaluation: RAGAS
 
@@ -63,6 +65,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Parsing text extraction validation has been verified on the RAG server
 - DOCX parser now includes table and header/footer text extraction
 - Upload page includes in-browser parse test, full extracted text view, and separate quality-check action
+- Upload page includes `Primary parser` / `Auxiliary parser` selection UI
 - Chunking API and chunk metadata output are implemented
 - Upload now triggers indexing automatically after the file is stored
 - Indexing API stores chunk embeddings in Chroma
@@ -74,6 +77,8 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Retrieval test question set is documented in `docs/retrieval-test-set.md`
 - Retrieval pass/fail has been checked on representative questions
 - Pricing-method PDF retrieval remains weak in all-file search and is the main reason to replace the current embedding
+- Backend exposes `GET /parse/parsers` and supports `Docling -> auxiliary parser fallback`
+- Current environment does not have Docling installed yet, so PDF/DOCX still run through fallback parsers
 - Frontend is currently operated more stably with `build + start` than `next dev`
 - Answer generation and evaluation execution are still pending
 
@@ -92,9 +97,9 @@ Start from these files first:
 Recommended restart order:
 1. Review `docs/status.md` for the latest completed scope and blockers.
 2. Review `docs/daily/2026-03-26.md` for today's detailed work log.
-3. Review `docs/retrieval-test-set.md` for retrieval validation 기준과 fail 케이스.
+3. Review `docs/retrieval-test-set.md` for retrieval validation criteria and fail cases.
 4. Review `TODO.md` for remaining MVP tasks after retrieval stabilization.
-5. Continue with actual embedding model integration.
+5. Continue with Docling installation review or actual embedding model integration.
 
 ## Daily Start Checklist
 1. Review `AGENTS.md` for working rules and project operating constraints.

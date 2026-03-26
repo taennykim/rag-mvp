@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 import hashlib
 import json
+from functools import lru_cache
 from pathlib import Path
 import re
 from uuid import uuid4
@@ -51,6 +52,14 @@ EMBEDDING_DIMENSION = 256
 CHROMA_COLLECTION_NAME = "insurance_document_chunks"
 RETRIEVAL_CANDIDATE_MULTIPLIER = 5
 RETRIEVAL_MAX_CANDIDATES = 50
+PRIMARY_PARSER_DOCLING = "docling"
+PRIMARY_PARSER_LEGACY_AUTO = "legacy-auto"
+FALLBACK_PARSER_EXTENSION_DEFAULT = "extension-default"
+FALLBACK_PARSER_NONE = "none"
+FALLBACK_PARSER_PYMUPDF = "pymupdf"
+FALLBACK_PARSER_PYTHON_DOCX = "python-docx"
+FALLBACK_PARSER_DOC = "doc-parser"
+FALLBACK_PARSER_EXCEL = "excel-parser"
 
 
 def ensure_upload_dir() -> None:
@@ -80,6 +89,134 @@ def normalize_text(text: str) -> str:
 
 def tokenize_text(text: str) -> list[str]:
     return re.findall(r"\w+", text.lower())
+
+
+def get_default_auxiliary_parser(extension: str) -> str:
+    if extension == ".pdf":
+        return FALLBACK_PARSER_PYMUPDF
+    if extension == ".docx":
+        return FALLBACK_PARSER_PYTHON_DOCX
+    if extension == ".doc":
+        return FALLBACK_PARSER_DOC
+    if extension in {".xls", ".xlsx"}:
+        return FALLBACK_PARSER_EXCEL
+    return FALLBACK_PARSER_NONE
+
+
+def parser_supports_extension(parser_id: str, extension: str) -> bool:
+    if parser_id == PRIMARY_PARSER_DOCLING:
+        return extension in {".pdf", ".docx", ".xlsx"}
+    if parser_id == PRIMARY_PARSER_LEGACY_AUTO:
+        return extension in {".pdf", ".docx"}
+    if parser_id == FALLBACK_PARSER_PYMUPDF:
+        return extension == ".pdf"
+    if parser_id == FALLBACK_PARSER_PYTHON_DOCX:
+        return extension == ".docx"
+    if parser_id == FALLBACK_PARSER_DOC:
+        return extension == ".doc"
+    if parser_id == FALLBACK_PARSER_EXCEL:
+        return extension in {".xls", ".xlsx"}
+    return parser_id == FALLBACK_PARSER_NONE
+
+
+def get_parser_label(parser_id: str) -> str:
+    labels = {
+        PRIMARY_PARSER_DOCLING: "Docling",
+        PRIMARY_PARSER_LEGACY_AUTO: "Legacy auto parser",
+        FALLBACK_PARSER_EXTENSION_DEFAULT: "Extension default parser",
+        FALLBACK_PARSER_NONE: "No fallback",
+        FALLBACK_PARSER_PYMUPDF: "PyMuPDF (PDF)",
+        FALLBACK_PARSER_PYTHON_DOCX: "python-docx (DOCX)",
+        FALLBACK_PARSER_DOC: "DOC parser",
+        FALLBACK_PARSER_EXCEL: "Excel parser",
+    }
+    return labels.get(parser_id, parser_id)
+
+
+def is_docling_available() -> bool:
+    try:
+        import docling  # noqa: F401
+    except ModuleNotFoundError:
+        return False
+    return True
+
+
+@lru_cache(maxsize=1)
+def get_docling_converter():
+    try:
+        from docling.document_converter import DocumentConverter
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("Docling is not installed in the current environment.") from exc
+
+    return DocumentConverter()
+
+
+def get_parser_catalog() -> dict[str, object]:
+    docling_available = is_docling_available()
+    return {
+        "default_primary_parser": PRIMARY_PARSER_DOCLING,
+        "default_fallback_parser": FALLBACK_PARSER_EXTENSION_DEFAULT,
+        "primary_parsers": [
+            {
+                "id": PRIMARY_PARSER_DOCLING,
+                "label": "Docling",
+                "available": docling_available,
+                "description": "기본 파서. PDF/DOCX를 우선 Docling으로 변환합니다.",
+                "supported_extensions": [".pdf", ".docx", ".xlsx"],
+            },
+            {
+                "id": PRIMARY_PARSER_LEGACY_AUTO,
+                "label": "Legacy auto parser",
+                "available": True,
+                "description": "파일 확장자에 따라 기존 내장 파서를 바로 사용합니다.",
+                "supported_extensions": [".pdf", ".docx"],
+            },
+        ],
+        "fallback_parsers": [
+            {
+                "id": FALLBACK_PARSER_EXTENSION_DEFAULT,
+                "label": "Extension default parser",
+                "available": True,
+                "description": "PDF는 PyMuPDF, DOCX는 python-docx를 자동 선택합니다.",
+                "supported_extensions": [".pdf", ".docx", ".doc", ".xls", ".xlsx"],
+            },
+            {
+                "id": FALLBACK_PARSER_PYMUPDF,
+                "label": "PyMuPDF (PDF)",
+                "available": True,
+                "description": "PDF 전용 보조 파서입니다.",
+                "supported_extensions": [".pdf"],
+            },
+            {
+                "id": FALLBACK_PARSER_PYTHON_DOCX,
+                "label": "python-docx (DOCX)",
+                "available": True,
+                "description": "DOCX 전용 보조 파서입니다.",
+                "supported_extensions": [".docx"],
+            },
+            {
+                "id": FALLBACK_PARSER_DOC,
+                "label": "DOC parser",
+                "available": False,
+                "description": "DOC 보조 파서 슬롯입니다. 아직 구현되지 않았습니다.",
+                "supported_extensions": [".doc"],
+            },
+            {
+                "id": FALLBACK_PARSER_EXCEL,
+                "label": "Excel parser",
+                "available": False,
+                "description": "XLS/XLSX 보조 파서 슬롯입니다. 아직 구현되지 않았습니다.",
+                "supported_extensions": [".xls", ".xlsx"],
+            },
+            {
+                "id": FALLBACK_PARSER_NONE,
+                "label": "No fallback",
+                "available": True,
+                "description": "기본 파서 실패 시 보조 파서를 사용하지 않습니다.",
+                "supported_extensions": [],
+            },
+        ],
+    }
 
 
 def build_token_frequency(tokens: list[str]) -> dict[str, int]:
@@ -244,16 +381,71 @@ def extract_docx_container_text(container: DocxDocument | _Cell | object) -> lis
     return parts
 
 
-def extract_text_from_file(path: Path) -> str:
+def extract_docling_text(path: Path) -> str:
+    converter = get_docling_converter()
+    result = converter.convert(path)
+    text = result.document.export_to_markdown()
+    return normalize_text(text)
+
+
+def extract_with_parser(path: Path, parser_id: str) -> tuple[str, str]:
     extension = get_extension(path.name)
 
-    if extension == ".pdf":
-        return extract_pdf_text(path)
+    if parser_id == PRIMARY_PARSER_DOCLING:
+        if not parser_supports_extension(parser_id, extension):
+            raise HTTPException(status_code=400, detail=f"Docling does not support {extension} in the current parser policy.")
+        return extract_docling_text(path), parser_id
 
-    if extension == ".docx":
-        return extract_docx_text(path)
+    if parser_id in {PRIMARY_PARSER_LEGACY_AUTO, FALLBACK_PARSER_EXTENSION_DEFAULT}:
+        resolved_parser = get_default_auxiliary_parser(extension)
+        return extract_with_parser(path, resolved_parser)
 
-    raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported.")
+    if parser_id == FALLBACK_PARSER_PYMUPDF:
+        if extension != ".pdf":
+            raise HTTPException(status_code=400, detail="PyMuPDF fallback is only available for PDF files.")
+        return extract_pdf_text(path), parser_id
+
+    if parser_id == FALLBACK_PARSER_PYTHON_DOCX:
+        if extension != ".docx":
+            raise HTTPException(status_code=400, detail="python-docx fallback is only available for DOCX files.")
+        return extract_docx_text(path), parser_id
+
+    if parser_id == FALLBACK_PARSER_DOC:
+        raise HTTPException(status_code=400, detail="DOC fallback parser is not implemented yet.")
+
+    if parser_id == FALLBACK_PARSER_EXCEL:
+        raise HTTPException(status_code=400, detail="Excel fallback parser is not implemented yet.")
+
+    if parser_id == FALLBACK_PARSER_NONE:
+        raise HTTPException(status_code=400, detail="No fallback parser is configured.")
+
+    raise HTTPException(status_code=400, detail=f"Unsupported parser selection: {parser_id}")
+
+
+def extract_text_from_file(
+    path: Path,
+    *,
+    primary_parser: str = PRIMARY_PARSER_DOCLING,
+    fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT,
+) -> tuple[str, str, bool]:
+    attempts: list[str] = []
+    seen: set[str] = set()
+
+    for parser_id in [primary_parser, fallback_parser]:
+        if parser_id in seen:
+            continue
+        seen.add(parser_id)
+        try:
+            text, parser_used = extract_with_parser(path, parser_id)
+            return text, parser_used, parser_used != primary_parser
+        except (HTTPException, ModuleNotFoundError, RuntimeError, ValueError) as exc:
+            attempts.append(f"{get_parser_label(parser_id)}: {str(exc)}")
+            continue
+
+    raise HTTPException(
+        status_code=400,
+        detail="Parsing failed. " + " | ".join(attempts) if attempts else "Parsing failed.",
+    )
 
 
 def extract_reference_pdf_text(path: Path) -> str:
@@ -346,8 +538,17 @@ def build_quality_metrics(parsed_text: str, reference_text: str) -> dict[str, ob
     }
 
 
-def build_parsing_result(path: Path) -> dict[str, object]:
-    text = extract_text_from_file(path)
+def build_parsing_result(
+    path: Path,
+    *,
+    primary_parser: str = PRIMARY_PARSER_DOCLING,
+    fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT,
+) -> dict[str, object]:
+    text, parser_used, fallback_used = extract_text_from_file(
+        path,
+        primary_parser=primary_parser,
+        fallback_parser=fallback_parser,
+    )
 
     if not text.strip():
         raise HTTPException(status_code=400, detail="Extracted text is empty.")
@@ -360,13 +561,26 @@ def build_parsing_result(path: Path) -> dict[str, object]:
             "text_length": len(text),
             "preview": text[:PREVIEW_LENGTH],
             "extracted_text": text,
+            "primary_parser": primary_parser,
+            "fallback_parser": fallback_parser,
+            "parser_used": parser_used,
+            "fallback_used": fallback_used,
         }
     )
     return metadata
 
 
-def build_parsing_quality_result(path: Path) -> dict[str, object]:
-    parsed_text = extract_text_from_file(path)
+def build_parsing_quality_result(
+    path: Path,
+    *,
+    primary_parser: str = PRIMARY_PARSER_DOCLING,
+    fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT,
+) -> dict[str, object]:
+    parsed_text, parser_used, fallback_used = extract_text_from_file(
+        path,
+        primary_parser=primary_parser,
+        fallback_parser=fallback_parser,
+    )
     reference_text = extract_reference_text(path)
 
     if not parsed_text.strip():
@@ -379,6 +593,10 @@ def build_parsing_quality_result(path: Path) -> dict[str, object]:
             "file_type": get_extension(path.name),
             "text_length": len(parsed_text),
             "reference_text_length": len(reference_text),
+            "primary_parser": primary_parser,
+            "fallback_parser": fallback_parser,
+            "parser_used": parser_used,
+            "fallback_used": fallback_used,
         }
     )
     metadata.update(build_quality_metrics(parsed_text, reference_text))
@@ -523,8 +741,17 @@ def write_chunk_summary(path: Path, chunk_count: int) -> Path:
     return summary_path
 
 
-def build_chunking_result(path: Path) -> dict[str, object]:
-    parsed = build_parsing_result(path)
+def build_chunking_result(
+    path: Path,
+    *,
+    primary_parser: str = PRIMARY_PARSER_DOCLING,
+    fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT,
+) -> dict[str, object]:
+    parsed = build_parsing_result(
+        path,
+        primary_parser=primary_parser,
+        fallback_parser=fallback_parser,
+    )
     chunks = create_chunks(parsed["extracted_text"], source=parsed["original_name"])
 
     if not chunks:
@@ -541,6 +768,10 @@ def build_chunking_result(path: Path) -> dict[str, object]:
         "chunk_target_length": CHUNK_TARGET_LENGTH,
         "chunk_overlap_length": CHUNK_OVERLAP_LENGTH,
         "summary_path": str(summary_path),
+        "primary_parser": primary_parser,
+        "fallback_parser": fallback_parser,
+        "parser_used": parsed["parser_used"],
+        "fallback_used": parsed["fallback_used"],
         "chunks": chunks,
     }
 
@@ -551,6 +782,8 @@ class DefaultFileUploadRequest(BaseModel):
 
 class ParseRequest(BaseModel):
     stored_name: str
+    primary_parser: str = PRIMARY_PARSER_DOCLING
+    fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT
 
 
 class RetrieveRequest(BaseModel):
@@ -624,8 +857,17 @@ def get_chroma_collection():
     return client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
 
 
-def index_chunks(path: Path) -> dict[str, object]:
-    chunking_result = build_chunking_result(path)
+def index_chunks(
+    path: Path,
+    *,
+    primary_parser: str = PRIMARY_PARSER_DOCLING,
+    fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT,
+) -> dict[str, object]:
+    chunking_result = build_chunking_result(
+        path,
+        primary_parser=primary_parser,
+        fallback_parser=fallback_parser,
+    )
     chunks = chunking_result["chunks"]
 
     if not isinstance(chunks, list) or not chunks:
@@ -672,6 +914,10 @@ def index_chunks(path: Path) -> dict[str, object]:
         "collection_name": CHROMA_COLLECTION_NAME,
         "embedding_dimension": EMBEDDING_DIMENSION,
         "chroma_path": str(CHROMA_DIR),
+        "primary_parser": primary_parser,
+        "fallback_parser": fallback_parser,
+        "parser_used": chunking_result["parser_used"],
+        "fallback_used": chunking_result["fallback_used"],
     }
 
 
@@ -964,10 +1210,19 @@ def get_parse_status() -> dict[str, object]:
     }
 
 
+@app.get("/parse/parsers")
+def get_parse_parsers() -> dict[str, object]:
+    return get_parser_catalog()
+
+
 @app.post("/parse")
 def parse_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
-    return build_parsing_result(path)
+    return build_parsing_result(
+        path,
+        primary_parser=payload.primary_parser,
+        fallback_parser=payload.fallback_parser,
+    )
 
 
 @app.get("/parse/{stored_name}")
@@ -979,7 +1234,11 @@ def parse_uploaded_file_by_name(stored_name: str) -> dict[str, object]:
 @app.post("/parse/quality")
 def parse_uploaded_file_quality(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
-    return build_parsing_quality_result(path)
+    return build_parsing_quality_result(
+        path,
+        primary_parser=payload.primary_parser,
+        fallback_parser=payload.fallback_parser,
+    )
 
 
 @app.get("/chunk")
@@ -998,7 +1257,11 @@ def get_chunk_status() -> dict[str, object]:
 @app.post("/chunk")
 def chunk_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
-    return build_chunking_result(path)
+    return build_chunking_result(
+        path,
+        primary_parser=payload.primary_parser,
+        fallback_parser=payload.fallback_parser,
+    )
 
 
 @app.get("/chunk/{stored_name}")
@@ -1043,7 +1306,11 @@ def delete_indexed_files() -> dict[str, object]:
 @app.post("/index")
 def index_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
-    return index_chunks(path)
+    return index_chunks(
+        path,
+        primary_parser=payload.primary_parser,
+        fallback_parser=payload.fallback_parser,
+    )
 
 
 @app.get("/index/{stored_name}")
