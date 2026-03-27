@@ -114,6 +114,8 @@ This document defines how the agent should operate across all projects.
 
 - 초기 작업 시 Terraform을 사용하여 EC2 인스턴스를 생성한다.
 - 모든 작업은 생성된 EC2 인스턴스에서 수행한다.
+- 화면 테스트와 브라우저 확인은 반드시 RAG 서버에서만 수행한다.
+- 현재 서버에서는 CLI 작업, 코드 수정, 문서 업데이트만 수행한다.
 
 ---
 

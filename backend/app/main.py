@@ -41,6 +41,7 @@ app.add_middleware(
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "data" / "uploads"
 DEFAULT_FILE_DIR = BASE_DIR / "data" / "default-files"
+PARSE_METADATA_DIR = BASE_DIR / "data" / "parse-metadata"
 CHUNK_METADATA_DIR = BASE_DIR / "data" / "chunk-metadata"
 CHROMA_DIR = BASE_DIR / "data" / "chroma"
 ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx"}
@@ -70,6 +71,10 @@ def ensure_upload_dir() -> None:
 
 def ensure_default_file_dir() -> None:
     DEFAULT_FILE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def ensure_parse_metadata_dir() -> None:
+    PARSE_METADATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def ensure_chunk_metadata_dir() -> None:
@@ -273,6 +278,48 @@ def build_file_metadata(path: Path) -> dict[str, object]:
     }
 
 
+def get_parse_summary_path(path: Path) -> Path:
+    ensure_parse_metadata_dir()
+    return PARSE_METADATA_DIR / f"{path.name}.json"
+
+
+def get_chunk_summary_path(path: Path) -> Path:
+    ensure_chunk_metadata_dir()
+    return CHUNK_METADATA_DIR / f"{path.name}.json"
+
+
+def read_json_file(path: Path) -> dict[str, object] | None:
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def write_parse_summary(
+    path: Path,
+    *,
+    parser_used: str,
+    fallback_used: bool,
+    text_length: int,
+    file_type: str,
+) -> Path:
+    summary_path = get_parse_summary_path(path)
+    summary = {
+        "stored_name": path.name,
+        "original_name": path.name.split("__", 1)[1] if "__" in path.name else path.name,
+        "file_type": file_type,
+        "parser_used": parser_used,
+        "fallback_used": fallback_used,
+        "text_length": text_length,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    return summary_path
+
+
 def list_uploaded_files() -> list[dict[str, object]]:
     ensure_upload_dir()
     files: list[dict[str, object]] = []
@@ -280,6 +327,30 @@ def list_uploaded_files() -> list[dict[str, object]]:
         if not path.is_file():
             continue
         files.append(build_file_metadata(path))
+    return files
+
+
+def list_parsed_files() -> list[dict[str, object]]:
+    ensure_parse_metadata_dir()
+    files: list[dict[str, object]] = []
+    for path in sorted(PARSE_METADATA_DIR.iterdir(), key=lambda item: item.name):
+        if not path.is_file() or path.suffix.lower() != ".json":
+            continue
+        summary = read_json_file(path)
+        if summary:
+            files.append(summary)
+    return files
+
+
+def list_chunked_files() -> list[dict[str, object]]:
+    ensure_chunk_metadata_dir()
+    files: list[dict[str, object]] = []
+    for path in sorted(CHUNK_METADATA_DIR.iterdir(), key=lambda item: item.name):
+        if not path.is_file() or path.suffix.lower() != ".json":
+            continue
+        summary = read_json_file(path)
+        if summary:
+            files.append(summary)
     return files
 
 
@@ -665,6 +736,14 @@ def build_parsing_result(
     if not text.strip():
         raise HTTPException(status_code=400, detail="Extracted text is empty.")
 
+    write_parse_summary(
+        path,
+        parser_used=parser_used,
+        fallback_used=fallback_used,
+        text_length=len(text),
+        file_type=get_extension(path.name),
+    )
+
     metadata = build_file_metadata(path)
     metadata.update(
         {
@@ -841,8 +920,7 @@ def create_chunks(
 
 
 def write_chunk_summary(path: Path, chunk_count: int) -> Path:
-    ensure_chunk_metadata_dir()
-    summary_path = CHUNK_METADATA_DIR / f"{path.name}.json"
+    summary_path = get_chunk_summary_path(path)
     summary = {
         "stored_name": path.name,
         "original_name": path.name.split("__", 1)[1] if "__" in path.name else path.name,
@@ -1182,10 +1260,15 @@ def delete_uploaded_file_and_index(stored_name: str) -> dict[str, object]:
     metadata = build_file_metadata(path)
     removed_index_count = delete_indexed_chunks(path.name)
 
-    summary_path = CHUNK_METADATA_DIR / f"{path.name}.json"
-    summary_removed = summary_path.is_file()
-    if summary_removed:
-        summary_path.unlink()
+    parse_summary_path = get_parse_summary_path(path)
+    parse_summary_removed = parse_summary_path.is_file()
+    if parse_summary_removed:
+        parse_summary_path.unlink()
+
+    chunk_summary_path = get_chunk_summary_path(path)
+    chunk_summary_removed = chunk_summary_path.is_file()
+    if chunk_summary_removed:
+        chunk_summary_path.unlink()
 
     path.unlink()
 
@@ -1194,7 +1277,8 @@ def delete_uploaded_file_and_index(stored_name: str) -> dict[str, object]:
         "stored_name": metadata["stored_name"],
         "original_name": metadata["original_name"],
         "removed_index_count": removed_index_count,
-        "removed_summary": summary_removed,
+        "removed_parse_summary": parse_summary_removed,
+        "removed_chunk_summary": chunk_summary_removed,
     }
 
 
@@ -1229,6 +1313,49 @@ def list_indexed_files() -> list[dict[str, object]]:
     return sorted(indexed.values(), key=lambda item: str(item["original_name"]))
 
 
+def list_pipeline_files() -> list[dict[str, object]]:
+    uploaded_files = list_uploaded_files()
+    parsed_files = {
+        str(item.get("stored_name")): item
+        for item in list_parsed_files()
+        if isinstance(item.get("stored_name"), str)
+    }
+    chunked_files = {
+        str(item.get("stored_name")): item
+        for item in list_chunked_files()
+        if isinstance(item.get("stored_name"), str)
+    }
+    indexed_files = {
+        str(item.get("stored_name")): item
+        for item in list_indexed_files()
+        if isinstance(item.get("stored_name"), str)
+    }
+
+    pipeline_files: list[dict[str, object]] = []
+    for uploaded in uploaded_files:
+        stored_name = str(uploaded["stored_name"])
+        parsed = parsed_files.get(stored_name)
+        chunked = chunked_files.get(stored_name)
+        indexed = indexed_files.get(stored_name)
+
+        pipeline_files.append(
+            {
+                **uploaded,
+                "upload_status": "completed",
+                "parse_status": "completed" if parsed or chunked or indexed else "pending",
+                "chunk_status": "completed" if chunked else "pending",
+                "index_status": "completed" if indexed else "pending",
+                "parse_text_length": parsed.get("text_length") if parsed else None,
+                "parse_parser_used": parsed.get("parser_used") if parsed else None,
+                "parse_fallback_used": parsed.get("fallback_used") if parsed else None,
+                "chunk_count": chunked.get("chunk_count") if chunked else None,
+                "indexed_chunk_count": indexed.get("chunk_count") if indexed else None,
+            }
+        )
+
+    return pipeline_files
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -1251,15 +1378,21 @@ def get_uploaded_files() -> dict[str, object]:
     return {"files": files, "count": len(files)}
 
 
+@app.get("/pipeline/files")
+def get_pipeline_files() -> dict[str, object]:
+    files = list_pipeline_files()
+    return {"files": files, "count": len(files)}
+
+
 @app.delete("/upload/files")
 def clear_uploaded_files() -> dict[str, object]:
     ensure_upload_dir()
     removed_count = 0
 
-    for path in UPLOAD_DIR.iterdir():
+    for path in list(UPLOAD_DIR.iterdir()):
         if not path.is_file():
             continue
-        path.unlink()
+        delete_uploaded_file_and_index(path.name)
         removed_count += 1
 
     return {"status": "cleared", "removed_count": removed_count}

@@ -84,6 +84,11 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Frontend is currently operated more stably with `build + start` than `next dev`
 - Answer generation and evaluation execution are still pending
 
+## Screen Test Rule
+- 화면 테스트와 브라우저 확인은 RAG 서버 기준으로만 수행한다.
+- 현재 서버에서는 CLI 작업과 코드 수정만 수행한다.
+- 화면 확인 기준 주소는 RAG 서버 frontend `127.0.0.1:3000`, backend `127.0.0.1:8000`이다.
+
 ## Default Files
 - Preload files in `backend/data/default-files`
 - These files are not committed to git by default

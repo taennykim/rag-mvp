@@ -7,13 +7,15 @@ type UploadedFile = {
   original_name: string;
   size_bytes: number;
   uploaded_at: string;
-};
-
-type IndexedFile = {
-  stored_name: string;
-  original_name: string;
-  file_type: string;
-  chunk_count: number;
+  upload_status: "completed";
+  parse_status: "pending" | "completed";
+  chunk_status: "pending" | "completed";
+  index_status: "pending" | "completed";
+  parse_text_length?: number | null;
+  parse_parser_used?: string | null;
+  parse_fallback_used?: boolean | null;
+  chunk_count?: number | null;
+  indexed_chunk_count?: number | null;
 };
 
 type DefaultFile = {
@@ -70,6 +72,15 @@ type IndexResult = {
   detail?: string;
 };
 
+type ChunkResult = {
+  stored_name: string;
+  original_name: string;
+  chunk_count: number;
+  parser_used: string;
+  fallback_used: boolean;
+  detail?: string;
+};
+
 type ParserOption = {
   id: string;
   label: string;
@@ -85,14 +96,29 @@ type ParserCatalog = {
   fallback_parsers: ParserOption[];
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  (typeof window === "undefined" ? "http://localhost:8000" : `${window.location.protocol}//${window.location.hostname}:8000`);
+type UploadStageId = "upload" | "parse" | "chunk" | "index";
+
+type UploadStage = {
+  id: UploadStageId;
+  label: string;
+  status: "pending" | "active" | "completed" | "failed";
+  detail?: string;
+};
+
+const API_BASE_URL = "/api";
+
+function createUploadStages(): UploadStage[] {
+  return [
+    { id: "upload", label: "Upload", status: "pending" },
+    { id: "parse", label: "Parse", status: "pending" },
+    { id: "chunk", label: "Chunk", status: "pending" },
+    { id: "index", label: "Embedding / Indexing", status: "pending" },
+  ];
+}
 
 export default function UploadPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [files, setFiles] = useState<UploadedFile[]>([]);
-  const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [defaultFiles, setDefaultFiles] = useState<DefaultFile[]>([]);
   const [selectedDefaultFile, setSelectedDefaultFile] = useState("");
   const [parserCatalog, setParserCatalog] = useState<ParserCatalog | null>(null);
@@ -103,30 +129,21 @@ export default function UploadPage() {
   const [activeParseFile, setActiveParseFile] = useState("");
   const [activeQualityFile, setActiveQualityFile] = useState("");
   const [activeDeleteFile, setActiveDeleteFile] = useState("");
-  const [message, setMessage] = useState("Select a PDF or DOCX file to upload.");
+  const [message, setMessage] = useState("Select a PDF, DOC, DOCX, XLS, or XLSX file to upload.");
   const [isLoading, setIsLoading] = useState(false);
+  const [uploadStages, setUploadStages] = useState<UploadStage[]>(createUploadStages);
 
   async function loadFiles() {
     try {
-      const [uploadedResponse, indexedResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/upload/files`, { cache: "no-store" }),
-        fetch(`${API_BASE_URL}/index/files`, { cache: "no-store" }),
-      ]);
-
-      if (!uploadedResponse.ok) {
-        throw new Error("Failed to load uploaded files.");
-      }
-      if (!indexedResponse.ok) {
-        throw new Error("Failed to load indexed files.");
+      const response = await fetch(`${API_BASE_URL}/pipeline/files`, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Failed to load pipeline files.");
       }
 
-      const uploadedData = (await uploadedResponse.json()) as { files: UploadedFile[] };
-      const indexedData = (await indexedResponse.json()) as { files: IndexedFile[] };
-      setFiles(uploadedData.files);
-      setIndexedFiles(indexedData.files);
+      const data = (await response.json()) as { files: UploadedFile[] };
+      setFiles(data.files);
     } catch (error) {
       setFiles([]);
-      setIndexedFiles([]);
       setMessage(error instanceof Error ? error.message : "Failed to load uploaded files.");
     }
   }
@@ -196,7 +213,53 @@ export default function UploadPage() {
     return value.toFixed(3);
   }
 
-  const indexedFileMap = new Map(indexedFiles.map((file) => [file.stored_name, file]));
+  function updateUploadStage(stageId: UploadStageId, status: UploadStage["status"], detail?: string) {
+    setUploadStages((current) =>
+      current.map((stage) => (stage.id === stageId ? { ...stage, status, detail } : stage)),
+    );
+  }
+
+  async function parseUploadedFile(storedName: string) {
+    const response = await fetch(`${API_BASE_URL}/parse`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        stored_name: storedName,
+        primary_parser: primaryParser,
+        fallback_parser: fallbackParser,
+      }),
+    });
+
+    const data = (await response.json()) as ParseResult & { detail?: string };
+    if (!response.ok) {
+      throw new Error(data.detail ?? "Parsing failed.");
+    }
+
+    return data;
+  }
+
+  async function chunkUploadedFile(storedName: string) {
+    const response = await fetch(`${API_BASE_URL}/chunk`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        stored_name: storedName,
+        primary_parser: primaryParser,
+        fallback_parser: fallbackParser,
+      }),
+    });
+
+    const data = (await response.json()) as ChunkResult;
+    if (!response.ok) {
+      throw new Error(data.detail ?? "Chunking failed.");
+    }
+
+    return data;
+  }
 
   async function indexUploadedFile(storedName: string) {
     const response = await fetch(`${API_BASE_URL}/index`, {
@@ -240,14 +303,18 @@ export default function UploadPage() {
     event.preventDefault();
 
     if (!selectedFile && !selectedDefaultFile) {
-      setMessage("Choose a PDF or DOCX file first, or select a default file.");
+      setMessage("Choose a file first, or select a default file.");
       return;
     }
 
     setIsLoading(true);
-    setMessage(selectedFile ? "Uploading and indexing file..." : "Uploading and indexing default file...");
+    setUploadStages(createUploadStages());
+    let currentStage: UploadStageId = "upload";
 
     try {
+      updateUploadStage("upload", "active", "File transfer in progress");
+      setMessage(selectedFile ? "Uploading file..." : "Uploading default file...");
+
       let uploadResult: UploadResult;
       if (selectedFile) {
         const formData = new FormData();
@@ -267,11 +334,33 @@ export default function UploadPage() {
         uploadResult = await uploadSelectedDefaultFile();
       }
 
+      updateUploadStage("upload", "completed", uploadResult.original_name ?? uploadResult.stored_name);
+
+      currentStage = "parse";
+      updateUploadStage("parse", "active", "Extracting text");
+      setMessage("Parsing uploaded file...");
+      const parsedResult = await parseUploadedFile(uploadResult.stored_name);
+      setParseResult(parsedResult);
+      setParseQualityResult(null);
+      updateUploadStage(
+        "parse",
+        "completed",
+        `${parsedResult.text_length} chars via ${parsedResult.parser_used}${parsedResult.fallback_used ? " (fallback)" : ""}`,
+      );
+
+      currentStage = "chunk";
+      updateUploadStage("chunk", "active", "Building chunks");
+      setMessage("Creating chunks...");
+      const chunkResult = await chunkUploadedFile(uploadResult.stored_name);
+      updateUploadStage("chunk", "completed", `${chunkResult.chunk_count} chunk(s)`);
+
+      currentStage = "index";
+      updateUploadStage("index", "active", "Generating embeddings and storing index");
+      setMessage("Generating embeddings and indexing...");
       const indexResult = await indexUploadedFile(uploadResult.stored_name);
+      updateUploadStage("index", "completed", `${indexResult.indexed_count} chunk(s) indexed`);
 
       setSelectedFile(null);
-      setParseResult(null);
-      setParseQualityResult(null);
       const input = document.getElementById("document-upload") as HTMLInputElement | null;
       if (input) {
         input.value = "";
@@ -282,6 +371,7 @@ export default function UploadPage() {
         : "";
       setMessage(`Uploaded and indexed ${indexResult.original_name}. ${indexResult.indexed_count} chunk(s) stored.${parserNote}`);
     } catch (error) {
+      updateUploadStage(currentStage, "failed", error instanceof Error ? error.message : "Failed");
       setMessage(error instanceof Error ? error.message : "Upload or indexing failed.");
     } finally {
       setIsLoading(false);
@@ -303,7 +393,6 @@ export default function UploadPage() {
       }
 
       setFiles([]);
-      setIndexedFiles([]);
       setParseResult(null);
       setParseQualityResult(null);
       setMessage(`Cleared ${data.removed_count ?? 0} uploaded file(s).`);
@@ -360,6 +449,8 @@ export default function UploadPage() {
       const data = (await response.json()) as {
         original_name?: string;
         removed_index_count?: number;
+        removed_parse_summary?: boolean;
+        removed_chunk_summary?: boolean;
         detail?: string;
       };
       if (!response.ok) {
@@ -373,7 +464,7 @@ export default function UploadPage() {
 
       await loadFiles();
       setMessage(
-        `Deleted ${data.original_name ?? file.original_name}. Removed ${data.removed_index_count ?? 0} indexed chunk(s).`,
+        `Reset ${data.original_name ?? file.original_name}. Removed ${data.removed_index_count ?? 0} indexed chunk(s).`,
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to delete uploaded file.");
@@ -424,7 +515,7 @@ export default function UploadPage() {
       <div className="card">
         <p className="eyebrow">Upload</p>
         <h2>Document intake</h2>
-        <p>Upload PDF or DOCX files and store them for the next parsing step.</p>
+        <p>Upload PDF, DOC, DOCX, XLS, or XLSX files and process them step by step.</p>
         <form className="upload-form" onSubmit={handleSubmit}>
           <div className="parser-grid">
             <div className="default-file-row">
@@ -511,6 +602,17 @@ export default function UploadPage() {
           </button>
         </form>
         <p>{message}</p>
+        <div className="pipeline-status" aria-live="polite">
+          {uploadStages.map((stage) => (
+            <div key={stage.id} className={`pipeline-stage ${stage.status}`}>
+              <div className="pipeline-stage-header">
+                <strong>{stage.label}</strong>
+                <span className="pipeline-stage-badge">{stage.status}</span>
+              </div>
+              <p>{stage.detail ?? (stage.status === "pending" ? "Waiting" : "")}</p>
+            </div>
+          ))}
+        </div>
         <p>
           Put default files in <code>backend/data/default-files</code>.
         </p>
@@ -524,18 +626,28 @@ export default function UploadPage() {
         ) : (
           <ul className="file-list">
             {files.map((file) => {
-              const indexedFile = indexedFileMap.get(file.stored_name);
-              const isIndexed = Boolean(indexedFile);
-
               return (
                 <li key={file.stored_name}>
                 <div className="file-main">
                   <strong>{file.original_name}</strong>
                   <div className="file-status-row">
-                    <span className={`file-status-chip ${isIndexed ? "indexed" : "pending"}`}>
-                      {isIndexed ? "Indexed" : "Not indexed"}
+                    <span className="file-status-chip indexed">Upload</span>
+                    <span className={`file-status-chip ${file.parse_status === "completed" ? "indexed" : "pending"}`}>
+                      Parse: {file.parse_status}
                     </span>
-                    {indexedFile ? <span className="file-status-chip">{indexedFile.chunk_count} chunk(s)</span> : null}
+                    <span className={`file-status-chip ${file.chunk_status === "completed" ? "indexed" : "pending"}`}>
+                      Chunk: {file.chunk_status}
+                    </span>
+                    <span className={`file-status-chip ${file.index_status === "completed" ? "indexed" : "pending"}`}>
+                      Embedding/Indexing: {file.index_status}
+                    </span>
+                    {file.chunk_count ? <span className="file-status-chip">{file.chunk_count} chunk(s)</span> : null}
+                    {file.parse_parser_used ? (
+                      <span className="file-status-chip">
+                        Parser: {file.parse_parser_used}
+                        {file.parse_fallback_used ? " (fallback)" : ""}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="file-actions">
                     <button
@@ -552,7 +664,7 @@ export default function UploadPage() {
                       onClick={() => void handleDeleteFile(file)}
                       type="button"
                     >
-                      {activeDeleteFile === file.stored_name ? "Deleting..." : "Delete upload + index"}
+                      {activeDeleteFile === file.stored_name ? "Resetting..." : "Reset"}
                     </button>
                   </div>
                 </div>
@@ -612,23 +724,6 @@ export default function UploadPage() {
             <details className="parse-json" open>
               <summary>Preview</summary>
               <pre>{parseResult.preview}</pre>
-            </details>
-            <details className="parse-json">
-              <summary>View full extracted text</summary>
-              <pre>{parseResult.extracted_text}</pre>
-            </details>
-            <details className="parse-json">
-              <summary>View raw JSON</summary>
-              <pre>
-                {JSON.stringify(
-                  {
-                    parse_result: parseResult,
-                    quality_result: parseQualityResult,
-                  },
-                  null,
-                  2,
-                )}
-              </pre>
             </details>
           </div>
         ) : (
