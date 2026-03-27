@@ -467,7 +467,7 @@ export default function UploadPage() {
                 ))}
               </select>
               <p className="parser-note">
-                PDF, DOC, DOCX, Excel용 보조 파서 슬롯을 선택할 수 있습니다. 구현되지 않은 옵션은 실행 시 안내됩니다.
+                PDF, DOC, DOCX, XLS, XLSX용 보조 파서를 선택할 수 있습니다. 환경에 없는 파서는 실행 시 안내됩니다.
               </p>
             </div>
           </div>
@@ -477,7 +477,7 @@ export default function UploadPage() {
           <div className="upload-row">
             <input
               id="document-upload"
-              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={handleFileChange}
               type="file"
             />

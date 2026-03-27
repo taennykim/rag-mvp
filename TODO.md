@@ -61,6 +61,7 @@
 - [x] Create default file directory for preloaded uploads
 - [x] Add default file selection flow in upload page
 - [x] Show indexing status per uploaded file
+- [x] Extend upload support to `.doc`, `.xls`, `.xlsx`
 
 ---
 
@@ -72,9 +73,11 @@
 - [x] Return simple parsing result for testing
 - [x] Add parsing quality check API
 - [x] Add parser selection UI and parser catalog API
-- [ ] Install and verify Docling as primary parser
-- [ ] Implement `.doc` auxiliary parser
-- [ ] Implement Excel auxiliary parser
+- [x] Install and verify Docling as primary parser
+- [x] Implement `.doc` auxiliary parser
+- [x] Implement Excel auxiliary parser
+- [ ] Compare `Docling` vs fallback parser quality for PDF
+- [ ] Compare parser choice impact on chunking/retrieval
 
 ---
 
@@ -165,14 +168,13 @@
 
 ## Next Session Start Point
 
-- [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-26.md`, `TODO.md`에 반영
-- [ ] 다음 시작 시 `docs/daily/2026-03-26.md`와 `docs/status.md`부터 확인
+- [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-27.md`, `TODO.md`에 반영
+- [ ] 다음 시작 시 `docs/daily/2026-03-27.md`와 `docs/status.md`부터 확인
 - [x] frontend 의존성 설치
 - [x] backend 의존성 설치
 - [x] frontend 실행 확인
 - [x] backend 실행 확인
-- [x] upload API 실제 구현 시작
-- [x] upload API 최소 구현 완료
+- [x] parser 실제 구현 및 검증
 
 ---
 

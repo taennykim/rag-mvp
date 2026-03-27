@@ -32,13 +32,13 @@
   - auxiliary parser:
     - `PyMuPDF` for PDF
     - `python-docx` for DOCX
-    - `DOC parser` slot (planned)
-    - `Excel parser` slot (planned)
+    - `antiword` for DOC
+    - `openpyxl` / `xlrd` for XLS/XLSX
   - 현재 동작:
     - UI에서 primary parser와 auxiliary parser를 선택할 수 있다.
     - 기본값은 `Docling + Extension default parser`이다.
     - Docling이 설치되지 않았거나 실패하면 auxiliary parser로 fallback한다.
-    - 현재 실제 fallback 구현은 PDF/DOCX만 동작한다.
+    - 현재 fallback 구현은 PDF, DOC, DOCX, XLS, XLSX를 처리한다.
 - parsing 품질 비교:
   - `Parse test`는 텍스트 추출 결과만 반환
   - 품질 점수는 `POST /parse/quality`에서 별도로 계산
@@ -112,6 +112,8 @@
 - parsing 품질 점수 및 UI 검증 완료
 - parse와 quality check 분리 완료
 - parser selection UI 및 backend parser routing 추가 완료
+- Docling 설치 및 primary parser 검증 완료
+- DOC / Excel fallback parser 구현 및 검증 완료
 - chunking 기능 최소 구현 및 검증 완료
 - indexing 기능 구현 및 검증 완료
 - retrieval 기능 구현 및 1차 품질 점검 완료
@@ -127,13 +129,14 @@
 - 현재 hash embedding은 retrieval 품질 검증용 최소 구현이라 실제 서비스 품질에는 부족하다.
 - 산출방법서 문서군은 전체 파일 대상 retrieval에서 오탐이 남아 있다.
 - lexical rerank는 보조 수단이며 embedding 품질 자체를 대체하지 못한다.
-- 현재 `Docling` 패키지는 아직 설치되지 않았으므로 기본값이더라도 실제 실행은 fallback parser가 사용된다.
-- `.doc`, `.xls`, `.xlsx` 보조 파서 슬롯은 화면과 API에 노출되지만 실제 구현은 아직 없다.
+- `Docling` 설치에는 모델 다운로드와 큰 Python 의존성이 필요하다.
+- `DOC` 파서는 `antiword` 시스템 패키지에 의존한다.
+- `PDF`에 대해서는 `Docling`과 `PyMuPDF` 품질/속도 비교가 아직 더 필요하다.
 - 현재 실제 실행 확인 기준은 RAG 서버 frontend `3000`, backend `8000`이다.
 
 ## 5. 다음 작업
-- `Docling` 설치 후 실제 primary parser 동작을 검증한다.
-- `.doc`, `.xls`, `.xlsx` 보조 파서 구현 범위를 정한다.
+- `Docling`과 fallback parser의 PDF 품질 비교를 진행한다.
+- parser 변경이 chunking/retrieval에 주는 영향 범위를 확인한다.
 - OpenAI 기반 실제 embedding 모델로 교체한다.
 - 재인덱싱 절차와 오류 처리 방식을 정리한다.
 - retrieval 질문 세트 기준으로 개선 여부를 다시 검증한다.

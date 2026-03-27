@@ -4,6 +4,8 @@ import json
 from functools import lru_cache
 from pathlib import Path
 import re
+import shutil
+import subprocess
 from uuid import uuid4
 import xml.etree.ElementTree as ET
 from zipfile import ZipFile
@@ -41,7 +43,7 @@ UPLOAD_DIR = BASE_DIR / "data" / "uploads"
 DEFAULT_FILE_DIR = BASE_DIR / "data" / "default-files"
 CHUNK_METADATA_DIR = BASE_DIR / "data" / "chunk-metadata"
 CHROMA_DIR = BASE_DIR / "data" / "chroma"
-ALLOWED_EXTENSIONS = {".pdf", ".docx"}
+ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx"}
 PREVIEW_LENGTH = 300
 QUALITY_WARNING_THRESHOLD = 0.8
 WORD_NAMESPACE = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
@@ -82,6 +84,10 @@ def get_extension(filename: str) -> str:
     return Path(filename).suffix.lower()
 
 
+def get_supported_file_types_message() -> str:
+    return "PDF, DOC, DOCX, XLS, and XLSX files are supported."
+
+
 def normalize_text(text: str) -> str:
     lines = [line.strip() for line in text.splitlines()]
     return "\n".join(line for line in lines if line)
@@ -107,7 +113,7 @@ def parser_supports_extension(parser_id: str, extension: str) -> bool:
     if parser_id == PRIMARY_PARSER_DOCLING:
         return extension in {".pdf", ".docx", ".xlsx"}
     if parser_id == PRIMARY_PARSER_LEGACY_AUTO:
-        return extension in {".pdf", ".docx"}
+        return extension in ALLOWED_EXTENSIONS
     if parser_id == FALLBACK_PARSER_PYMUPDF:
         return extension == ".pdf"
     if parser_id == FALLBACK_PARSER_PYTHON_DOCX:
@@ -141,6 +147,19 @@ def is_docling_available() -> bool:
     return True
 
 
+def is_command_available(command: str) -> bool:
+    return shutil.which(command) is not None
+
+
+def is_excel_parser_available() -> bool:
+    try:
+        import openpyxl  # noqa: F401
+        import xlrd  # noqa: F401
+    except ModuleNotFoundError:
+        return False
+    return True
+
+
 @lru_cache(maxsize=1)
 def get_docling_converter():
     try:
@@ -153,6 +172,8 @@ def get_docling_converter():
 
 def get_parser_catalog() -> dict[str, object]:
     docling_available = is_docling_available()
+    excel_parser_available = is_excel_parser_available()
+    doc_parser_available = is_command_available("antiword")
     return {
         "default_primary_parser": PRIMARY_PARSER_DOCLING,
         "default_fallback_parser": FALLBACK_PARSER_EXTENSION_DEFAULT,
@@ -161,7 +182,7 @@ def get_parser_catalog() -> dict[str, object]:
                 "id": PRIMARY_PARSER_DOCLING,
                 "label": "Docling",
                 "available": docling_available,
-                "description": "기본 파서. PDF/DOCX를 우선 Docling으로 변환합니다.",
+                "description": "기본 파서. PDF, DOCX, XLSX를 우선 Docling으로 변환합니다.",
                 "supported_extensions": [".pdf", ".docx", ".xlsx"],
             },
             {
@@ -169,7 +190,7 @@ def get_parser_catalog() -> dict[str, object]:
                 "label": "Legacy auto parser",
                 "available": True,
                 "description": "파일 확장자에 따라 기존 내장 파서를 바로 사용합니다.",
-                "supported_extensions": [".pdf", ".docx"],
+                "supported_extensions": [".pdf", ".doc", ".docx", ".xls", ".xlsx"],
             },
         ],
         "fallback_parsers": [
@@ -177,7 +198,7 @@ def get_parser_catalog() -> dict[str, object]:
                 "id": FALLBACK_PARSER_EXTENSION_DEFAULT,
                 "label": "Extension default parser",
                 "available": True,
-                "description": "PDF는 PyMuPDF, DOCX는 python-docx를 자동 선택합니다.",
+                "description": "PDF는 PyMuPDF, DOCX는 python-docx, DOC는 antiword, Excel은 openpyxl/xlrd를 자동 선택합니다.",
                 "supported_extensions": [".pdf", ".docx", ".doc", ".xls", ".xlsx"],
             },
             {
@@ -197,15 +218,15 @@ def get_parser_catalog() -> dict[str, object]:
             {
                 "id": FALLBACK_PARSER_DOC,
                 "label": "DOC parser",
-                "available": False,
-                "description": "DOC 보조 파서 슬롯입니다. 아직 구현되지 않았습니다.",
+                "available": doc_parser_available,
+                "description": "DOC 전용 보조 파서입니다. antiword를 사용합니다.",
                 "supported_extensions": [".doc"],
             },
             {
                 "id": FALLBACK_PARSER_EXCEL,
                 "label": "Excel parser",
-                "available": False,
-                "description": "XLS/XLSX 보조 파서 슬롯입니다. 아직 구현되지 않았습니다.",
+                "available": excel_parser_available,
+                "description": "XLS/XLSX 보조 파서입니다. openpyxl과 xlrd를 사용합니다.",
                 "supported_extensions": [".xls", ".xlsx"],
             },
             {
@@ -304,7 +325,7 @@ def get_uploaded_file_path(stored_name: str) -> Path:
 
     extension = get_extension(path.name)
     if extension not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported.")
+        raise HTTPException(status_code=400, detail=get_supported_file_types_message())
 
     return path
 
@@ -329,6 +350,87 @@ def extract_docx_text(path: Path) -> str:
         sections.extend(extract_docx_container_text(section.footer))
 
     return normalize_text("\n".join(section for section in sections if section.strip()))
+
+
+def extract_doc_text(path: Path) -> str:
+    if not is_command_available("antiword"):
+        raise RuntimeError("antiword is not installed in the current environment.")
+
+    completed = subprocess.run(
+        ["antiword", str(path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="ignore",
+    )
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()
+        raise RuntimeError(stderr or "antiword failed to parse the DOC file.")
+
+    return normalize_text(completed.stdout)
+
+
+def format_excel_cell(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def extract_xlsx_text(path: Path) -> str:
+    try:
+        from openpyxl import load_workbook
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("openpyxl is not installed in the current environment.") from exc
+
+    workbook = load_workbook(filename=path, read_only=True, data_only=True)
+    sheets: list[str] = []
+    try:
+        for sheet in workbook.worksheets:
+            rows: list[str] = [f"# Sheet: {sheet.title}"]
+            for row in sheet.iter_rows(values_only=True):
+                values = [format_excel_cell(cell) for cell in row]
+                values = [value for value in values if value]
+                if values:
+                    rows.append(" | ".join(values))
+            if len(rows) > 1:
+                sheets.append("\n".join(rows))
+    finally:
+        workbook.close()
+
+    return normalize_text("\n\n".join(sheets))
+
+
+def extract_xls_text(path: Path) -> str:
+    try:
+        import xlrd
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError("xlrd is not installed in the current environment.") from exc
+
+    workbook = xlrd.open_workbook(path)
+    sheets: list[str] = []
+    for sheet in workbook.sheets():
+        rows: list[str] = [f"# Sheet: {sheet.name}"]
+        for row_index in range(sheet.nrows):
+            values = [format_excel_cell(sheet.cell_value(row_index, column_index)) for column_index in range(sheet.ncols)]
+            values = [value for value in values if value]
+            if values:
+                rows.append(" | ".join(values))
+        if len(rows) > 1:
+            sheets.append("\n".join(rows))
+
+    return normalize_text("\n\n".join(sheets))
+
+
+def extract_excel_text(path: Path) -> str:
+    extension = get_extension(path.name)
+    if extension == ".xlsx":
+        return extract_xlsx_text(path)
+    if extension == ".xls":
+        return extract_xls_text(path)
+    raise HTTPException(status_code=400, detail="Excel parser is only available for XLS/XLSX files.")
 
 
 def iter_docx_blocks(parent: DocxDocument | _Cell | object) -> list[Paragraph | Table]:
@@ -411,10 +513,14 @@ def extract_with_parser(path: Path, parser_id: str) -> tuple[str, str]:
         return extract_docx_text(path), parser_id
 
     if parser_id == FALLBACK_PARSER_DOC:
-        raise HTTPException(status_code=400, detail="DOC fallback parser is not implemented yet.")
+        if extension != ".doc":
+            raise HTTPException(status_code=400, detail="DOC fallback parser is only available for DOC files.")
+        return extract_doc_text(path), parser_id
 
     if parser_id == FALLBACK_PARSER_EXCEL:
-        raise HTTPException(status_code=400, detail="Excel fallback parser is not implemented yet.")
+        if extension not in {".xls", ".xlsx"}:
+            raise HTTPException(status_code=400, detail="Excel fallback parser is only available for XLS/XLSX files.")
+        return extract_excel_text(path), parser_id
 
     if parser_id == FALLBACK_PARSER_NONE:
         raise HTTPException(status_code=400, detail="No fallback parser is configured.")
@@ -490,7 +596,13 @@ def extract_reference_text(path: Path) -> str:
     if extension == ".docx":
         return extract_reference_docx_text(path)
 
-    raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported.")
+    if extension == ".doc":
+        return extract_doc_text(path)
+
+    if extension in {".xls", ".xlsx"}:
+        return extract_excel_text(path)
+
+    raise HTTPException(status_code=400, detail=get_supported_file_types_message())
 
 
 def calculate_jaccard_similarity(left_text: str, right_text: str) -> float:
@@ -1170,7 +1282,7 @@ async def upload_document(file: UploadFile = File(...)) -> dict[str, object]:
     extension = get_extension(filename)
 
     if extension not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported.")
+        raise HTTPException(status_code=400, detail=get_supported_file_types_message())
 
     content = await file.read()
 
@@ -1187,7 +1299,7 @@ def upload_default_file(payload: DefaultFileUploadRequest) -> dict[str, object]:
     source = DEFAULT_FILE_DIR / filename
 
     if get_extension(filename) not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported.")
+        raise HTTPException(status_code=400, detail=get_supported_file_types_message())
 
     if not source.is_file():
         raise HTTPException(status_code=404, detail="Default file not found.")
@@ -1205,7 +1317,7 @@ def get_parse_status() -> dict[str, object]:
     return {
         "page": "parse",
         "status": "ready",
-        "message": "Parsing API is available for uploaded PDF and DOCX files.",
+        "message": "Parsing API is available for uploaded PDF, DOC, DOCX, XLS, and XLSX files.",
         "file_count": len(files),
     }
 

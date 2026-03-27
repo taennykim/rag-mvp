@@ -4,7 +4,7 @@
 This project is a simple RAG (Retrieval-Augmented Generation) MVP for insurance documents.
 
 Users can:
-- Upload PDF or DOCX files
+- Upload PDF, DOC, DOCX, XLS, or XLSX files
 - Choose a primary parser and auxiliary parser on the upload screen
 - Search indexed chunks based on uploaded documents
 - Inspect retrieved source chunks before answer generation
@@ -14,7 +14,7 @@ Users can:
 This is an MVP focused on core functionality only.
 
 Included:
-- PDF/DOCX upload
+- PDF/DOC/DOCX/XLS/XLSX upload
 - Parser selection UI
 - Text extraction
 - Chunking
@@ -25,7 +25,6 @@ Included:
 
 Excluded:
 - OCR
-- Real Excel ingestion
 - Hybrid search
 - Full answer generation
 - Production-grade embedding model integration
@@ -40,7 +39,7 @@ Excluded:
 ## Tech Stack
 - Frontend: Next.js 15 + React 19 + TypeScript + Tailwind CSS
 - Backend: FastAPI + Uvicorn
-- Parsing: PyMuPDF, python-docx, Docling-ready parser routing
+- Parsing: Docling, PyMuPDF, python-docx, antiword, openpyxl, xlrd
 - Vector store: Chroma
 - Evaluation: RAGAS
 
@@ -61,11 +60,14 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Frontend runtime page responds successfully on the RAG server
 - `localhost:3001` CORS is allowed for the upload UI flow
 - Upload page UI cleanup is complete
-- Parsing API for uploaded PDF/DOCX files is implemented
+- Parsing API for uploaded PDF/DOC/DOCX/XLS/XLSX files is implemented
 - Parsing text extraction validation has been verified on the RAG server
 - DOCX parser now includes table and header/footer text extraction
 - Upload page includes in-browser parse test, full extracted text view, and separate quality-check action
 - Upload page includes `Primary parser` / `Auxiliary parser` selection UI
+- Docling is installed on the RAG server and works as the primary parser
+- DOC fallback parser uses `antiword`
+- Excel fallback parser uses `openpyxl` / `xlrd`
 - Chunking API and chunk metadata output are implemented
 - Upload now triggers indexing automatically after the file is stored
 - Indexing API stores chunk embeddings in Chroma
@@ -78,7 +80,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Retrieval pass/fail has been checked on representative questions
 - Pricing-method PDF retrieval remains weak in all-file search and is the main reason to replace the current embedding
 - Backend exposes `GET /parse/parsers` and supports `Docling -> auxiliary parser fallback`
-- Current environment does not have Docling installed yet, so PDF/DOCX still run through fallback parsers
+- Parser catalog now marks `Docling`, `DOC parser`, and `Excel parser` as available on the RAG server
 - Frontend is currently operated more stably with `build + start` than `next dev`
 - Answer generation and evaluation execution are still pending
 
@@ -90,16 +92,16 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 ## Resume Tomorrow
 Start from these files first:
 - `docs/status.md`
-- `docs/daily/2026-03-26.md`
+- `docs/daily/2026-03-27.md`
 - `docs/retrieval-test-set.md`
 - `TODO.md`
 
 Recommended restart order:
 1. Review `docs/status.md` for the latest completed scope and blockers.
-2. Review `docs/daily/2026-03-26.md` for today's detailed work log.
+2. Review `docs/daily/2026-03-27.md` for today's detailed work log.
 3. Review `docs/retrieval-test-set.md` for retrieval validation criteria and fail cases.
 4. Review `TODO.md` for remaining MVP tasks after retrieval stabilization.
-5. Continue with Docling installation review or actual embedding model integration.
+5. Continue with parser quality comparison or actual embedding model integration.
 
 ## Daily Start Checklist
 1. Review `AGENTS.md` for working rules and project operating constraints.
