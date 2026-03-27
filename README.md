@@ -75,6 +75,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Chat page can query retrieved chunks and inspect sources
 - Upload list supports file-level delete of upload + index
 - Upload list shows per-file indexing status and chunk count
+- Upload list now refreshes immediately even when parse/chunk/index fails after upload
 - `Default file list` starts from `Select a file`
 - Retrieval test question set is documented in `docs/retrieval-test-set.md`
 - Retrieval pass/fail has been checked on representative questions
@@ -82,12 +83,25 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Backend exposes `GET /parse/parsers` and supports `Docling -> auxiliary parser fallback`
 - Parser catalog now marks `Docling`, `DOC parser`, and `Excel parser` as available on the RAG server
 - Frontend is currently operated more stably with `build + start` than `next dev`
+- Backend now writes request and parser system logs on the RAG server
 - Answer generation and evaluation execution are still pending
 
 ## Screen Test Rule
 - 화면 테스트와 브라우저 확인은 RAG 서버 기준으로만 수행한다.
 - 현재 서버에서는 CLI 작업과 코드 수정만 수행한다.
 - 화면 확인 기준 주소는 RAG 서버 frontend `127.0.0.1:3000`, backend `127.0.0.1:8000`이다.
+- 현재 서버에는 소스만 두고, 실제 frontend/backend 실행은 RAG 서버에서만 유지한다.
+
+## Logs
+- Backend system log: `/home/ubuntu/rag-mvp/backend/logs/app.log`
+- Backend runtime log: `/home/ubuntu/rag-mvp/run-logs/backend.out`
+- Frontend runtime log: `/home/ubuntu/rag-mvp/run-logs/frontend.out`
+- 장애 확인은 먼저 backend system log를 보고, 이후 runtime log를 확인한다.
+
+## Upload List Notes
+- 같은 원본 파일명을 여러 번 업로드하면 `stored_name` 기준으로 별도 행이 누적된다.
+- `Parse test`를 다시 성공시키면 해당 행의 최신 parse 결과는 성공 기준으로 갱신되지만, `chunk`를 다시 실행하지 않으면 `chunk_status`는 `pending`으로 남을 수 있다.
+- parse 성공/실패 history를 같은 행에서 함께 보여주는 개선 작업을 진행했고, RAG 서버 화면 기준 최종 검증은 추가 확인이 필요하다.
 
 ## Default Files
 - Preload files in `backend/data/default-files`

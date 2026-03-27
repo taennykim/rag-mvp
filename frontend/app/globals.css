@@ -230,6 +230,16 @@ a {
   background: rgba(159, 31, 23, 0.08);
 }
 
+.error-banner {
+  margin-top: 10px;
+  border: 1px solid rgba(159, 31, 23, 0.24);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(159, 31, 23, 0.08);
+  color: #7f1d1d;
+  line-height: 1.5;
+}
+
 .upload-list {
   margin-bottom: 32px;
 }

@@ -21,6 +21,8 @@
   - `/` -> `/upload` redirect 완료
   - `/upload`에서 파일 업로드, default file 업로드, parsing test, parsing quality check 가능
   - `/upload` 목록에서 파일별 indexing 상태와 chunk 수 표시 가능
+  - upload 실패 후에도 `Uploaded file list`가 즉시 refresh되도록 수정 완료
+  - `Uploaded file list`는 최신 업로드 순으로 정렬되도록 수정 완료
   - `/upload`에서 `Primary parser`, `Auxiliary parser` 선택 가능
   - 업로드 대상 확장자를 `PDF`, `DOC`, `DOCX`, `XLS`, `XLSX`까지 확장 완료
   - `/chat`에서 index된 파일 대상 retrieval 테스트 가능
@@ -40,6 +42,7 @@
   - DOCX table, header/footer 추출 포함
   - parser selection 구조 추가 완료
   - 기본값은 `Docling + Extension default parser`
+  - parse 실패 요약을 metadata와 system log 기준으로 추적할 수 있도록 확장 중
 - chunking/indexing/retrieval:
   - chunk target length `800`, overlap `120`
   - chunk metadata 저장 구현 완료
@@ -59,6 +62,10 @@
   - RAG 서버 `127.0.0.1:3000`
 - backend 실행 기준:
   - RAG 서버 `127.0.0.1:8000`
+- 로그 확인 기준:
+  - backend system log: RAG 서버 `/home/ubuntu/rag-mvp/backend/logs/app.log`
+  - backend runtime log: RAG 서버 `/home/ubuntu/rag-mvp/run-logs/backend.out`
+  - frontend runtime log: RAG 서버 `/home/ubuntu/rag-mvp/run-logs/frontend.out`
 - 화면 테스트 기준:
   - 브라우저 확인과 UI 테스트는 RAG 서버에서만 수행한다.
   - 현재 서버에서는 CLI 작업만 수행하고 화면 테스트는 하지 않는다.
@@ -66,6 +73,8 @@
   - `127.0.0.1:3001`은 현재 작업 기준 프런트가 아니다.
   - 브라우저에서 화면 확인 시 반드시 `3000` 포트를 기준으로 본다.
   - 현재 frontend는 `next dev`보다 `build + start` 방식이 더 안정적이다.
+  - 현재 서버에는 소스만 유지하고 실제 실행과 화면 확인은 RAG 서버에서만 한다.
+  - 장애 확인 시 먼저 backend system log를 보고, 그다음 frontend/backend runtime log를 확인한다.
 
 ## 5. retrieval 현재 상태
 - 대표 질문 기준으로:
@@ -86,9 +95,12 @@
   - `DOCX`와 `XLSX`는 `Docling` 직접 파싱 검증을 끝냈다.
   - `DOC`는 `Docling` 대상이 아니므로 `antiword` fallback parser가 사용된다.
   - `PDF`는 `Docling` 사용 가능 상태지만 문서별 속도/품질 비교는 추가 검증이 필요하다.
+  - 같은 파일을 여러 번 업로드하면 `stored_name` 기준으로 별도 행이 누적된다.
+  - `Parse test`를 다시 성공시키면 해당 `stored_name`의 최신 parse 결과는 성공 기준으로 덮어써지고, `chunk`를 다시 실행하지 않으면 `chunk_status`는 `pending`으로 남을 수 있다.
 - 남은 점검:
   - `PDF`에서 `Docling`과 `PyMuPDF` 결과 비교
   - parser 변경이 chunking/retrieval에 주는 영향 비교
+  - `Uploaded file list`에서 latest parse 상태와 success/failure history를 함께 보여주는 최종 UI 검증
 
 ## 7. 남은 핵심 작업
 - 1차 우선순위:
@@ -110,6 +122,10 @@
 - Excel 샘플은 `openpyxl` 경고가 한 번 출력됐지만 파싱 결과는 정상적으로 생성됐다.
 - GitHub push는 SSH 443 경로로 전환해 정상 동작하는 상태다.
 - 현재 기준 실제 작업본은 RAG 서버와 GitHub에 반영되어 있다.
+- backend는 request 시작/종료, upload/parse/chunk/index 시작/완료, parser attempt/failure reason을 system log에 남긴다.
+- upload 화면 실패 시 UI에 실패 단계와 backend system log 경로를 함께 표시한다.
+- 중복 파일명 문서가 여러 건 있을 때 최신 항목과 과거 항목이 섞여 보여 사용자 혼동이 발생할 수 있다.
+- parse 성공/실패 history를 한 행에서 함께 보여주기 위한 backend/frontend 수정은 진행했지만, RAG 서버 화면 기준 최종 검증은 다음 세션에서 다시 확인이 필요하다.
 
 ## 9. 다음 세션 시작 순서
 1. `docs/daily/2026-03-27.md` 확인

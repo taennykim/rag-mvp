@@ -8,12 +8,17 @@ type UploadedFile = {
   size_bytes: number;
   uploaded_at: string;
   upload_status: "completed";
-  parse_status: "pending" | "completed";
+  parse_status: "pending" | "completed" | "failed";
   chunk_status: "pending" | "completed";
   index_status: "pending" | "completed";
   parse_text_length?: number | null;
   parse_parser_used?: string | null;
   parse_fallback_used?: boolean | null;
+  parse_error_detail?: string | null;
+  last_successful_parse_parser_used?: string | null;
+  last_successful_parse_fallback_used?: boolean | null;
+  last_failed_parse_parser_used?: string | null;
+  last_failed_parse_fallback_used?: boolean | null;
   chunk_count?: number | null;
   indexed_chunk_count?: number | null;
 };
@@ -106,6 +111,7 @@ type UploadStage = {
 };
 
 const API_BASE_URL = "/api";
+const BACKEND_LOG_PATH = "/home/ubuntu/rag-mvp/backend/logs/app.log";
 
 function createUploadStages(): UploadStage[] {
   return [
@@ -130,6 +136,7 @@ export default function UploadPage() {
   const [activeQualityFile, setActiveQualityFile] = useState("");
   const [activeDeleteFile, setActiveDeleteFile] = useState("");
   const [message, setMessage] = useState("Select a PDF, DOC, DOCX, XLS, or XLSX file to upload.");
+  const [errorDetail, setErrorDetail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [uploadStages, setUploadStages] = useState<UploadStage[]>(createUploadStages);
 
@@ -142,6 +149,7 @@ export default function UploadPage() {
 
       const data = (await response.json()) as { files: UploadedFile[] };
       setFiles(data.files);
+      setErrorDetail("");
     } catch (error) {
       setFiles([]);
       setMessage(error instanceof Error ? error.message : "Failed to load uploaded files.");
@@ -158,6 +166,7 @@ export default function UploadPage() {
       const data = (await response.json()) as { files: DefaultFile[] };
       setDefaultFiles(data.files);
       setSelectedDefaultFile("");
+      setErrorDetail("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to load default files.");
     }
@@ -174,6 +183,7 @@ export default function UploadPage() {
       setParserCatalog(data);
       setPrimaryParser(data.default_primary_parser);
       setFallbackParser(data.default_fallback_parser);
+      setErrorDetail("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to load parser catalog.");
     }
@@ -211,6 +221,23 @@ export default function UploadPage() {
 
   function formatSimilarity(value: number) {
     return value.toFixed(3);
+  }
+
+  function formatParseStatus(file: UploadedFile) {
+    const base = `Parse: ${file.parse_status}`;
+    if (!file.parse_parser_used) {
+      return base;
+    }
+
+    return `${base} (${file.parse_parser_used}${file.parse_fallback_used ? ", fallback" : ""})`;
+  }
+
+  function formatParserHistory(label: string, parserUsed?: string | null, fallbackUsed?: boolean | null) {
+    if (!parserUsed) {
+      return null;
+    }
+
+    return `${label}: ${parserUsed}${fallbackUsed ? ", fallback" : ""}`;
   }
 
   function updateUploadStage(stageId: UploadStageId, status: UploadStage["status"], detail?: string) {
@@ -309,6 +336,7 @@ export default function UploadPage() {
 
     setIsLoading(true);
     setUploadStages(createUploadStages());
+    setErrorDetail("");
     let currentStage: UploadStageId = "upload";
 
     try {
@@ -371,8 +399,11 @@ export default function UploadPage() {
         : "";
       setMessage(`Uploaded and indexed ${indexResult.original_name}. ${indexResult.indexed_count} chunk(s) stored.${parserNote}`);
     } catch (error) {
-      updateUploadStage(currentStage, "failed", error instanceof Error ? error.message : "Failed");
-      setMessage(error instanceof Error ? error.message : "Upload or indexing failed.");
+      const detail = error instanceof Error ? error.message : "Upload or indexing failed.";
+      updateUploadStage(currentStage, "failed", detail);
+      setMessage(detail);
+      setErrorDetail(`${currentStage.toUpperCase()} failed. ${detail} Check backend log: ${BACKEND_LOG_PATH}`);
+      await loadFiles();
     } finally {
       setIsLoading(false);
     }
@@ -395,6 +426,7 @@ export default function UploadPage() {
       setFiles([]);
       setParseResult(null);
       setParseQualityResult(null);
+      setErrorDetail("");
       setMessage(`Cleared ${data.removed_count ?? 0} uploaded file(s).`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to clear uploaded files.");
@@ -405,6 +437,7 @@ export default function UploadPage() {
 
   async function handleParseTest(file: UploadedFile) {
     setActiveParseFile(file.stored_name);
+    setErrorDetail("");
     setMessage(`Parsing ${file.original_name}...`);
 
     try {
@@ -427,11 +460,15 @@ export default function UploadPage() {
 
       setParseResult(data);
       setParseQualityResult(null);
+      setErrorDetail("");
+      await loadFiles();
       setMessage(`Parsed ${data.original_name}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Parsing failed.");
+      const detail = error instanceof Error ? error.message : "Parsing failed.";
+      setMessage(detail);
       setParseResult(null);
       setParseQualityResult(null);
+      setErrorDetail(`PARSE failed. ${detail} Check backend log: ${BACKEND_LOG_PATH}`);
     } finally {
       setActiveParseFile("");
     }
@@ -463,6 +500,7 @@ export default function UploadPage() {
       }
 
       await loadFiles();
+      setErrorDetail("");
       setMessage(
         `Reset ${data.original_name ?? file.original_name}. Removed ${data.removed_index_count ?? 0} indexed chunk(s).`,
       );
@@ -480,6 +518,7 @@ export default function UploadPage() {
     }
 
     setActiveQualityFile(parseResult.stored_name);
+    setErrorDetail("");
     setMessage(`Calculating parsing quality for ${parseResult.original_name}...`);
 
     try {
@@ -501,10 +540,13 @@ export default function UploadPage() {
       }
 
       setParseQualityResult(data);
+      setErrorDetail("");
       setMessage(`Calculated parsing quality for ${data.original_name}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Quality check failed.");
+      const detail = error instanceof Error ? error.message : "Quality check failed.";
+      setMessage(detail);
       setParseQualityResult(null);
+      setErrorDetail(`QUALITY CHECK failed. ${detail} Check backend log: ${BACKEND_LOG_PATH}`);
     } finally {
       setActiveQualityFile("");
     }
@@ -602,6 +644,7 @@ export default function UploadPage() {
           </button>
         </form>
         <p>{message}</p>
+        {errorDetail ? <p className="error-banner">{errorDetail}</p> : null}
         <div className="pipeline-status" aria-live="polite">
           {uploadStages.map((stage) => (
             <div key={stage.id} className={`pipeline-stage ${stage.status}`}>
@@ -633,7 +676,7 @@ export default function UploadPage() {
                   <div className="file-status-row">
                     <span className="file-status-chip indexed">Upload</span>
                     <span className={`file-status-chip ${file.parse_status === "completed" ? "indexed" : "pending"}`}>
-                      Parse: {file.parse_status}
+                      {formatParseStatus(file)}
                     </span>
                     <span className={`file-status-chip ${file.chunk_status === "completed" ? "indexed" : "pending"}`}>
                       Chunk: {file.chunk_status}
@@ -642,17 +685,42 @@ export default function UploadPage() {
                       Embedding/Indexing: {file.index_status}
                     </span>
                     {file.chunk_count ? <span className="file-status-chip">{file.chunk_count} chunk(s)</span> : null}
-                    {file.parse_parser_used ? (
+                    {formatParserHistory(
+                      "Last success",
+                      file.last_successful_parse_parser_used,
+                      file.last_successful_parse_fallback_used,
+                    ) ? (
                       <span className="file-status-chip">
-                        Parser: {file.parse_parser_used}
-                        {file.parse_fallback_used ? " (fallback)" : ""}
+                        {formatParserHistory(
+                          "Last success",
+                          file.last_successful_parse_parser_used,
+                          file.last_successful_parse_fallback_used,
+                        )}
+                      </span>
+                    ) : null}
+                    {formatParserHistory(
+                      "Last failure",
+                      file.last_failed_parse_parser_used,
+                      file.last_failed_parse_fallback_used,
+                    ) ? (
+                      <span className="file-status-chip pending">
+                        {formatParserHistory(
+                          "Last failure",
+                          file.last_failed_parse_parser_used,
+                          file.last_failed_parse_fallback_used,
+                        )}
                       </span>
                     ) : null}
                   </div>
                   <div className="file-actions">
                     <button
                       className="upload-button secondary"
-                      disabled={isLoading || activeParseFile === file.stored_name || activeDeleteFile === file.stored_name}
+                      disabled={
+                        isLoading ||
+                        file.parse_status === "failed" ||
+                        activeParseFile === file.stored_name ||
+                        activeDeleteFile === file.stored_name
+                      }
                       onClick={() => void handleParseTest(file)}
                       type="button"
                     >

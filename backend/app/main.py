@@ -2,10 +2,13 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from functools import lru_cache
+import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import time
 from uuid import uuid4
 import xml.etree.ElementTree as ET
 from zipfile import ZipFile
@@ -17,8 +20,10 @@ from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
 from docx.table import Table, _Cell
 from docx.text.paragraph import Paragraph
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 
@@ -38,7 +43,57 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    started_at = time.perf_counter()
+    logger.info("request_started %s", summarize_request(request))
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+        logger.exception("request_failed %s duration_ms=%s", summarize_request(request), duration_ms)
+        raise
+
+    duration_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "request_completed %s status_code=%s duration_ms=%s",
+        summarize_request(request),
+        response.status_code,
+        duration_ms,
+    )
+    response.headers["X-Backend-Log-Path"] = str(APP_LOG_PATH)
+    return response
+
+
+@app.exception_handler(HTTPException)
+async def handle_http_exception(request: Request, exc: HTTPException):
+    logger.warning(
+        "http_error %s status_code=%s detail=%s",
+        summarize_request(request),
+        exc.status_code,
+        exc.detail,
+    )
+    response = await http_exception_handler(request, exc)
+    response.headers["X-Backend-Log-Path"] = str(APP_LOG_PATH)
+    return response
+
+
+@app.exception_handler(Exception)
+async def handle_unexpected_exception(request: Request, exc: Exception):
+    logger.exception("unexpected_error %s", summarize_request(request))
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Unexpected server error.",
+            "log_path": str(APP_LOG_PATH),
+        },
+        headers={"X-Backend-Log-Path": str(APP_LOG_PATH)},
+    )
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+LOG_DIR = BASE_DIR / "logs"
+APP_LOG_PATH = LOG_DIR / "app.log"
 UPLOAD_DIR = BASE_DIR / "data" / "uploads"
 DEFAULT_FILE_DIR = BASE_DIR / "data" / "default-files"
 PARSE_METADATA_DIR = BASE_DIR / "data" / "parse-metadata"
@@ -65,6 +120,30 @@ FALLBACK_PARSER_DOC = "doc-parser"
 FALLBACK_PARSER_EXCEL = "excel-parser"
 
 
+def configure_logging() -> logging.Logger:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    logger = logging.getLogger("rag-mvp")
+    if logger.handlers:
+        return logger
+
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+
+    file_handler = RotatingFileHandler(APP_LOG_PATH, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")
+    file_handler.setFormatter(formatter)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
+    logger.propagate = False
+    return logger
+
+
+logger = configure_logging()
+
+
 def ensure_upload_dir() -> None:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -83,6 +162,57 @@ def ensure_chunk_metadata_dir() -> None:
 
 def ensure_chroma_dir() -> None:
     CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def summarize_request(request: Request) -> str:
+    return f"{request.method} {request.url.path}"
+
+
+def summarize_parser_selection(primary_parser: str, fallback_parser: str) -> str:
+    return f"primary={primary_parser}, fallback={fallback_parser}"
+
+
+def get_parse_history_from_logs() -> dict[str, dict[str, object]]:
+    history: dict[str, dict[str, object]] = {}
+    open_attempts: list[dict[str, str]] = []
+    log_path = APP_LOG_PATH
+    if not log_path.is_file():
+        return history
+
+    started_pattern = re.compile(r"parse_started stored_name=(\S+) .* primary=(\S+), fallback=(\S+)")
+    completed_pattern = re.compile(
+        r"parse_completed stored_name=(\S+) parser_used=(\S+) fallback_used=(True|False)"
+    )
+
+    for line in log_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        started_match = started_pattern.search(line)
+        if started_match:
+            stored_name, primary_parser, fallback_parser = started_match.groups()
+            open_attempts.append(
+                {
+                    "stored_name": stored_name,
+                    "primary_parser": primary_parser,
+                    "fallback_parser": fallback_parser,
+                }
+            )
+            continue
+
+        completed_match = completed_pattern.search(line)
+        if completed_match:
+            stored_name, parser_used, fallback_used = completed_match.groups()
+            entry = history.setdefault(stored_name, {})
+            entry["last_successful_parser_used"] = parser_used
+            entry["last_successful_fallback_used"] = fallback_used == "True"
+            open_attempts = [attempt for attempt in open_attempts if attempt["stored_name"] != stored_name]
+            continue
+
+        if "request_completed POST /parse status_code=400" in line and open_attempts:
+            attempt = open_attempts.pop(0)
+            entry = history.setdefault(attempt["stored_name"], {})
+            entry["last_failed_parser_used"] = f"{attempt['primary_parser']} -> {attempt['fallback_parser']}"
+            entry["last_failed_fallback_used"] = attempt["fallback_parser"] != FALLBACK_PARSER_NONE
+
+    return history
 
 
 def get_extension(filename: str) -> str:
@@ -301,29 +431,52 @@ def read_json_file(path: Path) -> dict[str, object] | None:
 def write_parse_summary(
     path: Path,
     *,
+    status: str,
     parser_used: str,
     fallback_used: bool,
     text_length: int,
     file_type: str,
+    error_detail: str | None = None,
 ) -> Path:
     summary_path = get_parse_summary_path(path)
     summary = {
         "stored_name": path.name,
         "original_name": path.name.split("__", 1)[1] if "__" in path.name else path.name,
+        "status": status,
         "file_type": file_type,
         "parser_used": parser_used,
         "fallback_used": fallback_used,
         "text_length": text_length,
+        "error_detail": error_detail,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     return summary_path
 
 
+def write_parse_failure_summary(
+    path: Path,
+    *,
+    file_type: str,
+    parser_used: str,
+    fallback_used: bool,
+    error_detail: str,
+) -> Path:
+    return write_parse_summary(
+        path,
+        status="failed",
+        parser_used=parser_used,
+        fallback_used=fallback_used,
+        text_length=0,
+        file_type=file_type,
+        error_detail=error_detail,
+    )
+
+
 def list_uploaded_files() -> list[dict[str, object]]:
     ensure_upload_dir()
     files: list[dict[str, object]] = []
-    for path in sorted(UPLOAD_DIR.iterdir(), key=lambda item: item.name):
+    for path in sorted(UPLOAD_DIR.iterdir(), key=lambda item: item.stat().st_mtime, reverse=True):
         if not path.is_file():
             continue
         files.append(build_file_metadata(path))
@@ -613,9 +766,12 @@ def extract_text_from_file(
             continue
         seen.add(parser_id)
         try:
+            logger.info("parser_attempt stored_name=%s parser=%s", path.name, parser_id)
             text, parser_used = extract_with_parser(path, parser_id)
+            logger.info("parser_success stored_name=%s parser=%s", path.name, parser_used)
             return text, parser_used, parser_used != primary_parser
         except (HTTPException, ModuleNotFoundError, RuntimeError, ValueError) as exc:
+            logger.warning("parser_failed stored_name=%s parser=%s reason=%s", path.name, parser_id, str(exc))
             attempts.append(f"{get_parser_label(parser_id)}: {str(exc)}")
             continue
 
@@ -738,6 +894,7 @@ def build_parsing_result(
 
     write_parse_summary(
         path,
+        status="completed",
         parser_used=parser_used,
         fallback_used=fallback_used,
         text_length=len(text),
@@ -1315,6 +1472,7 @@ def list_indexed_files() -> list[dict[str, object]]:
 
 def list_pipeline_files() -> list[dict[str, object]]:
     uploaded_files = list_uploaded_files()
+    parse_history = get_parse_history_from_logs()
     parsed_files = {
         str(item.get("stored_name")): item
         for item in list_parsed_files()
@@ -1334,6 +1492,7 @@ def list_pipeline_files() -> list[dict[str, object]]:
     pipeline_files: list[dict[str, object]] = []
     for uploaded in uploaded_files:
         stored_name = str(uploaded["stored_name"])
+        history = parse_history.get(stored_name, {})
         parsed = parsed_files.get(stored_name)
         chunked = chunked_files.get(stored_name)
         indexed = indexed_files.get(stored_name)
@@ -1342,12 +1501,39 @@ def list_pipeline_files() -> list[dict[str, object]]:
             {
                 **uploaded,
                 "upload_status": "completed",
-                "parse_status": "completed" if parsed or chunked or indexed else "pending",
+                "parse_status": (
+                    "completed"
+                    if chunked or indexed or (parsed and parsed.get("status") != "failed")
+                    else "failed"
+                    if parsed and parsed.get("status") == "failed"
+                    else "pending"
+                ),
                 "chunk_status": "completed" if chunked else "pending",
                 "index_status": "completed" if indexed else "pending",
                 "parse_text_length": parsed.get("text_length") if parsed else None,
-                "parse_parser_used": parsed.get("parser_used") if parsed else None,
+                "parse_parser_used": parsed.get("parser_used") if parsed and parsed.get("parser_used") else None,
                 "parse_fallback_used": parsed.get("fallback_used") if parsed else None,
+                "parse_error_detail": parsed.get("error_detail") if parsed else None,
+                "last_successful_parse_parser_used": (
+                    parsed.get("parser_used")
+                    if parsed and parsed.get("status") == "completed" and parsed.get("parser_used")
+                    else history.get("last_successful_parser_used")
+                ),
+                "last_successful_parse_fallback_used": (
+                    parsed.get("fallback_used")
+                    if parsed and parsed.get("status") == "completed"
+                    else history.get("last_successful_fallback_used")
+                ),
+                "last_failed_parse_parser_used": (
+                    parsed.get("parser_used")
+                    if parsed and parsed.get("status") == "failed" and parsed.get("parser_used")
+                    else history.get("last_failed_parser_used")
+                ),
+                "last_failed_parse_fallback_used": (
+                    parsed.get("fallback_used")
+                    if parsed and parsed.get("status") == "failed"
+                    else history.get("last_failed_fallback_used")
+                ),
                 "chunk_count": chunked.get("chunk_count") if chunked else None,
                 "indexed_chunk_count": indexed.get("chunk_count") if indexed else None,
             }
@@ -1413,6 +1599,7 @@ def get_default_files() -> dict[str, object]:
 async def upload_document(file: UploadFile = File(...)) -> dict[str, object]:
     filename = file.filename or ""
     extension = get_extension(filename)
+    logger.info("upload_started filename=%s extension=%s", filename, extension)
 
     if extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=get_supported_file_types_message())
@@ -1422,11 +1609,19 @@ async def upload_document(file: UploadFile = File(...)) -> dict[str, object]:
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    return save_content_to_uploads(Path(filename).name, content, file.content_type)
+    saved = save_content_to_uploads(Path(filename).name, content, file.content_type)
+    logger.info(
+        "upload_completed stored_name=%s original_name=%s size_bytes=%s",
+        saved["stored_name"],
+        saved["original_name"],
+        saved["size_bytes"],
+    )
+    return saved
 
 
 @app.post("/upload/default-file")
 def upload_default_file(payload: DefaultFileUploadRequest) -> dict[str, object]:
+    logger.info("default_upload_started filename=%s", payload.filename)
     ensure_default_file_dir()
     filename = Path(payload.filename).name
     source = DEFAULT_FILE_DIR / filename
@@ -1441,7 +1636,14 @@ def upload_default_file(payload: DefaultFileUploadRequest) -> dict[str, object]:
     if not content:
         raise HTTPException(status_code=400, detail="Default file is empty.")
 
-    return save_content_to_uploads(filename, content, None)
+    saved = save_content_to_uploads(filename, content, None)
+    logger.info(
+        "default_upload_completed stored_name=%s original_name=%s size_bytes=%s",
+        saved["stored_name"],
+        saved["original_name"],
+        saved["size_bytes"],
+    )
+    return saved
 
 
 @app.get("/parse")
@@ -1463,11 +1665,35 @@ def get_parse_parsers() -> dict[str, object]:
 @app.post("/parse")
 def parse_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
-    return build_parsing_result(
-        path,
-        primary_parser=payload.primary_parser,
-        fallback_parser=payload.fallback_parser,
+    logger.info(
+        "parse_started stored_name=%s original_name=%s %s",
+        payload.stored_name,
+        path.name.split("__", 1)[1] if "__" in path.name else path.name,
+        summarize_parser_selection(payload.primary_parser, payload.fallback_parser),
     )
+    try:
+        result = build_parsing_result(
+            path,
+            primary_parser=payload.primary_parser,
+            fallback_parser=payload.fallback_parser,
+        )
+    except HTTPException as exc:
+        write_parse_failure_summary(
+            path,
+            file_type=get_extension(path.name),
+            parser_used=f"{payload.primary_parser} -> {payload.fallback_parser}",
+            fallback_used=payload.fallback_parser != FALLBACK_PARSER_NONE,
+            error_detail=str(exc.detail),
+        )
+        raise
+    logger.info(
+        "parse_completed stored_name=%s parser_used=%s fallback_used=%s text_length=%s",
+        payload.stored_name,
+        result["parser_used"],
+        result["fallback_used"],
+        result["text_length"],
+    )
+    return result
 
 
 @app.get("/parse/{stored_name}")
@@ -1479,11 +1705,24 @@ def parse_uploaded_file_by_name(stored_name: str) -> dict[str, object]:
 @app.post("/parse/quality")
 def parse_uploaded_file_quality(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
-    return build_parsing_quality_result(
+    logger.info(
+        "parse_quality_started stored_name=%s %s",
+        payload.stored_name,
+        summarize_parser_selection(payload.primary_parser, payload.fallback_parser),
+    )
+    result = build_parsing_quality_result(
         path,
         primary_parser=payload.primary_parser,
         fallback_parser=payload.fallback_parser,
     )
+    logger.info(
+        "parse_quality_completed stored_name=%s parser_used=%s fallback_used=%s jaccard_similarity=%s",
+        payload.stored_name,
+        result["parser_used"],
+        result["fallback_used"],
+        result["jaccard_similarity"],
+    )
+    return result
 
 
 @app.get("/chunk")
@@ -1502,11 +1741,24 @@ def get_chunk_status() -> dict[str, object]:
 @app.post("/chunk")
 def chunk_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
-    return build_chunking_result(
+    logger.info(
+        "chunk_started stored_name=%s %s",
+        payload.stored_name,
+        summarize_parser_selection(payload.primary_parser, payload.fallback_parser),
+    )
+    result = build_chunking_result(
         path,
         primary_parser=payload.primary_parser,
         fallback_parser=payload.fallback_parser,
     )
+    logger.info(
+        "chunk_completed stored_name=%s parser_used=%s fallback_used=%s chunk_count=%s",
+        payload.stored_name,
+        result["parser_used"],
+        result["fallback_used"],
+        result["chunk_count"],
+    )
+    return result
 
 
 @app.get("/chunk/{stored_name}")
@@ -1551,11 +1803,24 @@ def delete_indexed_files() -> dict[str, object]:
 @app.post("/index")
 def index_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
-    return index_chunks(
+    logger.info(
+        "index_started stored_name=%s %s",
+        payload.stored_name,
+        summarize_parser_selection(payload.primary_parser, payload.fallback_parser),
+    )
+    result = index_chunks(
         path,
         primary_parser=payload.primary_parser,
         fallback_parser=payload.fallback_parser,
     )
+    logger.info(
+        "index_completed stored_name=%s parser_used=%s fallback_used=%s indexed_count=%s",
+        payload.stored_name,
+        result["parser_used"],
+        result["fallback_used"],
+        result["indexed_count"],
+    )
+    return result
 
 
 @app.get("/index/{stored_name}")
