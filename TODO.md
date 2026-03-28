@@ -76,6 +76,9 @@
 - [x] Install and verify Docling as primary parser
 - [x] Implement `.doc` auxiliary parser
 - [x] Implement Excel auxiliary parser
+- [x] Add parser availability exposure in `GET /parse/parsers`
+- [x] Verify `DOC`, `DOCX`, `XLSX` parser smoke test on the RAG server
+- [x] Add parse failure state tracking and parser/system log tracing
 - [ ] Compare `Docling` vs fallback parser quality for PDF
 - [ ] Compare parser choice impact on chunking/retrieval
 
@@ -96,6 +99,7 @@
 - [x] Store chunks and embeddings in Chroma
 - [x] Create indexing API
 - [x] Verify at least one uploaded file is searchable
+- [x] Trigger indexing automatically after upload
 - [ ] Rebuild index after real embedding model integration
 
 ---
@@ -128,6 +132,16 @@
 - [x] Add question input box
 - [ ] Show answer output
 - [x] Show retrieved chunks and sources
+
+---
+
+## Phase 9.5 Upload UX / Operations
+
+- [x] Refresh uploaded file list immediately after upload failure
+- [x] Sort uploaded file list by latest upload
+- [x] Show file-level indexing status and chunk count
+- [x] Show pipeline failure stage and backend log path in UI
+- [ ] Final UI verification for parse success/failure history in uploaded file list
 
 ---
 
@@ -175,6 +189,9 @@
 - [x] frontend 실행 확인
 - [x] backend 실행 확인
 - [x] parser 실제 구현 및 검증
+- [ ] `PDF` 기준 `Docling` vs `PyMuPDF` 비교
+- [ ] parser 영향 기반 chunk/retrieval 재검증
+- [ ] 실제 embedding 모델 교체 방식 결정
 
 ---
 

@@ -24,6 +24,7 @@
   - upload 실패 후에도 `Uploaded file list`가 즉시 refresh되도록 수정 완료
   - `Uploaded file list`는 최신 업로드 순으로 정렬되도록 수정 완료
   - `/upload`에서 `Primary parser`, `Auxiliary parser` 선택 가능
+  - upload 실패 시 실패 단계와 backend log 경로를 UI에서 확인 가능
   - 업로드 대상 확장자를 `PDF`, `DOC`, `DOCX`, `XLS`, `XLSX`까지 확장 완료
   - `/chat`에서 index된 파일 대상 retrieval 테스트 가능
 - backend:
@@ -42,7 +43,7 @@
   - DOCX table, header/footer 추출 포함
   - parser selection 구조 추가 완료
   - 기본값은 `Docling + Extension default parser`
-  - parse 실패 요약을 metadata와 system log 기준으로 추적할 수 있도록 확장 중
+  - parse 실패 상태와 parser 시도/실패 이유를 metadata 및 system log 기준으로 추적 가능
 - chunking/indexing/retrieval:
   - chunk target length `800`, overlap `120`
   - chunk metadata 저장 구현 완료
@@ -56,6 +57,7 @@
   - sample `DOC` 파일은 `doc-parser`로 파싱 검증 완료
   - sample `XLSX` 파일은 `docling` 및 `excel-parser` 둘 다 파싱 검증 완료
   - sample `DOCX` 파일은 `docling` 직접 파싱 검증 완료
+  - 2026-03-28 기준 RAG 서버 frontend/backend 재기동 및 `3000/8000` 응답 재확인 완료
 
 ## 4. 현재 동작 기준
 - frontend 실행 기준:
@@ -107,6 +109,7 @@
   - parser별 품질 비교 기준 정리
   - `Docling` vs fallback parser 비교 결과를 문서화
   - parser 변경 후 chunk/retrieval 재검증
+  - `Uploaded file list` parse success/failure history UI 최종 화면 검증
 - 2차 우선순위:
   - 실제 embedding 모델 교체 방식 결정 및 적용
   - 기존 Chroma 데이터 재인덱싱 절차 정리

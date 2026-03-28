@@ -68,6 +68,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Docling is installed on the RAG server and works as the primary parser
 - DOC fallback parser uses `antiword`
 - Excel fallback parser uses `openpyxl` / `xlrd`
+- Parser smoke tests for `DOC`, `DOCX`, and `XLSX` were verified on the RAG server
 - Chunking API and chunk metadata output are implemented
 - Upload now triggers indexing automatically after the file is stored
 - Indexing API stores chunk embeddings in Chroma
@@ -76,6 +77,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Upload list supports file-level delete of upload + index
 - Upload list shows per-file indexing status and chunk count
 - Upload list now refreshes immediately even when parse/chunk/index fails after upload
+- Upload failure UI now shows the failed pipeline stage and backend log path
 - `Default file list` starts from `Select a file`
 - Retrieval test question set is documented in `docs/retrieval-test-set.md`
 - Retrieval pass/fail has been checked on representative questions
@@ -84,6 +86,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Parser catalog now marks `Docling`, `DOC parser`, and `Excel parser` as available on the RAG server
 - Frontend is currently operated more stably with `build + start` than `next dev`
 - Backend now writes request and parser system logs on the RAG server
+- Parse success/failure history UI was extended, but final screen validation on the RAG server is still pending
 - Answer generation and evaluation execution are still pending
 
 ## Screen Test Rule
@@ -120,7 +123,7 @@ Recommended restart order:
 2. Review `docs/daily/2026-03-27.md` for today's detailed work log.
 3. Review `docs/retrieval-test-set.md` for retrieval validation criteria and fail cases.
 4. Review `TODO.md` for remaining MVP tasks after retrieval stabilization.
-5. Continue with parser quality comparison or actual embedding model integration.
+5. Continue with `PDF` parser quality comparison, parser-impact retrieval validation, or actual embedding model integration.
 
 ## Daily Start Checklist
 1. Review `AGENTS.md` for working rules and project operating constraints.
