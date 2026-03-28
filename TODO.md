@@ -100,7 +100,7 @@
 - [x] Create indexing API
 - [x] Verify at least one uploaded file is searchable
 - [x] Trigger indexing automatically after upload
-- [ ] Rebuild index after real embedding model integration
+- [x] Rebuild index after real embedding model integration
 
 ---
 
@@ -112,7 +112,7 @@
 - [x] Include source metadata in response
 - [x] Add retrieval test question set
 - [x] Add initial lexical rerank experiment
-- [ ] Replace hash embedding with real embedding model
+- [x] Replace hash embedding with real embedding model
 - [ ] Re-run retrieval question set after embedding replacement
 
 ---
@@ -183,15 +183,17 @@
 ## Next Session Start Point
 
 - [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-27.md`, `TODO.md`에 반영
-- [ ] 다음 시작 시 `docs/daily/2026-03-27.md`와 `docs/status.md`부터 확인
+- [ ] 다음 시작 시 `docs/daily/2026-03-28.md`와 `docs/status.md`부터 확인
 - [x] frontend 의존성 설치
 - [x] backend 의존성 설치
 - [x] frontend 실행 확인
 - [x] backend 실행 확인
 - [x] parser 실제 구현 및 검증
+- [ ] retrieval 질문 세트 기준 Azure embedding 재검증
+- [ ] embedding 영향과 parser 영향 분리 기준 정리
 - [ ] `PDF` 기준 `Docling` vs `PyMuPDF` 비교
 - [ ] parser 영향 기반 chunk/retrieval 재검증
-- [ ] 실제 embedding 모델 교체 방식 결정
+- [x] 실제 embedding 모델 교체 방식 결정
 
 ---
 

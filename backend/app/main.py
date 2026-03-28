@@ -4,11 +4,14 @@ import json
 from functools import lru_cache
 import logging
 from logging.handlers import RotatingFileHandler
+import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
 import time
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 from uuid import uuid4
 import xml.etree.ElementTree as ET
 from zipfile import ZipFile
@@ -107,7 +110,6 @@ CHUNK_TARGET_LENGTH = 800
 CHUNK_OVERLAP_LENGTH = 120
 CHUNK_PREVIEW_LENGTH = 160
 EMBEDDING_DIMENSION = 256
-CHROMA_COLLECTION_NAME = "insurance_document_chunks"
 RETRIEVAL_CANDIDATE_MULTIPLIER = 5
 RETRIEVAL_MAX_CANDIDATES = 50
 PRIMARY_PARSER_DOCLING = "docling"
@@ -118,6 +120,31 @@ FALLBACK_PARSER_PYMUPDF = "pymupdf"
 FALLBACK_PARSER_PYTHON_DOCX = "python-docx"
 FALLBACK_PARSER_DOC = "doc-parser"
 FALLBACK_PARSER_EXCEL = "excel-parser"
+EMBEDDING_PROVIDER_HASH = "hash"
+EMBEDDING_PROVIDER_AZURE_OPENAI = "azure_openai"
+DEFAULT_AZURE_OPENAI_EMBEDDING_DEPLOYMENT = "text-embedding-3-small"
+DEFAULT_AZURE_OPENAI_API_VERSION = "2024-02-01"
+AZURE_OPENAI_EMBEDDING_BATCH_SIZE = 32
+RUNTIME_ENV_FILE = BASE_DIR / ".env.runtime"
+
+
+def load_runtime_env_file() -> None:
+    if not RUNTIME_ENV_FILE.is_file():
+        return
+
+    for raw_line in RUNTIME_ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+load_runtime_env_file()
 
 
 def configure_logging() -> logging.Logger:
@@ -1178,11 +1205,18 @@ class RetrieveRequest(BaseModel):
     stored_name: str | None = None
 
 
+class RebuildIndexRequest(BaseModel):
+    primary_parser: str = PRIMARY_PARSER_DOCLING
+    fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT
+    chunk_target_length: int | None = None
+    chunk_overlap_length: int | None = None
+
+
 def hash_token(token: str) -> int:
     return int.from_bytes(hashlib.sha256(token.encode("utf-8")).digest()[:8], "big")
 
 
-def build_embedding(text: str, dimension: int = EMBEDDING_DIMENSION) -> list[float]:
+def build_hash_embedding(text: str, dimension: int = EMBEDDING_DIMENSION) -> list[float]:
     vector = [0.0] * dimension
     tokens = tokenize_text(text)
 
@@ -1200,6 +1234,119 @@ def build_embedding(text: str, dimension: int = EMBEDDING_DIMENSION) -> list[flo
         return vector
 
     return [value / norm for value in vector]
+
+
+def get_embedding_provider() -> str:
+    provider = os.getenv("EMBEDDING_PROVIDER", EMBEDDING_PROVIDER_HASH).strip().lower()
+    if provider not in {EMBEDDING_PROVIDER_HASH, EMBEDDING_PROVIDER_AZURE_OPENAI}:
+        raise HTTPException(status_code=500, detail=f"Unsupported embedding provider: {provider}")
+    return provider
+
+
+def get_embedding_model_id() -> str:
+    provider = get_embedding_provider()
+    if provider == EMBEDDING_PROVIDER_HASH:
+        return f"hash-{EMBEDDING_DIMENSION}"
+
+    deployment = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", DEFAULT_AZURE_OPENAI_EMBEDDING_DEPLOYMENT).strip()
+    if not deployment:
+        raise HTTPException(status_code=500, detail="AZURE_OPENAI_EMBEDDING_DEPLOYMENT is not configured.")
+    return deployment
+
+
+def get_embedding_collection_name() -> str:
+    provider = get_embedding_provider()
+    model_id = re.sub(r"[^a-zA-Z0-9_-]+", "-", get_embedding_model_id()).strip("-").lower()
+    return f"insurance_document_chunks__{provider}__{model_id}"
+
+
+def get_embedding_dimension() -> int:
+    provider = get_embedding_provider()
+    if provider == EMBEDDING_PROVIDER_HASH:
+        return EMBEDDING_DIMENSION
+    return 1536
+
+
+def get_embedding_config() -> dict[str, object]:
+    provider = get_embedding_provider()
+    config: dict[str, object] = {
+        "provider": provider,
+        "model": get_embedding_model_id(),
+        "collection_name": get_embedding_collection_name(),
+        "embedding_dimension": get_embedding_dimension(),
+    }
+
+    if provider == EMBEDDING_PROVIDER_AZURE_OPENAI:
+        config["api_version"] = os.getenv("AZURE_OPENAI_API_VERSION", DEFAULT_AZURE_OPENAI_API_VERSION)
+
+    return config
+
+
+def build_azure_openai_embeddings(texts: list[str]) -> list[list[float]]:
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip().rstrip("/")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY", "").strip()
+    deployment = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", DEFAULT_AZURE_OPENAI_EMBEDDING_DEPLOYMENT).strip()
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", DEFAULT_AZURE_OPENAI_API_VERSION).strip()
+
+    if not endpoint:
+        raise HTTPException(status_code=500, detail="AZURE_OPENAI_ENDPOINT is not configured.")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="AZURE_OPENAI_API_KEY is not configured.")
+    if not deployment:
+        raise HTTPException(status_code=500, detail="AZURE_OPENAI_EMBEDDING_DEPLOYMENT is not configured.")
+
+    embeddings: list[list[float]] = []
+    for start in range(0, len(texts), AZURE_OPENAI_EMBEDDING_BATCH_SIZE):
+        batch = texts[start : start + AZURE_OPENAI_EMBEDDING_BATCH_SIZE]
+        request_url = (
+            f"{endpoint}/openai/deployments/{deployment}/embeddings"
+            f"?api-version={api_version}"
+        )
+        payload = json.dumps({"input": batch}).encode("utf-8")
+        request = urllib_request.Request(
+            request_url,
+            data=payload,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "api-key": api_key,
+            },
+        )
+
+        try:
+            with urllib_request.urlopen(request, timeout=120) as response:
+                raw_body = response.read()
+        except urllib_error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="ignore")
+            raise HTTPException(status_code=502, detail=f"Azure OpenAI embedding request failed: {detail}") from exc
+        except urllib_error.URLError as exc:
+            raise HTTPException(status_code=502, detail=f"Azure OpenAI embedding request failed: {exc.reason}") from exc
+
+        try:
+            response_payload = json.loads(raw_body.decode("utf-8"))
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=502, detail="Azure OpenAI embedding response was not valid JSON.") from exc
+
+        data = response_payload.get("data")
+        if not isinstance(data, list) or len(data) != len(batch):
+            raise HTTPException(status_code=502, detail="Azure OpenAI embedding response shape was invalid.")
+
+        sorted_items = sorted(data, key=lambda item: int(item.get("index", 0)) if isinstance(item, dict) else 0)
+        for item in sorted_items:
+            if not isinstance(item, dict) or not isinstance(item.get("embedding"), list):
+                raise HTTPException(status_code=502, detail="Azure OpenAI embedding response was missing vectors.")
+            embeddings.append([float(value) for value in item["embedding"]])
+
+    return embeddings
+
+
+def build_embeddings(texts: list[str]) -> list[list[float]]:
+    provider = get_embedding_provider()
+    if provider == EMBEDDING_PROVIDER_HASH:
+        return [build_hash_embedding(text) for text in texts]
+    if provider == EMBEDDING_PROVIDER_AZURE_OPENAI:
+        return build_azure_openai_embeddings(texts)
+    raise HTTPException(status_code=500, detail=f"Unsupported embedding provider: {provider}")
 
 
 def build_chroma_metadata(
@@ -1240,7 +1387,7 @@ def get_chroma_collection():
         raise HTTPException(status_code=500, detail="chromadb is not installed in the current environment.") from exc
 
     client = chromadb.PersistentClient(path=str(CHROMA_DIR))
-    return client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
+    return client.get_or_create_collection(name=get_embedding_collection_name())
 
 
 def index_chunks(
@@ -1268,7 +1415,6 @@ def index_chunks(
     file_type = str(chunking_result["file_type"])
 
     documents: list[str] = []
-    embeddings: list[list[float]] = []
     metadatas: list[dict[str, str | int]] = []
     ids: list[str] = []
 
@@ -1278,7 +1424,6 @@ def index_chunks(
 
         text = str(chunk["text"])
         documents.append(text)
-        embeddings.append(build_embedding(text))
         metadatas.append(
             build_chroma_metadata(
                 chunk,
@@ -1289,10 +1434,13 @@ def index_chunks(
         )
         ids.append(f"{stored_name}:{int(chunk['chunk_index'])}")
 
+    embeddings = build_embeddings(documents)
     collection = get_chroma_collection()
     if ids:
         collection.delete(ids=ids)
         collection.add(ids=ids, documents=documents, embeddings=embeddings, metadatas=metadatas)
+
+    embedding_config = get_embedding_config()
 
     return {
         "status": "indexed",
@@ -1303,8 +1451,10 @@ def index_chunks(
         "chunk_target_length": chunking_result["chunk_target_length"],
         "chunk_overlap_length": chunking_result["chunk_overlap_length"],
         "indexed_count": len(ids),
-        "collection_name": CHROMA_COLLECTION_NAME,
-        "embedding_dimension": EMBEDDING_DIMENSION,
+        "collection_name": embedding_config["collection_name"],
+        "embedding_provider": embedding_config["provider"],
+        "embedding_model": embedding_config["model"],
+        "embedding_dimension": embedding_config["embedding_dimension"],
         "chroma_path": str(CHROMA_DIR),
         "primary_parser": primary_parser,
         "fallback_parser": fallback_parser,
@@ -1414,9 +1564,11 @@ def retrieve_chunks(payload: RetrieveRequest) -> dict[str, object]:
         where = {"stored_name": payload.stored_name}
 
     candidate_count = min(max(top_k * RETRIEVAL_CANDIDATE_MULTIPLIER, top_k), RETRIEVAL_MAX_CANDIDATES)
+    query_embedding = build_embeddings([query])[0]
+    embedding_config = get_embedding_config()
 
     result = collection.query(
-        query_embeddings=[build_embedding(query)],
+        query_embeddings=[query_embedding],
         n_results=candidate_count,
         where=where,
         include=["documents", "metadatas", "distances"],
@@ -1428,7 +1580,9 @@ def retrieve_chunks(payload: RetrieveRequest) -> dict[str, object]:
         "query": query,
         "top_k": top_k,
         "hit_count": len(hits),
-        "collection_name": CHROMA_COLLECTION_NAME,
+        "collection_name": embedding_config["collection_name"],
+        "embedding_provider": embedding_config["provider"],
+        "embedding_model": embedding_config["model"],
         "hits": hits,
     }
 
@@ -1515,6 +1669,48 @@ def list_indexed_files() -> list[dict[str, object]]:
     return sorted(indexed.values(), key=lambda item: str(item["original_name"]))
 
 
+def rebuild_all_indexes(
+    *,
+    primary_parser: str = PRIMARY_PARSER_DOCLING,
+    fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT,
+    chunk_target_length: int | None = None,
+    chunk_overlap_length: int | None = None,
+) -> dict[str, object]:
+    uploaded_files = list_uploaded_files()
+    removed_count = clear_indexed_chunks()
+    rebuilt: list[dict[str, object]] = []
+
+    for uploaded_file in uploaded_files:
+        path = get_uploaded_file_path(str(uploaded_file["stored_name"]))
+        rebuilt.append(
+            index_chunks(
+                path,
+                primary_parser=primary_parser,
+                fallback_parser=fallback_parser,
+                chunk_target_length=chunk_target_length,
+                chunk_overlap_length=chunk_overlap_length,
+            )
+        )
+
+    embedding_config = get_embedding_config()
+    return {
+        "status": "rebuilt",
+        "file_count": len(rebuilt),
+        "removed_count": removed_count,
+        "collection_name": embedding_config["collection_name"],
+        "embedding_provider": embedding_config["provider"],
+        "embedding_model": embedding_config["model"],
+        "files": [
+            {
+                "stored_name": item["stored_name"],
+                "original_name": item["original_name"],
+                "indexed_count": item["indexed_count"],
+            }
+            for item in rebuilt
+        ],
+    }
+
+
 def list_pipeline_files() -> list[dict[str, object]]:
     uploaded_files = list_uploaded_files()
     parse_history = get_parse_history_from_logs()
@@ -1589,7 +1785,13 @@ def list_pipeline_files() -> list[dict[str, object]]:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    embedding_config = get_embedding_config()
+    return {
+        "status": "ok",
+        "embedding_provider": str(embedding_config["provider"]),
+        "embedding_model": str(embedding_config["model"]),
+        "collection_name": str(embedding_config["collection_name"]),
+    }
 
 
 @app.get("/upload")
@@ -1825,33 +2027,42 @@ def chunk_uploaded_file_by_name(stored_name: str) -> dict[str, object]:
 @app.get("/index")
 def get_index_status() -> dict[str, object]:
     files = list_uploaded_files()
+    embedding_config = get_embedding_config()
     return {
         "page": "index",
         "status": "ready",
         "message": "Indexing API is available for chunked uploaded files.",
         "file_count": len(files),
-        "collection_name": CHROMA_COLLECTION_NAME,
-        "embedding_dimension": EMBEDDING_DIMENSION,
+        "collection_name": embedding_config["collection_name"],
+        "embedding_provider": embedding_config["provider"],
+        "embedding_model": embedding_config["model"],
+        "embedding_dimension": embedding_config["embedding_dimension"],
     }
 
 
 @app.get("/index/files")
 def get_indexed_files() -> dict[str, object]:
     files = list_indexed_files()
+    embedding_config = get_embedding_config()
     return {
         "files": files,
         "count": len(files),
-        "collection_name": CHROMA_COLLECTION_NAME,
+        "collection_name": embedding_config["collection_name"],
+        "embedding_provider": embedding_config["provider"],
+        "embedding_model": embedding_config["model"],
     }
 
 
 @app.delete("/index/files")
 def delete_indexed_files() -> dict[str, object]:
     removed_count = clear_indexed_chunks()
+    embedding_config = get_embedding_config()
     return {
         "status": "cleared",
         "removed_count": removed_count,
-        "collection_name": CHROMA_COLLECTION_NAME,
+        "collection_name": embedding_config["collection_name"],
+        "embedding_provider": embedding_config["provider"],
+        "embedding_model": embedding_config["model"],
     }
 
 
@@ -1888,6 +2099,35 @@ def index_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     return result
 
 
+@app.post("/index/rebuild")
+def rebuild_indexed_files(payload: RebuildIndexRequest) -> dict[str, object]:
+    resolved_target_length, resolved_overlap_length = normalize_chunk_settings(
+        payload.chunk_target_length,
+        payload.chunk_overlap_length,
+    )
+    logger.info(
+        "index_rebuild_started %s chunk_target_length=%s chunk_overlap_length=%s",
+        summarize_parser_selection(payload.primary_parser, payload.fallback_parser),
+        resolved_target_length,
+        resolved_overlap_length,
+    )
+    result = rebuild_all_indexes(
+        primary_parser=payload.primary_parser,
+        fallback_parser=payload.fallback_parser,
+        chunk_target_length=resolved_target_length,
+        chunk_overlap_length=resolved_overlap_length,
+    )
+    logger.info(
+        "index_rebuild_completed file_count=%s removed_count=%s collection_name=%s embedding_provider=%s embedding_model=%s",
+        result["file_count"],
+        result["removed_count"],
+        result["collection_name"],
+        result["embedding_provider"],
+        result["embedding_model"],
+    )
+    return result
+
+
 @app.get("/index/{stored_name}")
 def index_uploaded_file_by_name(stored_name: str) -> dict[str, object]:
     path = get_uploaded_file_path(stored_name)
@@ -1896,12 +2136,15 @@ def index_uploaded_file_by_name(stored_name: str) -> dict[str, object]:
 
 @app.get("/retrieve")
 def get_retrieve_status() -> dict[str, object]:
+    embedding_config = get_embedding_config()
     return {
         "page": "retrieve",
         "status": "ready",
         "message": "Retrieval API is available for indexed chunks.",
-        "collection_name": CHROMA_COLLECTION_NAME,
-        "embedding_dimension": EMBEDDING_DIMENSION,
+        "collection_name": embedding_config["collection_name"],
+        "embedding_provider": embedding_config["provider"],
+        "embedding_model": embedding_config["model"],
+        "embedding_dimension": embedding_config["embedding_dimension"],
     }
 
 

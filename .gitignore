@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 backend/.venv/
+backend/.env.runtime
 backend/logs/
 backend/data/uploads/
 backend/data/chunk-metadata/

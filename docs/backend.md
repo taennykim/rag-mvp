@@ -97,7 +97,11 @@
   - `preview`: UI나 로그에서 chunk 내용을 짧게 미리 확인한다.
 - indexing:
   - chunk -> embedding -> Chroma 저장 흐름이 구현되어 있다.
-  - 현재 embedding은 외부 API 없이 검증 가능한 hash 기반 최소 구현이다.
+  - `EMBEDDING_PROVIDER` 기준으로 embedding provider를 분기한다.
+  - 현재 운영 provider는 Azure OpenAI embedding이다.
+  - `backend/.env.runtime` 비공개 설정 파일에서 Azure OpenAI endpoint/key/deployment를 읽는다.
+  - collection은 provider/model 기준으로 분리해 hash index와 Azure index가 충돌하지 않도록 한다.
+  - `POST /index/rebuild`로 현재 업로드 파일 전체를 다시 인덱싱할 수 있다.
   - indexed 파일 목록 조회와 전체 index 초기화 API를 제공한다.
 - retrieval:
   - query embedding을 생성해 Chroma 검색을 수행한다.
@@ -117,7 +121,7 @@
 - chunking 기능 최소 구현 및 검증 완료
 - indexing 기능 구현 및 검증 완료
 - retrieval 기능 구현 및 1차 품질 점검 완료
-- 실제 embedding 모델 교체 전 단계
+- Azure OpenAI embedding 연결 및 재인덱싱 완료
 
 ## 4. 이슈 및 문제
 - parsing 결과는 아직 메모리 기준 단건 응답만 제공한다.
@@ -126,7 +130,6 @@
 - quality score는 별도 reference extractor 기준 비교이며 사람 검수 대체는 아니다.
 - chunking은 현재 문자 길이 기준의 규칙 기반 처리라 semantic boundary를 완벽히 보장하지 않는다.
 - `page_number`, `section_header`는 parsing 결과에 구조 정보가 있을 때만 채울 수 있다.
-- 현재 hash embedding은 retrieval 품질 검증용 최소 구현이라 실제 서비스 품질에는 부족하다.
 - 산출방법서 문서군은 전체 파일 대상 retrieval에서 오탐이 남아 있다.
 - lexical rerank는 보조 수단이며 embedding 품질 자체를 대체하지 못한다.
 - `Docling` 설치에는 모델 다운로드와 큰 Python 의존성이 필요하다.
@@ -137,7 +140,5 @@
 ## 5. 다음 작업
 - `Docling`과 fallback parser의 PDF 품질 비교를 진행한다.
 - parser 변경이 chunking/retrieval에 주는 영향 범위를 확인한다.
-- OpenAI 기반 실제 embedding 모델로 교체한다.
-- 재인덱싱 절차와 오류 처리 방식을 정리한다.
-- retrieval 질문 세트 기준으로 개선 여부를 다시 검증한다.
+- retrieval 질문 세트 기준으로 Azure embedding 적용 후 개선 여부를 다시 검증한다.
 - retrieval 이후 grounded answer generation으로 연결한다.

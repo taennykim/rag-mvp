@@ -48,7 +48,8 @@
   - chunk target length `800`, overlap `120`
   - chunk metadata 저장 구현 완료
   - Chroma 기반 vector index 구현 완료
-  - hash 기반 임시 embedding 구현 완료
+  - Azure OpenAI 기반 실제 embedding 연결 완료
+  - embedding provider별 collection 분리 및 전체 재인덱싱 API 추가 완료
   - retrieval candidate 확장 + lexical rerank 보정 추가 완료
 - 검증:
   - RAG 서버 backend `127.0.0.1:8000/health` 응답 확인 완료
@@ -58,6 +59,9 @@
   - sample `XLSX` 파일은 `docling` 및 `excel-parser` 둘 다 파싱 검증 완료
   - sample `DOCX` 파일은 `docling` 직접 파싱 검증 완료
   - 2026-03-28 기준 RAG 서버 frontend/backend 재기동 및 `3000/8000` 응답 재확인 완료
+  - 2026-03-28 기준 RAG 서버 backend가 `azure_openai / text-embedding-3-small`로 기동됨을 `/health`에서 확인 완료
+  - 2026-03-28 기준 RAG 서버 `POST /index/rebuild`로 Azure embedding 전체 재인덱싱 완료
+  - 2026-03-28 기준 Azure embedding collection에서 retrieval 응답 확인 완료
 
 ## 4. 현재 동작 기준
 - frontend 실행 기준:
@@ -85,8 +89,8 @@
   - 산출방법서 PDF 질문군은 전체 파일 검색에서 fail이 남아 있음
 - 판단:
   - 산출방법서는 파일 단독 검색에서는 hit 되므로 indexing 누락 문제는 아니다.
-  - 현재 병목은 `hash embedding` 한계와 전역 ranking 품질이다.
-  - lexical rerank는 일부 개선만 가능했고 근본 해결은 아니다.
+  - 기존 핵심 병목이었던 `hash embedding` 한계는 제거했다.
+  - 이제 남은 검증 포인트는 retrieval 질문 세트 기준 실제 품질 비교와 parser 영향 재확인이다.
 
 ## 6. parser 현재 상태
 - UI에서 선택 가능:
@@ -106,14 +110,13 @@
 
 ## 7. 남은 핵심 작업
 - 1차 우선순위:
-  - parser별 품질 비교 기준 정리
-  - `Docling` vs fallback parser 비교 결과를 문서화
+  - retrieval 질문 세트 기준 Azure embedding 재검증
+  - embedding 영향과 parser 영향 분리 비교
   - parser 변경 후 chunk/retrieval 재검증
   - `Uploaded file list` parse success/failure history UI 최종 화면 검증
 - 2차 우선순위:
-  - 실제 embedding 모델 교체 방식 결정 및 적용
-  - 기존 Chroma 데이터 재인덱싱 절차 정리
-  - retrieval 질문 세트 기준 재검증
+  - parser별 품질 비교 기준 정리
+  - `Docling` vs fallback parser 비교 결과를 문서화
 - 3차 우선순위:
   - answer generation 연결
   - 답변에 표시할 source / chunk reference / section_header / page_number 형식 고정
@@ -131,7 +134,7 @@
 - parse 성공/실패 history를 한 행에서 함께 보여주기 위한 backend/frontend 수정은 진행했지만, RAG 서버 화면 기준 최종 검증은 다음 세션에서 다시 확인이 필요하다.
 
 ## 9. 다음 세션 시작 순서
-1. `docs/daily/2026-03-27.md` 확인
+1. `docs/daily/2026-03-28.md` 확인
 2. `docs/status.md` 확인
-3. parser 품질 비교 범위 확정
-4. `PDF` 기준 `Docling` vs `PyMuPDF` 비교 또는 parser 영향 기반 retrieval 재검증 진행
+3. retrieval 질문 세트 기준 Azure embedding 재검증 진행
+4. embedding 영향과 parser 영향 분리 기준 정리
