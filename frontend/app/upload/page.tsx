@@ -72,6 +72,8 @@ type UploadResult = {
 type IndexResult = {
   original_name: string;
   indexed_count: number;
+  chunk_target_length?: number;
+  chunk_overlap_length?: number;
   parser_used?: string;
   fallback_used?: boolean;
   detail?: string;
@@ -81,6 +83,8 @@ type ChunkResult = {
   stored_name: string;
   original_name: string;
   chunk_count: number;
+  chunk_target_length: number;
+  chunk_overlap_length: number;
   parser_used: string;
   fallback_used: boolean;
   detail?: string;
@@ -112,6 +116,8 @@ type UploadStage = {
 
 const API_BASE_URL = "/api";
 const BACKEND_LOG_PATH = "/home/ubuntu/rag-mvp/backend/logs/app.log";
+const DEFAULT_CHUNK_TARGET_LENGTH = 800;
+const DEFAULT_CHUNK_OVERLAP_LENGTH = 120;
 
 function createUploadStages(): UploadStage[] {
   return [
@@ -130,6 +136,8 @@ export default function UploadPage() {
   const [parserCatalog, setParserCatalog] = useState<ParserCatalog | null>(null);
   const [primaryParser, setPrimaryParser] = useState("docling");
   const [fallbackParser, setFallbackParser] = useState("extension-default");
+  const [chunkTargetLength, setChunkTargetLength] = useState(String(DEFAULT_CHUNK_TARGET_LENGTH));
+  const [chunkOverlapLength, setChunkOverlapLength] = useState(String(DEFAULT_CHUNK_OVERLAP_LENGTH));
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [parseQualityResult, setParseQualityResult] = useState<ParseQualityResult | null>(null);
   const [activeParseFile, setActiveParseFile] = useState("");
@@ -223,6 +231,28 @@ export default function UploadPage() {
     return value.toFixed(3);
   }
 
+  function getChunkSettings() {
+    const parsedTargetLength = Number.parseInt(chunkTargetLength, 10);
+    const parsedOverlapLength = Number.parseInt(chunkOverlapLength, 10);
+
+    if (!Number.isFinite(parsedTargetLength) || parsedTargetLength < 100) {
+      throw new Error("target_length must be at least 100.");
+    }
+
+    if (!Number.isFinite(parsedOverlapLength) || parsedOverlapLength < 0) {
+      throw new Error("overlap must be 0 or greater.");
+    }
+
+    if (parsedOverlapLength >= parsedTargetLength) {
+      throw new Error("overlap must be smaller than target_length.");
+    }
+
+    return {
+      chunk_target_length: parsedTargetLength,
+      chunk_overlap_length: parsedOverlapLength,
+    };
+  }
+
   function formatParseStatus(file: UploadedFile) {
     const base = `Parse: ${file.parse_status}`;
     if (!file.parse_parser_used) {
@@ -268,6 +298,7 @@ export default function UploadPage() {
   }
 
   async function chunkUploadedFile(storedName: string) {
+    const chunkSettings = getChunkSettings();
     const response = await fetch(`${API_BASE_URL}/chunk`, {
       method: "POST",
       headers: {
@@ -277,6 +308,7 @@ export default function UploadPage() {
         stored_name: storedName,
         primary_parser: primaryParser,
         fallback_parser: fallbackParser,
+        ...chunkSettings,
       }),
     });
 
@@ -289,6 +321,7 @@ export default function UploadPage() {
   }
 
   async function indexUploadedFile(storedName: string) {
+    const chunkSettings = getChunkSettings();
     const response = await fetch(`${API_BASE_URL}/index`, {
       method: "POST",
       headers: {
@@ -298,6 +331,7 @@ export default function UploadPage() {
         stored_name: storedName,
         primary_parser: primaryParser,
         fallback_parser: fallbackParser,
+        ...chunkSettings,
       }),
     });
 
@@ -331,6 +365,13 @@ export default function UploadPage() {
 
     if (!selectedFile && !selectedDefaultFile) {
       setMessage("Choose a file first, or select a default file.");
+      return;
+    }
+
+    try {
+      getChunkSettings();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Invalid chunk settings.");
       return;
     }
 
@@ -377,16 +418,24 @@ export default function UploadPage() {
       );
 
       currentStage = "chunk";
-      updateUploadStage("chunk", "active", "Building chunks");
+      updateUploadStage("chunk", "active", `Building chunks (${chunkTargetLength}/${chunkOverlapLength})`);
       setMessage("Creating chunks...");
       const chunkResult = await chunkUploadedFile(uploadResult.stored_name);
-      updateUploadStage("chunk", "completed", `${chunkResult.chunk_count} chunk(s)`);
+      updateUploadStage(
+        "chunk",
+        "completed",
+        `${chunkResult.chunk_count} chunk(s) (${chunkResult.chunk_target_length}/${chunkResult.chunk_overlap_length})`,
+      );
 
       currentStage = "index";
       updateUploadStage("index", "active", "Generating embeddings and storing index");
       setMessage("Generating embeddings and indexing...");
       const indexResult = await indexUploadedFile(uploadResult.stored_name);
-      updateUploadStage("index", "completed", `${indexResult.indexed_count} chunk(s) indexed`);
+      updateUploadStage(
+        "index",
+        "completed",
+        `${indexResult.indexed_count} chunk(s) indexed (${indexResult.chunk_target_length}/${indexResult.chunk_overlap_length})`,
+      );
 
       setSelectedFile(null);
       const input = document.getElementById("document-upload") as HTMLInputElement | null;
@@ -397,7 +446,9 @@ export default function UploadPage() {
       const parserNote = indexResult.parser_used
         ? ` Parser: ${indexResult.parser_used}${indexResult.fallback_used ? " (fallback)" : ""}.`
         : "";
-      setMessage(`Uploaded and indexed ${indexResult.original_name}. ${indexResult.indexed_count} chunk(s) stored.${parserNote}`);
+      setMessage(
+        `Uploaded and indexed ${indexResult.original_name}. ${indexResult.indexed_count} chunk(s) stored (${indexResult.chunk_target_length}/${indexResult.chunk_overlap_length}).${parserNote}`,
+      );
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Upload or indexing failed.";
       updateUploadStage(currentStage, "failed", detail);
@@ -639,6 +690,37 @@ export default function UploadPage() {
               )}
             </select>
           </div>
+          <div className="chunk-settings-grid">
+            <div className="default-file-row">
+              <label className="upload-label" htmlFor="chunk-target-length">
+                Chunk target_length
+              </label>
+              <input
+                className="default-file-select"
+                id="chunk-target-length"
+                inputMode="numeric"
+                min={100}
+                onChange={(event) => setChunkTargetLength(event.target.value)}
+                type="number"
+                value={chunkTargetLength}
+              />
+            </div>
+            <div className="default-file-row">
+              <label className="upload-label" htmlFor="chunk-overlap-length">
+                Chunk overlap
+              </label>
+              <input
+                className="default-file-select"
+                id="chunk-overlap-length"
+                inputMode="numeric"
+                min={0}
+                onChange={(event) => setChunkOverlapLength(event.target.value)}
+                type="number"
+                value={chunkOverlapLength}
+              />
+            </div>
+          </div>
+          <p className="parser-note">기본값은 target_length 800, overlap 120입니다.</p>
           <button className="upload-button" disabled={isLoading} type="submit">
             {isLoading ? "Uploading..." : "Upload file"}
           </button>

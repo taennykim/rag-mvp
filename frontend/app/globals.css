@@ -165,6 +165,12 @@ a {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.chunk-settings-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .parser-note {
   margin: 0;
   color: var(--muted);
@@ -503,6 +509,10 @@ a {
   }
 
   .parser-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chunk-settings-grid {
     grid-template-columns: 1fr;
   }
 

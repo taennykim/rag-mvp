@@ -995,12 +995,29 @@ def split_long_segment(segment: str, max_length: int) -> list[str]:
     return segments
 
 
-def build_chunk_segments(text: str) -> list[str]:
+def normalize_chunk_settings(
+    target_length: int | None = None,
+    overlap_length: int | None = None,
+) -> tuple[int, int]:
+    resolved_target_length = target_length if target_length is not None else CHUNK_TARGET_LENGTH
+    resolved_overlap_length = overlap_length if overlap_length is not None else CHUNK_OVERLAP_LENGTH
+
+    if resolved_target_length < 100:
+        raise HTTPException(status_code=400, detail="chunk target_length must be at least 100.")
+    if resolved_overlap_length < 0:
+        raise HTTPException(status_code=400, detail="chunk overlap_length must be 0 or greater.")
+    if resolved_overlap_length >= resolved_target_length:
+        raise HTTPException(status_code=400, detail="chunk overlap_length must be smaller than target_length.")
+
+    return resolved_target_length, resolved_overlap_length
+
+
+def build_chunk_segments(text: str, target_length: int) -> list[str]:
     raw_segments = [line.strip() for line in text.splitlines() if line.strip()]
     segments: list[str] = []
 
     for raw_segment in raw_segments:
-        segments.extend(split_long_segment(raw_segment, CHUNK_TARGET_LENGTH))
+        segments.extend(split_long_segment(raw_segment, target_length))
 
     return segments
 
@@ -1015,10 +1032,12 @@ def create_chunks(
     text: str,
     *,
     source: str,
+    target_length: int = CHUNK_TARGET_LENGTH,
+    overlap_length: int = CHUNK_OVERLAP_LENGTH,
     page_number: int | None = None,
     section_header: str | None = None,
 ) -> list[dict[str, object]]:
-    segments = build_chunk_segments(text)
+    segments = build_chunk_segments(text, target_length)
     if not segments:
         return []
 
@@ -1032,7 +1051,7 @@ def create_chunks(
         cursor += len(segment)
 
         candidate = segment if not current else f"{current}\n{segment}"
-        if current and len(candidate) > CHUNK_TARGET_LENGTH:
+        if current and len(candidate) > target_length:
             chunk_end = current_start + len(current)
             chunks.append(
                 {
@@ -1047,7 +1066,7 @@ def create_chunks(
                     "preview": current[:CHUNK_PREVIEW_LENGTH],
                 }
             )
-            overlap = build_overlap_text(current, CHUNK_OVERLAP_LENGTH)
+            overlap = build_overlap_text(current, overlap_length)
             current = segment if not overlap else f"{overlap}\n{segment}"
             current_start = max(chunk_end - len(overlap), 0)
             cursor = max(cursor, current_start + len(current))
@@ -1076,12 +1095,14 @@ def create_chunks(
     return chunks
 
 
-def write_chunk_summary(path: Path, chunk_count: int) -> Path:
+def write_chunk_summary(path: Path, chunk_count: int, *, target_length: int, overlap_length: int) -> Path:
     summary_path = get_chunk_summary_path(path)
     summary = {
         "stored_name": path.name,
         "original_name": path.name.split("__", 1)[1] if "__" in path.name else path.name,
         "chunk_count": chunk_count,
+        "chunk_target_length": target_length,
+        "chunk_overlap_length": overlap_length,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1093,18 +1114,34 @@ def build_chunking_result(
     *,
     primary_parser: str = PRIMARY_PARSER_DOCLING,
     fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT,
+    chunk_target_length: int | None = None,
+    chunk_overlap_length: int | None = None,
 ) -> dict[str, object]:
+    resolved_target_length, resolved_overlap_length = normalize_chunk_settings(
+        chunk_target_length,
+        chunk_overlap_length,
+    )
     parsed = build_parsing_result(
         path,
         primary_parser=primary_parser,
         fallback_parser=fallback_parser,
     )
-    chunks = create_chunks(parsed["extracted_text"], source=parsed["original_name"])
+    chunks = create_chunks(
+        parsed["extracted_text"],
+        source=parsed["original_name"],
+        target_length=resolved_target_length,
+        overlap_length=resolved_overlap_length,
+    )
 
     if not chunks:
         raise HTTPException(status_code=400, detail="No chunks were created from extracted text.")
 
-    summary_path = write_chunk_summary(path, len(chunks))
+    summary_path = write_chunk_summary(
+        path,
+        len(chunks),
+        target_length=resolved_target_length,
+        overlap_length=resolved_overlap_length,
+    )
     return {
         "status": "chunked",
         "stored_name": parsed["stored_name"],
@@ -1112,8 +1149,8 @@ def build_chunking_result(
         "file_type": parsed["file_type"],
         "text_length": parsed["text_length"],
         "chunk_count": len(chunks),
-        "chunk_target_length": CHUNK_TARGET_LENGTH,
-        "chunk_overlap_length": CHUNK_OVERLAP_LENGTH,
+        "chunk_target_length": resolved_target_length,
+        "chunk_overlap_length": resolved_overlap_length,
         "summary_path": str(summary_path),
         "primary_parser": primary_parser,
         "fallback_parser": fallback_parser,
@@ -1131,6 +1168,8 @@ class ParseRequest(BaseModel):
     stored_name: str
     primary_parser: str = PRIMARY_PARSER_DOCLING
     fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT
+    chunk_target_length: int | None = None
+    chunk_overlap_length: int | None = None
 
 
 class RetrieveRequest(BaseModel):
@@ -1209,11 +1248,15 @@ def index_chunks(
     *,
     primary_parser: str = PRIMARY_PARSER_DOCLING,
     fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT,
+    chunk_target_length: int | None = None,
+    chunk_overlap_length: int | None = None,
 ) -> dict[str, object]:
     chunking_result = build_chunking_result(
         path,
         primary_parser=primary_parser,
         fallback_parser=fallback_parser,
+        chunk_target_length=chunk_target_length,
+        chunk_overlap_length=chunk_overlap_length,
     )
     chunks = chunking_result["chunks"]
 
@@ -1257,6 +1300,8 @@ def index_chunks(
         "original_name": original_name,
         "file_type": file_type,
         "chunk_count": chunking_result["chunk_count"],
+        "chunk_target_length": chunking_result["chunk_target_length"],
+        "chunk_overlap_length": chunking_result["chunk_overlap_length"],
         "indexed_count": len(ids),
         "collection_name": CHROMA_COLLECTION_NAME,
         "embedding_dimension": EMBEDDING_DIMENSION,
@@ -1741,22 +1786,32 @@ def get_chunk_status() -> dict[str, object]:
 @app.post("/chunk")
 def chunk_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
+    resolved_target_length, resolved_overlap_length = normalize_chunk_settings(
+        payload.chunk_target_length,
+        payload.chunk_overlap_length,
+    )
     logger.info(
-        "chunk_started stored_name=%s %s",
+        "chunk_started stored_name=%s %s chunk_target_length=%s chunk_overlap_length=%s",
         payload.stored_name,
         summarize_parser_selection(payload.primary_parser, payload.fallback_parser),
+        resolved_target_length,
+        resolved_overlap_length,
     )
     result = build_chunking_result(
         path,
         primary_parser=payload.primary_parser,
         fallback_parser=payload.fallback_parser,
+        chunk_target_length=resolved_target_length,
+        chunk_overlap_length=resolved_overlap_length,
     )
     logger.info(
-        "chunk_completed stored_name=%s parser_used=%s fallback_used=%s chunk_count=%s",
+        "chunk_completed stored_name=%s parser_used=%s fallback_used=%s chunk_count=%s chunk_target_length=%s chunk_overlap_length=%s",
         payload.stored_name,
         result["parser_used"],
         result["fallback_used"],
         result["chunk_count"],
+        result["chunk_target_length"],
+        result["chunk_overlap_length"],
     )
     return result
 
@@ -1803,22 +1858,32 @@ def delete_indexed_files() -> dict[str, object]:
 @app.post("/index")
 def index_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
+    resolved_target_length, resolved_overlap_length = normalize_chunk_settings(
+        payload.chunk_target_length,
+        payload.chunk_overlap_length,
+    )
     logger.info(
-        "index_started stored_name=%s %s",
+        "index_started stored_name=%s %s chunk_target_length=%s chunk_overlap_length=%s",
         payload.stored_name,
         summarize_parser_selection(payload.primary_parser, payload.fallback_parser),
+        resolved_target_length,
+        resolved_overlap_length,
     )
     result = index_chunks(
         path,
         primary_parser=payload.primary_parser,
         fallback_parser=payload.fallback_parser,
+        chunk_target_length=resolved_target_length,
+        chunk_overlap_length=resolved_overlap_length,
     )
     logger.info(
-        "index_completed stored_name=%s parser_used=%s fallback_used=%s indexed_count=%s",
+        "index_completed stored_name=%s parser_used=%s fallback_used=%s indexed_count=%s chunk_target_length=%s chunk_overlap_length=%s",
         payload.stored_name,
         result["parser_used"],
         result["fallback_used"],
         result["indexed_count"],
+        result["chunk_target_length"],
+        result["chunk_overlap_length"],
     )
     return result
 
