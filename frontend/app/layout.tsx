@@ -23,9 +23,10 @@ export default function RootLayout({
       <body>
         <div className="shell">
           <header className="header">
-            <div>
+            <div className="header-copy">
               <p className="eyebrow">Insurance Document RAG MVP</p>
               <h1>Uploaded Insurance documents</h1>
+              <p className="header-summary">Parser, chunking, embedding, and retrieval checks in one workspace.</p>
             </div>
             <nav className="nav">
               {navItems.map((item) => (

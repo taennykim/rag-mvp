@@ -18,7 +18,7 @@
 11. RAGAS 평가 데이터와 결과 UI 추가
 
 ## 3. 현재 진행 상태
-- 현재 단계: Retrieval 품질 점검 완료 / 실제 embedding 교체 준비
+- 현재 단계: upload UI refresh 및 테스트 데이터 초기화 완료 / 다음은 chat answer generation 연결
 - 완료:
   - AGENTS.md, TODO.md 확인
   - 기본 계획 및 파트 문서 작성
@@ -47,17 +47,30 @@
   - `/chat` retrieval UI 구현 완료
   - `/upload` 목록의 파일별 indexing 상태 표시 완료
   - `/upload` parser selection UI 구현 완료
+  - `/upload` chunk 설정 입력 UI 추가 완료
   - backend parser catalog / fallback routing 구현 완료
+  - `Docling` 설치 및 primary parser 검증 완료
+  - `DOC` fallback parser 구현 완료
+  - `XLS` / `XLSX` fallback parser 구현 완료
   - retrieval 질문 세트 작성 완료
   - representative retrieval 질문 기준 1차 pass/fail 점검 완료
   - retrieval lexical rerank 보정 실험 완료
+  - Azure OpenAI `text-embedding-3-small` embedding 연결 완료
+  - embedding provider/model 기준 collection 분리 완료
+  - `POST /index/rebuild` 전체 재인덱싱 API 추가 완료
+  - Azure embedding 기준 전체 재인덱싱 및 retrieval 응답 검증 완료
+  - RAG 서버 frontend/backend 재기동 및 `3000/8000` 응답 확인 완료
 - 미완료:
-  - Docling 실제 설치 및 검증
-  - 실제 embedding 모델 교체
+  - `/chat` 화면 answer generation 연결
+  - insufficient-context 처리 규칙 추가
+  - source citation 형식 고정
+  - retrieval 질문 세트 기준 Azure embedding 재검증
+  - parser 영향과 embedding 영향 분리 비교
+  - `PDF` 기준 `Docling` vs `PyMuPDF` 품질 비교
   - grounded answer generation
   - evaluation dataset / RAGAS / evaluation UI
 - 다음 우선 작업:
-  - Docling 설치 여부 검토 및 parser primary/fallback 실제 검증
-  - OpenAI 기반 embedding 교체 준비
-  - 기존 Chroma 인덱스 재생성 계획 정리
-  - embedding 교체 후 retrieval 질문 세트 재검증
+  - `/chat`에 answer generation 모델 연결
+  - retrieval context만으로 답변하는 최소 prompt 흐름 추가
+  - answer panel과 citation 표시를 chat UI에 연결
+  - 이후 retrieval 질문 세트 기준 Azure embedding 결과를 다시 기록

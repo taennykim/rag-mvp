@@ -1,11 +1,16 @@
 :root {
   color-scheme: light;
-  --bg: #f5efe4;
-  --panel: #fffaf2;
-  --ink: #132a1e;
-  --muted: #5c695f;
-  --accent: #bb5a2b;
-  --line: rgba(19, 42, 30, 0.12);
+  --bg: #f3f7fb;
+  --panel: rgba(255, 255, 255, 0.84);
+  --panel-strong: #ffffff;
+  --ink: #10233f;
+  --muted: #5b6b82;
+  --accent: #0f766e;
+  --accent-strong: #0b5f59;
+  --accent-soft: rgba(15, 118, 110, 0.12);
+  --line: rgba(16, 35, 63, 0.1);
+  --line-strong: rgba(16, 35, 63, 0.18);
+  --shadow: 0 24px 60px rgba(24, 48, 84, 0.12);
 }
 
 * {
@@ -17,10 +22,11 @@ body {
   margin: 0;
   padding: 0;
   background:
-    radial-gradient(circle at top left, rgba(187, 90, 43, 0.16), transparent 28%),
-    linear-gradient(180deg, #f5efe4 0%, #efe4d0 100%);
+    radial-gradient(circle at top left, rgba(15, 118, 110, 0.2), transparent 22%),
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.14), transparent 28%),
+    linear-gradient(180deg, #f8fbff 0%, #eef4fa 52%, #e8f0f7 100%);
   color: var(--ink);
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", "Noto Sans KR", sans-serif;
 }
 
 a {
@@ -34,10 +40,18 @@ a {
 }
 
 .header {
-  display: grid;
-  gap: 20px;
-  margin: 0 auto 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  margin: 0 auto 28px;
   max-width: 960px;
+  padding: 20px 0 12px;
+}
+
+.header-copy {
+  display: grid;
+  gap: 8px;
 }
 
 .header h1,
@@ -47,8 +61,17 @@ a {
 }
 
 .header h1 {
-  font-size: clamp(2.25rem, 5vw, 4.5rem);
-  max-width: 12ch;
+  font-size: clamp(1.125rem, 2.5vw, 2.25rem);
+  letter-spacing: -0.04em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.header-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+  line-height: 1.6;
 }
 
 .nav {
@@ -60,14 +83,30 @@ a {
 .nav a,
 .card {
   border: 1px solid var(--line);
-  background: rgba(255, 250, 242, 0.72);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 14px 36px rgba(19, 42, 30, 0.08);
+  background: var(--panel);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow);
 }
 
 .nav a {
   border-radius: 999px;
   padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    background 160ms ease;
+}
+
+.nav a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(15, 118, 110, 0.24);
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .page {
@@ -80,23 +119,43 @@ a {
 .card {
   border-radius: 28px;
   padding: 28px;
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, #0f766e 0%, #38bdf8 100%);
+  opacity: 0.95;
+}
+
+.card > * {
+  position: relative;
 }
 
 .eyebrow {
   margin: 0 0 12px;
   color: var(--accent);
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
 .card p {
   color: var(--muted);
-  font-size: 1.05rem;
-  line-height: 1.7;
+  font-size: 1rem;
+  line-height: 1.65;
   margin-bottom: 0;
   max-width: 60ch;
+}
+
+.page h2 {
+  font-size: clamp(1.7rem, 2.8vw, 2.5rem);
+  letter-spacing: -0.04em;
 }
 
 .upload-form {
@@ -105,17 +164,50 @@ a {
   margin-top: 24px;
 }
 
+.dashboard-strip {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dashboard-stat {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(242, 249, 249, 0.78));
+}
+
+.dashboard-stat strong {
+  font-size: 1.8rem;
+  letter-spacing: -0.05em;
+}
+
+.dashboard-stat.warning {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 243, 241, 0.92));
+}
+
+.dashboard-stat-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .upload-label {
   color: var(--ink);
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   font-weight: 700;
 }
 
 .upload-form input[type="file"] {
-  border: 1px dashed var(--line);
-  border-radius: 18px;
+  border: 1px dashed rgba(15, 118, 110, 0.28);
+  border-radius: 20px;
   padding: 18px;
-  background: rgba(255, 250, 242, 0.84);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(243, 250, 251, 0.88));
   color: var(--muted);
   width: 100%;
 }
@@ -125,16 +217,28 @@ a {
   border: 0;
   border-radius: 999px;
   padding: 12px 18px;
-  background: var(--accent);
-  color: #fffaf2;
+  background: linear-gradient(135deg, var(--accent) 0%, #159f95 100%);
+  color: #f8fffe;
   cursor: pointer;
   font: inherit;
+  font-weight: 700;
+  box-shadow: 0 12px 24px rgba(15, 118, 110, 0.22);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
+}
+
+.upload-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 30px rgba(15, 118, 110, 0.26);
 }
 
 .upload-button.secondary {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.88);
   color: var(--ink);
   border: 1px solid var(--line);
+  box-shadow: none;
 }
 
 .upload-button.secondary.danger {
@@ -174,17 +278,26 @@ a {
 .parser-note {
   margin: 0;
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: 0.9rem;
   line-height: 1.5;
 }
 
 .default-file-select {
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 12px 14px;
-  background: rgba(255, 250, 242, 0.84);
+  background: rgba(255, 255, 255, 0.92);
   color: var(--ink);
   font: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.default-file-select:focus,
+.chat-textarea:focus,
+.upload-form input[type="file"]:focus {
+  outline: none;
+  border-color: rgba(15, 118, 110, 0.42);
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
 }
 
 .pipeline-status {
@@ -195,9 +308,9 @@ a {
 
 .pipeline-stage {
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 18px;
   padding: 14px 16px;
-  background: rgba(255, 250, 242, 0.7);
+  background: rgba(255, 255, 255, 0.76);
 }
 
 .pipeline-stage-header {
@@ -227,8 +340,8 @@ a {
 }
 
 .pipeline-stage.completed {
-  border-color: rgba(32, 122, 79, 0.24);
-  background: rgba(32, 122, 79, 0.1);
+  border-color: rgba(15, 118, 110, 0.24);
+  background: rgba(15, 118, 110, 0.08);
 }
 
 .pipeline-stage.failed {
@@ -272,8 +385,18 @@ a {
   gap: 16px;
   padding: 16px 18px;
   border: 1px solid var(--line);
-  border-radius: 18px;
-  background: rgba(255, 250, 242, 0.6);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72);
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.file-list li:hover {
+  transform: translateY(-2px);
+  border-color: rgba(15, 118, 110, 0.22);
+  box-shadow: 0 18px 32px rgba(24, 48, 84, 0.1);
 }
 
 .file-main {
@@ -297,15 +420,15 @@ a {
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 6px 10px;
-  background: rgba(19, 42, 30, 0.06);
+  background: rgba(16, 35, 63, 0.05);
   color: var(--ink);
   font-size: 0.85rem;
   white-space: nowrap;
 }
 
 .file-status-chip.indexed {
-  background: rgba(32, 122, 79, 0.14);
-  border-color: rgba(32, 122, 79, 0.24);
+  background: rgba(15, 118, 110, 0.12);
+  border-color: rgba(15, 118, 110, 0.22);
 }
 
 .file-status-chip.pending {
@@ -331,8 +454,12 @@ a {
 
 .parse-result {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   margin-top: 20px;
+}
+
+.parse-result p {
+  margin: 0;
 }
 
 .parse-result pre {
@@ -340,9 +467,9 @@ a {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 20px;
   padding: 16px 18px;
-  background: rgba(255, 250, 242, 0.6);
+  background: rgba(247, 250, 253, 0.92);
   color: var(--ink);
   font: inherit;
   line-height: 1.6;
@@ -355,7 +482,11 @@ a {
 
 .quality-metrics {
   display: grid;
-  gap: 4px;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(248, 251, 255, 0.9);
 }
 
 .parse-json summary {
@@ -384,9 +515,9 @@ a {
 .chat-textarea {
   width: 100%;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 20px;
   padding: 16px 18px;
-  background: rgba(255, 250, 242, 0.84);
+  background: rgba(255, 255, 255, 0.92);
   color: var(--ink);
   font: inherit;
   resize: vertical;
@@ -405,9 +536,9 @@ a {
 .chat-status {
   margin-top: 18px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 18px;
   padding: 14px 16px;
-  background: rgba(255, 250, 242, 0.56);
+  background: rgba(245, 250, 255, 0.82);
   color: var(--muted);
   line-height: 1.6;
 }
@@ -434,7 +565,7 @@ a {
 .retrieval-summary span {
   border-radius: 999px;
   padding: 8px 12px;
-  background: rgba(19, 42, 30, 0.06);
+  background: rgba(16, 35, 63, 0.05);
   border: 1px solid var(--line);
   color: var(--ink);
   font-size: 0.92rem;
@@ -442,9 +573,9 @@ a {
 
 .retrieval-card {
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: 22px;
   padding: 18px;
-  background: rgba(255, 250, 242, 0.6);
+  background: rgba(255, 255, 255, 0.76);
 }
 
 .retrieval-head {
@@ -484,13 +615,14 @@ a {
   color: var(--ink);
   font-size: 0.85rem;
   white-space: nowrap;
+  background: rgba(15, 118, 110, 0.08);
 }
 
 .retrieval-preview {
   margin-top: 14px;
-  border-radius: 16px;
+  border-radius: 18px;
   padding: 14px 16px;
-  background: rgba(255, 250, 242, 0.84);
+  background: linear-gradient(180deg, rgba(246, 250, 255, 0.96), rgba(239, 246, 255, 0.88));
   color: var(--ink);
   line-height: 1.65;
 }
@@ -504,12 +636,25 @@ a {
     padding: 22px;
   }
 
+  .header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .header h1 {
+    white-space: normal;
+  }
+
   .upload-row {
     grid-template-columns: 1fr;
   }
 
   .parser-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-strip {
+    grid-template-columns: 1fr 1fr;
   }
 
   .chunk-settings-grid {

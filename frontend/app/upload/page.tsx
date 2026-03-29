@@ -270,6 +270,10 @@ export default function UploadPage() {
     return `${label}: ${parserUsed}${fallbackUsed ? ", fallback" : ""}`;
   }
 
+  const indexedFileCount = files.filter((file) => file.index_status === "completed").length;
+  const failedParseCount = files.filter((file) => file.parse_status === "failed").length;
+  const totalChunkCount = files.reduce((sum, file) => sum + (file.chunk_count ?? 0), 0);
+
   function updateUploadStage(stageId: UploadStageId, status: UploadStage["status"], detail?: string) {
     setUploadStages((current) =>
       current.map((stage) => (stage.id === stageId ? { ...stage, status, detail } : stage)),
@@ -609,6 +613,24 @@ export default function UploadPage() {
         <p className="eyebrow">Upload</p>
         <h2>Document intake</h2>
         <p>Upload PDF, DOC, DOCX, XLS, or XLSX files and process them step by step.</p>
+        <div className="dashboard-strip">
+          <div className="dashboard-stat">
+            <span className="dashboard-stat-label">Uploaded files</span>
+            <strong>{files.length}</strong>
+          </div>
+          <div className="dashboard-stat">
+            <span className="dashboard-stat-label">Indexed files</span>
+            <strong>{indexedFileCount}</strong>
+          </div>
+          <div className="dashboard-stat">
+            <span className="dashboard-stat-label">Indexed chunks</span>
+            <strong>{totalChunkCount}</strong>
+          </div>
+          <div className="dashboard-stat warning">
+            <span className="dashboard-stat-label">Parse failures</span>
+            <strong>{failedParseCount}</strong>
+          </div>
+        </div>
         <form className="upload-form" onSubmit={handleSubmit}>
           <div className="parser-grid">
             <div className="default-file-row">
@@ -635,7 +657,7 @@ export default function UploadPage() {
 
             <div className="default-file-row">
               <label className="upload-label" htmlFor="fallback-parser-select">
-                Auxiliary parser
+                Second parser
               </label>
               <select
                 className="default-file-select"
@@ -843,7 +865,7 @@ export default function UploadPage() {
             <p>Uploaded at: {formatUploadedAt(parseResult.uploaded_at)}</p>
             <p>Status: {parseResult.status}</p>
             <p>Primary parser: {parseResult.primary_parser}</p>
-            <p>Auxiliary parser: {parseResult.fallback_parser}</p>
+            <p>Second parser: {parseResult.fallback_parser}</p>
             <p>
               Parser used: {parseResult.parser_used}
               {parseResult.fallback_used ? " (fallback used)" : ""}

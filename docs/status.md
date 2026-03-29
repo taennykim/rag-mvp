@@ -6,7 +6,7 @@
 
 ## 2. 현재 목표
 - 보험 문서를 업로드하고 문서 근거 기반으로 답변하는 RAG MVP를 완성한다.
-- 현재는 `upload -> parse -> chunk -> index -> retrieve`까지 최소 흐름을 붙였고, 다음 핵심 작업은 retrieval 품질 개선과 answer generation 연결이다.
+- 현재는 `upload -> parse -> chunk -> index -> retrieve`까지 최소 흐름을 붙였고, 다음 핵심 작업은 `/chat` answer generation 연결이다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -23,10 +23,13 @@
   - `/upload` 목록에서 파일별 indexing 상태와 chunk 수 표시 가능
   - upload 실패 후에도 `Uploaded file list`가 즉시 refresh되도록 수정 완료
   - `Uploaded file list`는 최신 업로드 순으로 정렬되도록 수정 완료
-  - `/upload`에서 `Primary parser`, `Auxiliary parser` 선택 가능
+  - `/upload`에서 `Primary parser`, `Second parser` 선택 가능
   - upload 실패 시 실패 단계와 backend log 경로를 UI에서 확인 가능
   - 업로드 대상 확장자를 `PDF`, `DOC`, `DOCX`, `XLS`, `XLSX`까지 확장 완료
   - `/chat`에서 index된 파일 대상 retrieval 테스트 가능
+  - header / nav / card / form control / result card 기준 UI refresh 완료
+  - upload 화면 상단 stat strip 추가 완료
+  - header title은 한 줄 기준으로 보이도록 조정 완료
 - backend:
   - upload API 구현 완료
   - parse API 및 parse quality API 구현 완료
@@ -62,6 +65,8 @@
   - 2026-03-28 기준 RAG 서버 backend가 `azure_openai / text-embedding-3-small`로 기동됨을 `/health`에서 확인 완료
   - 2026-03-28 기준 RAG 서버 `POST /index/rebuild`로 Azure embedding 전체 재인덱싱 완료
   - 2026-03-28 기준 Azure embedding collection에서 retrieval 응답 확인 완료
+  - 2026-03-29 기준 RAG 서버 frontend stale `.next` 제거 후 최신 UI 반영 재확인 완료
+  - 2026-03-29 기준 RAG 서버 `GET /pipeline/files`와 `GET /index/files`가 모두 빈 상태가 되도록 테스트 데이터 초기화 완료
 
 ## 4. 현재 동작 기준
 - frontend 실행 기준:
@@ -90,18 +95,20 @@
 - 판단:
   - 산출방법서는 파일 단독 검색에서는 hit 되므로 indexing 누락 문제는 아니다.
   - 기존 핵심 병목이었던 `hash embedding` 한계는 제거했다.
-  - 이제 남은 검증 포인트는 retrieval 질문 세트 기준 실제 품질 비교와 parser 영향 재확인이다.
+  - 2026-03-29 기준 테스트 데이터는 다시 비워 둔 상태다.
+  - 이제 남은 검증 포인트는 retrieval 질문 세트 기준 실제 품질 비교와 parser 영향 재확인, 그리고 chat answer generation 연결이다.
 
 ## 6. parser 현재 상태
 - UI에서 선택 가능:
   - primary parser: `Docling`
-  - auxiliary parser: `Extension default`, `PyMuPDF`, `python-docx`, `DOC parser`, `Excel parser`
+  - second parser: `Extension default`, `PyMuPDF`, `python-docx`, `DOC parser`, `Excel parser`
 - 실제 동작:
   - `Docling`은 현재 환경에 설치되어 있고 primary parser로 동작한다.
   - `DOCX`와 `XLSX`는 `Docling` 직접 파싱 검증을 끝냈다.
   - `DOC`는 `Docling` 대상이 아니므로 `antiword` fallback parser가 사용된다.
   - `PDF`는 `Docling` 사용 가능 상태지만 문서별 속도/품질 비교는 추가 검증이 필요하다.
   - 같은 파일을 여러 번 업로드하면 `stored_name` 기준으로 별도 행이 누적된다.
+  - `Last failure` 표시는 현재 성공 상태와 별개로 과거 parse 실패 이력을 로그 기준으로 함께 노출한다.
   - `Parse test`를 다시 성공시키면 해당 `stored_name`의 최신 parse 결과는 성공 기준으로 덮어써지고, `chunk`를 다시 실행하지 않으면 `chunk_status`는 `pending`으로 남을 수 있다.
 - 남은 점검:
   - `PDF`에서 `Docling`과 `PyMuPDF` 결과 비교
@@ -110,6 +117,9 @@
 
 ## 7. 남은 핵심 작업
 - 1차 우선순위:
+  - `/chat` 화면에 answer generation LLM 연결
+  - retrieval 결과 기반 answer panel과 citation 표시 연결
+  - insufficient-context 응답 규칙 추가
   - retrieval 질문 세트 기준 Azure embedding 재검증
   - embedding 영향과 parser 영향 분리 비교
   - parser 변경 후 chunk/retrieval 재검증
@@ -118,7 +128,6 @@
   - parser별 품질 비교 기준 정리
   - `Docling` vs fallback parser 비교 결과를 문서화
 - 3차 우선순위:
-  - answer generation 연결
   - 답변에 표시할 source / chunk reference / section_header / page_number 형식 고정
   - evaluation dataset 초안 작성 및 `/evaluation` 실제 결과 화면 연결
 
@@ -132,9 +141,11 @@
 - upload 화면 실패 시 UI에 실패 단계와 backend system log 경로를 함께 표시한다.
 - 중복 파일명 문서가 여러 건 있을 때 최신 항목과 과거 항목이 섞여 보여 사용자 혼동이 발생할 수 있다.
 - parse 성공/실패 history를 한 행에서 함께 보여주기 위한 backend/frontend 수정은 진행했지만, RAG 서버 화면 기준 최종 검증은 다음 세션에서 다시 확인이 필요하다.
+- frontend 반영이 안 보일 때는 stale `3000` 프로세스나 `.next` 캐시가 원인일 수 있다.
+- `DELETE /index/files`는 현재 환경에서 sqlite readonly 오류가 날 수 있어, stale backend PID를 함께 점검해야 한다.
 
 ## 9. 다음 세션 시작 순서
-1. `docs/daily/2026-03-28.md` 확인
+1. `docs/daily/2026-03-29.md` 확인
 2. `docs/status.md` 확인
-3. retrieval 질문 세트 기준 Azure embedding 재검증 진행
-4. embedding 영향과 parser 영향 분리 기준 정리
+3. `/chat` answer generation 연결 진행
+4. answer panel / citation 형식 최소 구현

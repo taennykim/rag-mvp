@@ -5,7 +5,7 @@ This project is a simple RAG (Retrieval-Augmented Generation) MVP for insurance 
 
 Users can:
 - Upload PDF, DOC, DOCX, XLS, or XLSX files
-- Choose a primary parser and auxiliary parser on the upload screen
+- Choose a primary parser and second parser on the upload screen
 - Search indexed chunks based on uploaded documents
 - Inspect retrieved source chunks before answer generation
 - View evaluation page skeleton for later RAGAS integration
@@ -64,7 +64,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Parsing text extraction validation has been verified on the RAG server
 - DOCX parser now includes table and header/footer text extraction
 - Upload page includes in-browser parse test, full extracted text view, and separate quality-check action
-- Upload page includes `Primary parser` / `Auxiliary parser` selection UI
+- Upload page includes `Primary parser` / `Second parser` selection UI
 - Docling is installed on the RAG server and works as the primary parser
 - DOC fallback parser uses `antiword`
 - Excel fallback parser uses `openpyxl` / `xlrd`
@@ -86,7 +86,9 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Parser catalog now marks `Docling`, `DOC parser`, and `Excel parser` as available on the RAG server
 - Frontend is currently operated more stably with `build + start` than `next dev`
 - Backend now writes request and parser system logs on the RAG server
-- Parse success/failure history UI was extended, but final screen validation on the RAG server is still pending
+- Upload 화면 UI를 현재 기준으로 리프레시했고, header / stat strip / card 위계를 정리했다
+- Parse success/failure history UI는 구조상 노출되며, duplicate upload와 과거 실패 이력이 함께 보일 수 있다
+- RAG 서버 테스트용 upload/parse/chunk/index 데이터는 2026-03-29 기준 초기화 완료 상태다
 - Answer generation and evaluation execution are still pending
 
 ## Screen Test Rule
@@ -114,16 +116,16 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 ## Resume Tomorrow
 Start from these files first:
 - `docs/status.md`
-- `docs/daily/2026-03-27.md`
-- `docs/retrieval-test-set.md`
+- `docs/daily/2026-03-29.md`
+- `docs/llm.md`
 - `TODO.md`
 
 Recommended restart order:
 1. Review `docs/status.md` for the latest completed scope and blockers.
-2. Review `docs/daily/2026-03-27.md` for today's detailed work log.
-3. Review `docs/retrieval-test-set.md` for retrieval validation criteria and fail cases.
-4. Review `TODO.md` for remaining MVP tasks after retrieval stabilization.
-5. Continue with `PDF` parser quality comparison, parser-impact retrieval validation, or actual embedding model integration.
+2. Review `docs/daily/2026-03-29.md` for today's detailed work log.
+3. Review `docs/llm.md` for answer generation scope.
+4. Review `TODO.md` for the next unchecked chat/answer work.
+5. Start by connecting LLM answer generation on `/chat`.
 
 ## Daily Start Checklist
 1. Review `AGENTS.md` for working rules and project operating constraints.

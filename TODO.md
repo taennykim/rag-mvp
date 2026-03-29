@@ -119,7 +119,7 @@
 
 ## Phase 8. Answer
 
-- [ ] Connect answer generation model
+- [ ] Connect answer generation model on `/chat`
 - [ ] Generate answer from retrieved context only
 - [ ] Include source file names and chunk references
 - [ ] Handle insufficient-context case
@@ -132,6 +132,7 @@
 - [x] Add question input box
 - [ ] Show answer output
 - [x] Show retrieved chunks and sources
+- [ ] Connect LLM answer flow to chat screen
 
 ---
 
@@ -182,8 +183,8 @@
 
 ## Next Session Start Point
 
-- [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-27.md`, `TODO.md`에 반영
-- [ ] 다음 시작 시 `docs/daily/2026-03-28.md`와 `docs/status.md`부터 확인
+- [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-29.md`, `TODO.md`에 반영
+- [ ] 다음 시작 시 `docs/daily/2026-03-29.md`와 `docs/status.md`부터 확인
 - [x] frontend 의존성 설치
 - [x] backend 의존성 설치
 - [x] frontend 실행 확인
@@ -194,6 +195,7 @@
 - [ ] `PDF` 기준 `Docling` vs `PyMuPDF` 비교
 - [ ] parser 영향 기반 chunk/retrieval 재검증
 - [x] 실제 embedding 모델 교체 방식 결정
+- [ ] `/chat` 화면에 LLM answer generation 연결
 
 ---
 
