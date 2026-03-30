@@ -7,7 +7,8 @@ Users can:
 - Upload PDF, DOC, DOCX, XLS, or XLSX files
 - Choose a primary parser and second parser on the upload screen
 - Search indexed chunks based on uploaded documents
-- Inspect retrieved source chunks before answer generation
+- Generate grounded answers from retrieved chunks on `/chat`
+- Inspect retrieved source chunks and citations on `/chat`
 - View evaluation page skeleton for later RAGAS integration
 
 ## Scope
@@ -19,14 +20,13 @@ Included:
 - Text extraction
 - Chunking
 - Embedding + vector search
-- Retrieval test UI
+- Retrieval + grounded answer UI
 - Source citation
 - Evaluation page skeleton
 
 Excluded:
 - OCR
 - Hybrid search
-- Full answer generation
 - Production-grade embedding model integration
 - Authentication
 - Monitoring dashboard
@@ -74,6 +74,8 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Indexing API stores chunk embeddings in Chroma
 - Indexed file list API and retrieval API are implemented
 - Chat page can query retrieved chunks and inspect sources
+- Chat page now calls Azure OpenAI `gpt-4o` for grounded answers using retrieved context only
+- Chat page now shows answer panel and citation cards
 - Upload list supports file-level delete of upload + index
 - Upload list shows per-file indexing status and chunk count
 - Upload list now refreshes immediately even when parse/chunk/index fails after upload
@@ -89,7 +91,8 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Upload 화면 UI를 현재 기준으로 리프레시했고, header / stat strip / card 위계를 정리했다
 - Parse success/failure history UI는 구조상 노출되며, duplicate upload와 과거 실패 이력이 함께 보일 수 있다
 - RAG 서버 테스트용 upload/parse/chunk/index 데이터는 2026-03-29 기준 초기화 완료 상태다
-- Answer generation and evaluation execution are still pending
+- Retrieval-backed answer generation is connected
+- Retrieval question-set based answer quality review and evaluation execution are still pending
 
 ## Screen Test Rule
 - 화면 테스트와 브라우저 확인은 RAG 서버 기준으로만 수행한다.
@@ -116,16 +119,16 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 ## Resume Tomorrow
 Start from these files first:
 - `docs/status.md`
-- `docs/daily/2026-03-29.md`
+- `docs/daily/2026-03-30.md`
 - `docs/llm.md`
 - `TODO.md`
 
 Recommended restart order:
 1. Review `docs/status.md` for the latest completed scope and blockers.
-2. Review `docs/daily/2026-03-29.md` for today's detailed work log.
+2. Review `docs/daily/2026-03-30.md` for today's detailed work log.
 3. Review `docs/llm.md` for answer generation scope.
 4. Review `TODO.md` for the next unchecked chat/answer work.
-5. Start by connecting LLM answer generation on `/chat`.
+5. Start by checking answer quality and citation quality on `/chat`.
 
 ## Daily Start Checklist
 1. Review `AGENTS.md` for working rules and project operating constraints.

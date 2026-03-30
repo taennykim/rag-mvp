@@ -6,7 +6,8 @@
 
 ## 2. 현재 목표
 - 보험 문서를 업로드하고 문서 근거 기반으로 답변하는 RAG MVP를 완성한다.
-- 현재는 `upload -> parse -> chunk -> index -> retrieve`까지 최소 흐름을 붙였고, 다음 핵심 작업은 `/chat` answer generation 연결이다.
+- 현재는 `upload -> parse -> chunk -> index -> retrieve`와 `/chat` answer/citation UI까지 연결했고, chat deployment `gpt-4o` 실응답까지 확인했다.
+- 다음 핵심 작업은 retrieval 질문 세트 기준 answer/citation 품질 검증과 표/수식형 문서 chunk 전략 보정이다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -27,6 +28,8 @@
   - upload 실패 시 실패 단계와 backend log 경로를 UI에서 확인 가능
   - 업로드 대상 확장자를 `PDF`, `DOC`, `DOCX`, `XLS`, `XLSX`까지 확장 완료
   - `/chat`에서 index된 파일 대상 retrieval 테스트 가능
+  - `/chat`에 answer panel 및 citation 카드 UI 추가 완료
+  - `/chat` question 입력 기본값 제거 완료
   - header / nav / card / form control / result card 기준 UI refresh 완료
   - upload 화면 상단 stat strip 추가 완료
   - header title은 한 줄 기준으로 보이도록 조정 완료
@@ -36,6 +39,7 @@
   - chunk API 구현 완료
   - index API 및 indexed file list API 구현 완료
   - retrieve API 구현 완료
+  - `POST /chat` grounded answer API 추가 완료
   - upload 직후 자동 indexing 연결 완료
   - parser catalog API `GET /parse/parsers` 추가 완료
 - parsing:
@@ -54,6 +58,9 @@
   - Azure OpenAI 기반 실제 embedding 연결 완료
   - embedding provider별 collection 분리 및 전체 재인덱싱 API 추가 완료
   - retrieval candidate 확장 + lexical rerank 보정 추가 완료
+  - retrieval context만 사용하는 answer prompt 흐름 추가 완료
+  - Azure OpenAI chat deployment `gpt-4o` 사용 가능 확인 완료
+  - 조건부 항목을 공통 항목처럼 말하지 않도록 answer prompt 보정 완료
 - 검증:
   - RAG 서버 backend `127.0.0.1:8000/health` 응답 확인 완료
   - RAG 서버 frontend `127.0.0.1:3000/upload`, `/chat` 응답 확인 완료
@@ -67,6 +74,10 @@
   - 2026-03-28 기준 Azure embedding collection에서 retrieval 응답 확인 완료
   - 2026-03-29 기준 RAG 서버 frontend stale `.next` 제거 후 최신 UI 반영 재확인 완료
   - 2026-03-29 기준 RAG 서버 `GET /pipeline/files`와 `GET /index/files`가 모두 빈 상태가 되도록 테스트 데이터 초기화 완료
+  - 2026-03-30 기준 local backend `py_compile`, frontend `npm run build` 검증 완료
+  - 2026-03-30 기준 Azure OpenAI chat deployment `gpt-4o` 실제 응답 확인 완료
+  - 2026-03-30 기준 `/chat` 실질문 answer/citation 응답 확인 완료
+  - 2026-03-30 기준 frontend stale `3000` 프로세스 및 `.next` 캐시 정리 후 최신 chat UI 반영 확인 완료
 
 ## 4. 현재 동작 기준
 - frontend 실행 기준:
@@ -96,7 +107,7 @@
   - 산출방법서는 파일 단독 검색에서는 hit 되므로 indexing 누락 문제는 아니다.
   - 기존 핵심 병목이었던 `hash embedding` 한계는 제거했다.
   - 2026-03-29 기준 테스트 데이터는 다시 비워 둔 상태다.
-  - 이제 남은 검증 포인트는 retrieval 질문 세트 기준 실제 품질 비교와 parser 영향 재확인, 그리고 chat answer generation 연결이다.
+  - 이제 남은 검증 포인트는 retrieval 질문 세트 기준 실제 품질 비교와 parser 영향 재확인, answer 품질 기록, 산출방법서 계열 chunk 전략 보정이다.
 
 ## 6. parser 현재 상태
 - UI에서 선택 가능:
@@ -114,12 +125,11 @@
   - `PDF`에서 `Docling`과 `PyMuPDF` 결과 비교
   - parser 변경이 chunking/retrieval에 주는 영향 비교
   - `Uploaded file list`에서 latest parse 상태와 success/failure history를 함께 보여주는 최종 UI 검증
+  - 산출방법서 계열 표/수식 문서에 맞는 chunk 전략 검토
 
 ## 7. 남은 핵심 작업
 - 1차 우선순위:
-  - `/chat` 화면에 answer generation LLM 연결
-  - retrieval 결과 기반 answer panel과 citation 표시 연결
-  - insufficient-context 응답 규칙 추가
+  - retrieval 질문 세트 기준 `/chat` answer generation 품질 및 citation 품질 점검
   - retrieval 질문 세트 기준 Azure embedding 재검증
   - embedding 영향과 parser 영향 분리 비교
   - parser 변경 후 chunk/retrieval 재검증
@@ -143,9 +153,12 @@
 - parse 성공/실패 history를 한 행에서 함께 보여주기 위한 backend/frontend 수정은 진행했지만, RAG 서버 화면 기준 최종 검증은 다음 세션에서 다시 확인이 필요하다.
 - frontend 반영이 안 보일 때는 stale `3000` 프로세스나 `.next` 캐시가 원인일 수 있다.
 - `DELETE /index/files`는 현재 환경에서 sqlite readonly 오류가 날 수 있어, stale backend PID를 함께 점검해야 한다.
+- 현재 chat deployment는 `gpt-4o`로 확인됐고, answer 품질 검증이 다음 단계다.
+- `계약자 변경을 위한 서류를 알려줘` 질문에서는 grounded answer가 동작했지만, 조건부 서류와 공통 서류를 섞어 말하는 경향이 있어 prompt 보정을 반영했다.
+- `(무)종신보험표준형_20210101_산출방법서.doc`는 현재 `chunk_count=7`, `target_length=800`, `overlap=120` 기준으로 잘리고 있고, 표/수식 블록 보존이 약한 편이다.
 
 ## 9. 다음 세션 시작 순서
-1. `docs/daily/2026-03-29.md` 확인
+1. `docs/daily/2026-03-30.md` 확인
 2. `docs/status.md` 확인
-3. `/chat` answer generation 연결 진행
-4. answer panel / citation 형식 최소 구현
+3. retrieval 질문 세트 기준 answer/citation 품질 확인
+4. 산출방법서 계열 chunk 전략 검토

@@ -12,6 +12,7 @@ backend/data/default-files/*
 .next/
 node_modules/
 *.tsbuildinfo
+run-logs/
 
 .terraform/
 *.tfstate

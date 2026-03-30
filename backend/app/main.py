@@ -125,6 +125,7 @@ EMBEDDING_PROVIDER_AZURE_OPENAI = "azure_openai"
 DEFAULT_AZURE_OPENAI_EMBEDDING_DEPLOYMENT = "text-embedding-3-small"
 DEFAULT_AZURE_OPENAI_API_VERSION = "2024-02-01"
 AZURE_OPENAI_EMBEDDING_BATCH_SIZE = 32
+DEFAULT_CHAT_TOP_K = 5
 RUNTIME_ENV_FILE = BASE_DIR / ".env.runtime"
 
 
@@ -1205,6 +1206,12 @@ class RetrieveRequest(BaseModel):
     stored_name: str | None = None
 
 
+class ChatRequest(BaseModel):
+    query: str
+    top_k: int = DEFAULT_CHAT_TOP_K
+    stored_name: str | None = None
+
+
 class RebuildIndexRequest(BaseModel):
     primary_parser: str = PRIMARY_PARSER_DOCLING
     fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT
@@ -1338,6 +1345,83 @@ def build_azure_openai_embeddings(texts: list[str]) -> list[list[float]]:
             embeddings.append([float(value) for value in item["embedding"]])
 
     return embeddings
+
+
+def get_chat_model_id() -> str:
+    candidates = [
+        os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT", "").strip(),
+        os.getenv("AZURE_OPENAI_COMPLETION_DEPLOYMENT", "").strip(),
+        os.getenv("AZURE_OPENAI_LLM_DEPLOYMENT", "").strip(),
+    ]
+    for candidate in candidates:
+        if candidate:
+            return candidate
+    raise HTTPException(status_code=500, detail="AZURE_OPENAI_CHAT_DEPLOYMENT is not configured.")
+
+
+def build_azure_openai_chat_completion(messages: list[dict[str, str]]) -> str:
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip().rstrip("/")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY", "").strip()
+    deployment = get_chat_model_id()
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", DEFAULT_AZURE_OPENAI_API_VERSION).strip()
+
+    if not endpoint:
+        raise HTTPException(status_code=500, detail="AZURE_OPENAI_ENDPOINT is not configured.")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="AZURE_OPENAI_API_KEY is not configured.")
+
+    request_url = (
+        f"{endpoint}/openai/deployments/{deployment}/chat/completions"
+        f"?api-version={api_version}"
+    )
+    payload = json.dumps(
+        {
+            "messages": messages,
+            "temperature": 0.0,
+            "max_tokens": 700,
+        }
+    ).encode("utf-8")
+    request = urllib_request.Request(
+        request_url,
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "api-key": api_key,
+        },
+    )
+
+    try:
+        with urllib_request.urlopen(request, timeout=120) as response:
+            raw_body = response.read()
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise HTTPException(status_code=502, detail=f"Azure OpenAI chat request failed: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"Azure OpenAI chat request failed: {exc.reason}") from exc
+
+    try:
+        response_payload = json.loads(raw_body.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail="Azure OpenAI chat response was not valid JSON.") from exc
+
+    choices = response_payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise HTTPException(status_code=502, detail="Azure OpenAI chat response shape was invalid.")
+
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        raise HTTPException(status_code=502, detail="Azure OpenAI chat response shape was invalid.")
+
+    message = first_choice.get("message")
+    if not isinstance(message, dict):
+        raise HTTPException(status_code=502, detail="Azure OpenAI chat response was missing message data.")
+
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise HTTPException(status_code=502, detail="Azure OpenAI chat response was empty.")
+
+    return content.strip()
 
 
 def build_embeddings(texts: list[str]) -> list[list[float]]:
@@ -1584,6 +1668,135 @@ def retrieve_chunks(payload: RetrieveRequest) -> dict[str, object]:
         "embedding_provider": embedding_config["provider"],
         "embedding_model": embedding_config["model"],
         "hits": hits,
+    }
+
+
+def build_chat_citations(hits: list[dict[str, object]]) -> list[dict[str, object]]:
+    citations: list[dict[str, object]] = []
+    for hit in hits:
+        citations.append(
+            {
+                "id": hit.get("id"),
+                "source": hit.get("source") or hit.get("original_name"),
+                "original_name": hit.get("original_name"),
+                "stored_name": hit.get("stored_name"),
+                "chunk_index": hit.get("chunk_index"),
+                "page_number": hit.get("page_number"),
+                "section_header": hit.get("section_header"),
+                "preview": hit.get("preview"),
+            }
+        )
+    return citations
+
+
+def format_chat_context(hits: list[dict[str, object]]) -> str:
+    sections: list[str] = []
+    for index, hit in enumerate(hits, start=1):
+        source = str(hit.get("source") or hit.get("original_name") or "Unknown source")
+        chunk_index = hit.get("chunk_index")
+        page_number = hit.get("page_number")
+        section_header = hit.get("section_header")
+        text = str(hit.get("text") or "").strip()
+        metadata_parts = [f"source={source}"]
+        if chunk_index is not None:
+            metadata_parts.append(f"chunk={chunk_index}")
+        if page_number is not None:
+            metadata_parts.append(f"page={page_number}")
+        if isinstance(section_header, str) and section_header.strip():
+            metadata_parts.append(f"section={section_header.strip()}")
+
+        sections.append(
+            f"[Context {index}]\n"
+            f"{', '.join(metadata_parts)}\n"
+            f"{text}"
+        )
+    return "\n\n".join(sections)
+
+
+def parse_chat_completion(content: str) -> tuple[bool, str]:
+    status_match = re.search(r"STATUS:\s*(grounded|insufficient)", content, flags=re.IGNORECASE)
+    answer_match = re.search(r"ANSWER:\s*(.*)", content, flags=re.IGNORECASE | re.DOTALL)
+
+    if not status_match or not answer_match:
+        return False, content.strip()
+
+    status = status_match.group(1).strip().lower()
+    answer = answer_match.group(1).strip()
+    return status == "insufficient", answer
+
+
+def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
+    retrieval = retrieve_chunks(
+        RetrieveRequest(
+            query=payload.query,
+            top_k=payload.top_k,
+            stored_name=payload.stored_name,
+        )
+    )
+    hits = retrieval["hits"]
+    if not isinstance(hits, list):
+        hits = []
+
+    if not hits:
+        return {
+            "status": "answered",
+            "query": retrieval["query"],
+            "top_k": retrieval["top_k"],
+            "hit_count": 0,
+            "collection_name": retrieval["collection_name"],
+            "embedding_provider": retrieval["embedding_provider"],
+            "embedding_model": retrieval["embedding_model"],
+            "answer": "문서에서 충분한 근거를 찾지 못했습니다.",
+            "insufficient_context": True,
+            "citations": [],
+            "hits": [],
+            "chat_model": None,
+        }
+
+    system_prompt = (
+        "You answer questions using only the provided document context.\n"
+        "Do not use outside knowledge.\n"
+        "If the context is insufficient, say so.\n"
+        "Respond in Korean.\n"
+        "When the context includes conditional requirements, keep common requirements and conditional requirements separate.\n"
+        "Never present conditional requirements as unconditional facts.\n"
+        "Use this exact format:\n"
+        "STATUS: grounded or insufficient\n"
+        "ANSWER: <final answer>"
+    )
+    user_prompt = (
+        f"Question:\n{retrieval['query']}\n\n"
+        f"Context:\n{format_chat_context(hits)}\n\n"
+        "Rules:\n"
+        "- Answer only from the context.\n"
+        "- If the context does not support a clear answer, return STATUS: insufficient.\n"
+        "- Keep the answer concise and factual.\n"
+        "- Do not mention information not present in the context.\n"
+        "- If the document lists items that apply only in certain cases, separate them into '공통 서류' and '조건부 추가 서류'.\n"
+        "- If the user's question is broad and the required documents vary by condition, explicitly say that additional documents depend on case.\n"
+        "- Do not merge multiple scenario-specific document lists into one unconditional checklist."
+    )
+    response_text = build_azure_openai_chat_completion(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+    )
+    insufficient_context, answer = parse_chat_completion(response_text)
+
+    return {
+        "status": "answered",
+        "query": retrieval["query"],
+        "top_k": retrieval["top_k"],
+        "hit_count": retrieval["hit_count"],
+        "collection_name": retrieval["collection_name"],
+        "embedding_provider": retrieval["embedding_provider"],
+        "embedding_model": retrieval["embedding_model"],
+        "answer": answer,
+        "insufficient_context": insufficient_context,
+        "citations": build_chat_citations(hits),
+        "hits": hits,
+        "chat_model": get_chat_model_id(),
     }
 
 
@@ -2155,11 +2368,23 @@ def retrieve_indexed_chunks(payload: RetrieveRequest) -> dict[str, object]:
 
 @app.get("/chat")
 def get_chat_status() -> dict[str, object]:
+    chat_model = None
+    try:
+        chat_model = get_chat_model_id()
+    except HTTPException:
+        chat_model = None
+
     return {
         "page": "chat",
-        "status": "not_implemented",
-        "message": "Chat API skeleton is ready.",
+        "status": "ready",
+        "message": "Chat API supports retrieval-based grounded answers.",
+        "chat_model": chat_model,
     }
+
+
+@app.post("/chat")
+def answer_with_retrieval(payload: ChatRequest) -> dict[str, object]:
+    return generate_grounded_answer(payload)
 
 
 @app.get("/evaluation")

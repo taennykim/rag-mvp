@@ -18,7 +18,7 @@
 11. RAGAS 평가 데이터와 결과 UI 추가
 
 ## 3. 현재 진행 상태
-- 현재 단계: upload UI refresh 및 테스트 데이터 초기화 완료 / 다음은 chat answer generation 연결
+- 현재 단계: `/chat` answer/citation UI 연결 및 `gpt-4o` deployment 확인 완료 / 다음은 answer 품질 실검증
 - 완료:
   - AGENTS.md, TODO.md 확인
   - 기본 계획 및 파트 문서 작성
@@ -60,17 +60,14 @@
   - `POST /index/rebuild` 전체 재인덱싱 API 추가 완료
   - Azure embedding 기준 전체 재인덱싱 및 retrieval 응답 검증 완료
   - RAG 서버 frontend/backend 재기동 및 `3000/8000` 응답 확인 완료
+  - backend `POST /chat` retrieval 기반 answer generation 경로 추가 완료
+  - frontend `/chat` answer panel / citation UI 추가 완료
 - 미완료:
-  - `/chat` 화면 answer generation 연결
-  - insufficient-context 처리 규칙 추가
-  - source citation 형식 고정
+  - `/chat` 실제 answer generation 품질 검증
   - retrieval 질문 세트 기준 Azure embedding 재검증
   - parser 영향과 embedding 영향 분리 비교
   - `PDF` 기준 `Docling` vs `PyMuPDF` 품질 비교
-  - grounded answer generation
   - evaluation dataset / RAGAS / evaluation UI
 - 다음 우선 작업:
-  - `/chat`에 answer generation 모델 연결
-  - retrieval context만으로 답변하는 최소 prompt 흐름 추가
-  - answer panel과 citation 표시를 chat UI에 연결
+  - `/chat` answer generation을 실제 문서 질문으로 검증한다
   - 이후 retrieval 질문 세트 기준 Azure embedding 결과를 다시 기록

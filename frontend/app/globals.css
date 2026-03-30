@@ -550,6 +550,64 @@ a {
   line-height: 1.6;
 }
 
+.answer-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.answer-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.answer-summary span {
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(16, 35, 63, 0.05);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.answer-body {
+  border: 1px solid rgba(15, 118, 110, 0.16);
+  border-radius: 22px;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(240, 253, 250, 0.92), rgba(236, 253, 245, 0.82));
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.answer-body.warning {
+  border-color: rgba(191, 84, 36, 0.18);
+  background: linear-gradient(180deg, rgba(255, 247, 237, 0.92), rgba(255, 237, 213, 0.82));
+}
+
+.citation-list {
+  display: grid;
+  gap: 12px;
+}
+
+.citation-card {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.citation-card strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.citation-preview {
+  margin-top: 10px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
 .retrieval-list {
   display: grid;
   gap: 14px;

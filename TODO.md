@@ -119,10 +119,10 @@
 
 ## Phase 8. Answer
 
-- [ ] Connect answer generation model on `/chat`
-- [ ] Generate answer from retrieved context only
-- [ ] Include source file names and chunk references
-- [ ] Handle insufficient-context case
+- [x] Connect answer generation model on `/chat` with runtime deployment config
+- [x] Generate answer from retrieved context only
+- [x] Include source file names and chunk references
+- [x] Handle insufficient-context case
 
 ---
 
@@ -130,9 +130,9 @@
 
 - [x] Build chat page
 - [x] Add question input box
-- [ ] Show answer output
+- [x] Show answer output
 - [x] Show retrieved chunks and sources
-- [ ] Connect LLM answer flow to chat screen
+- [x] Connect LLM answer flow to chat screen
 
 ---
 
@@ -195,7 +195,8 @@
 - [ ] `PDF` 기준 `Docling` vs `PyMuPDF` 비교
 - [ ] parser 영향 기반 chunk/retrieval 재검증
 - [x] 실제 embedding 모델 교체 방식 결정
-- [ ] `/chat` 화면에 LLM answer generation 연결
+- [ ] retrieval 질문 세트 일부 기준 `/chat` answer generation 품질 검증
+- [ ] 산출방법서 계열 표/수식 보존형 chunk 전략 검토
 
 ---
 
@@ -205,6 +206,6 @@
 - [x] Parsing works
 - [x] Chunking works
 - [x] Retrieval works
-- [ ] Answer generation works
+- [x] Answer generation works with runtime chat deployment
 - [x] Sources are visible
 - [ ] RAGAS evaluation works

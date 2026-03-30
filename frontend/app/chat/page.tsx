@@ -41,16 +41,34 @@ type RetrievalResponse = {
   hits: RetrievalHit[];
 };
 
+type ChatCitation = {
+  id?: string;
+  source?: string;
+  original_name?: string;
+  stored_name?: string;
+  chunk_index?: number;
+  page_number?: number;
+  section_header?: string;
+  preview?: string;
+};
+
+type ChatResponse = RetrievalResponse & {
+  answer: string;
+  insufficient_context: boolean;
+  citations: ChatCitation[];
+  chat_model?: string | null;
+};
+
 const API_BASE_URL = "/api";
 
 export default function ChatPage() {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [selectedStoredName, setSelectedStoredName] = useState("");
-  const [query, setQuery] = useState("계약자 변경");
+  const [query, setQuery] = useState("");
   const [topK, setTopK] = useState(5);
-  const [result, setResult] = useState<RetrievalResponse | null>(null);
-  const [message, setMessage] = useState("Ask a question to inspect retrieved chunks before answer generation.");
+  const [result, setResult] = useState<ChatResponse | null>(null);
+  const [message, setMessage] = useState("질문을 넣으면 retrieval 근거와 answer를 함께 확인합니다.");
   const [isLoading, setIsLoading] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -112,10 +130,10 @@ export default function ChatPage() {
     }
 
     setIsLoading(true);
-    setMessage("Retrieving relevant chunks...");
+    setMessage("Retrieving context and generating an answer...");
 
     try {
-      const response = await fetch(`${API_BASE_URL}/retrieve`, {
+      const response = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -127,16 +145,20 @@ export default function ChatPage() {
         }),
       });
 
-      const data = (await response.json()) as RetrievalResponse & { detail?: string };
+      const data = (await response.json()) as ChatResponse & { detail?: string };
       if (!response.ok) {
         throw new Error(data.detail ?? "Retrieval failed.");
       }
 
       setResult(data);
-      setMessage(`Retrieved ${data.hit_count} chunk(s) from ${data.collection_name}.`);
+      setMessage(
+        data.insufficient_context
+          ? `Retrieved ${data.hit_count} chunk(s), but the context was not sufficient for a grounded answer.`
+          : `Generated an answer from ${data.hit_count} retrieved chunk(s).`,
+      );
     } catch (error) {
       setResult(null);
-      setMessage(error instanceof Error ? error.message : "Retrieval failed.");
+      setMessage(error instanceof Error ? error.message : "Answer generation failed.");
     } finally {
       setIsLoading(false);
     }
@@ -170,8 +192,8 @@ export default function ChatPage() {
     <section className="page">
       <div className="card">
         <p className="eyebrow">Chat</p>
-        <h2>Retrieval test</h2>
-        <p>질문을 넣고, 어떤 chunk가 근거로 잡히는지 먼저 확인합니다.</p>
+        <h2>Grounded answer</h2>
+        <p>질문을 넣고, retrieval 근거만으로 답변과 citation을 확인합니다.</p>
         <div className="chat-toolbar">
           <button className="upload-button secondary" onClick={() => void loadFiles()} type="button">
             Refresh indexed files
@@ -228,7 +250,7 @@ export default function ChatPage() {
             </div>
           </div>
           <button className="upload-button" disabled={isLoading} type="submit">
-            {isLoading ? "Searching..." : "Search chunks"}
+            {isLoading ? "Generating..." : "Generate answer"}
           </button>
         </form>
         {unindexedCount > 0 ? (
@@ -237,6 +259,36 @@ export default function ChatPage() {
           </div>
         ) : null}
         <div className="chat-status">{message}</div>
+      </div>
+
+      <div className="card">
+        <p className="eyebrow">Answer</p>
+        <h2>Generated answer</h2>
+        {!result ? (
+          <p>No answer yet.</p>
+        ) : (
+          <div className="answer-panel">
+            <div className="answer-summary">
+              <span>{result.insufficient_context ? "Insufficient context" : "Grounded answer"}</span>
+              <span>Hits: {result.hit_count}</span>
+              {result.chat_model ? <span>Model: {result.chat_model}</span> : null}
+            </div>
+            <div className={`answer-body${result.insufficient_context ? " warning" : ""}`}>{result.answer}</div>
+            <div className="citation-list">
+              {result.citations.map((citation) => (
+                <article className="citation-card" key={citation.id ?? `${citation.source}-${citation.chunk_index}`}>
+                  <strong>{citation.source ?? citation.original_name ?? "Unknown source"}</strong>
+                  <div className="retrieval-meta">
+                    <span>chunk #{citation.chunk_index ?? "-"}</span>
+                    {citation.page_number ? <span>page {citation.page_number}</span> : null}
+                    {citation.section_header ? <span>{citation.section_header}</span> : null}
+                  </div>
+                  {citation.preview ? <div className="citation-preview">{citation.preview}</div> : null}
+                </article>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card">
