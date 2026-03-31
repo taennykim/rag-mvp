@@ -192,6 +192,10 @@
 - [x] parser 실제 구현 및 검증
 - [ ] retrieval 질문 세트 기준 Azure embedding 재검증
 - [ ] embedding 영향과 parser 영향 분리 기준 정리
+- [x] upload 단계에서 확장자 + 파일 시그니처 + OOXML 내부 구조 기준 문서 타입 판별 강화
+- [ ] PDF 파싱 결과에서 garbled text 감지 기준 추가
+- [ ] PDF 기준 `Docling` / `PyMuPDF` / reference-style 추출 품질 비교 로직 설계
+- [ ] PDF parser 품질 비교 결과를 upload 화면 경고로 노출
 - [ ] `PDF` 기준 `Docling` vs `PyMuPDF` 비교
 - [ ] parser 영향 기반 chunk/retrieval 재검증
 - [x] 실제 embedding 모델 교체 방식 결정

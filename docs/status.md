@@ -159,6 +159,12 @@
 - 현재 chat deployment는 `gpt-4o`로 확인됐고, answer 품질 검증이 다음 단계다.
 - `계약자 변경을 위한 서류를 알려줘` 질문에서는 grounded answer가 동작했지만, 조건부 서류와 공통 서류를 섞어 말하는 경향이 있어 prompt 보정을 반영했다.
 - `(무)종신보험표준형_20210101_산출방법서.doc`는 현재 `chunk_count=7`, `target_length=800`, `overlap=120` 기준으로 잘리고 있고, 표/수식 블록 보존이 약한 편이다.
+- upload 단계에서 확장자뿐 아니라 파일 시그니처와 OOXML 내부 구조 기준으로 실제 형식을 검증하도록 강화했다.
+- 내일 parser 고도화는 여기서 이어간다:
+  - 1단계 완료: 확장자 + 시그니처 + OOXML 내부 구조 기준 타입 판별 강화
+  - 2단계 예정: PDF garbled text 감지 기준 추가
+  - 3단계 예정: `Docling` / `PyMuPDF` / reference-style 추출 품질 비교
+  - 4단계 예정: parser 품질 경고를 upload 화면에 노출
 
 ## 9. 다음 세션 시작 순서
 1. `AGENTS.md` 확인
@@ -167,5 +173,6 @@
 4. `docs/status.md` 확인
 5. 관련 `docs/*.md` 확인
 6. `docs/daily/2026-03-31.md` 확인
-7. retrieval 질문 세트 기준 retrieval/answer/citation 품질 확인
-8. 산출방법서 계열 chunk 전략 검토
+7. upload parser 고도화 2단계부터 시작: PDF garbled text 감지 기준 정리
+8. `Docling` / `PyMuPDF` / reference-style 추출 비교 전략 정리
+9. 이후 retrieval 질문 세트 기준 retrieval/answer/citation 품질 확인
