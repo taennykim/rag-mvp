@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import hashlib
+from io import BytesIO
 import json
 from functools import lru_cache
 import logging
@@ -103,6 +104,9 @@ PARSE_METADATA_DIR = BASE_DIR / "data" / "parse-metadata"
 CHUNK_METADATA_DIR = BASE_DIR / "data" / "chunk-metadata"
 CHROMA_DIR = BASE_DIR / "data" / "chroma"
 ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx"}
+PDF_SIGNATURE = b"%PDF-"
+ZIP_SIGNATURE = b"PK\x03\x04"
+CFBF_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 PREVIEW_LENGTH = 300
 QUALITY_WARNING_THRESHOLD = 0.8
 WORD_NAMESPACE = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
@@ -249,6 +253,63 @@ def get_extension(filename: str) -> str:
 
 def get_supported_file_types_message() -> str:
     return "PDF, DOC, DOCX, XLS, and XLSX files are supported."
+
+
+def get_type_validation_message(expected_extension: str, detected_extension: str | None) -> str:
+    expected_label = expected_extension.lstrip(".").upper()
+    if detected_extension == ".legacy-office":
+        detected_label = "legacy Office binary"
+    elif detected_extension:
+        detected_label = detected_extension.lstrip(".").upper()
+    else:
+        detected_label = "unknown file type"
+
+    return f"File extension indicates {expected_label}, but the uploaded content looks like {detected_label}."
+
+
+def detect_ooxml_extension(content: bytes) -> str | None:
+    try:
+        with ZipFile(BytesIO(content)) as archive:
+            names = set(archive.namelist())
+    except Exception:
+        return None
+
+    if "word/document.xml" in names:
+        return ".docx"
+    if "xl/workbook.xml" in names:
+        return ".xlsx"
+    return None
+
+
+def detect_actual_extension(filename: str, content: bytes) -> str | None:
+    extension = get_extension(filename)
+    if extension not in ALLOWED_EXTENSIONS:
+        return None
+
+    if content.startswith(PDF_SIGNATURE):
+        return ".pdf"
+
+    if content.startswith(ZIP_SIGNATURE):
+        return detect_ooxml_extension(content)
+
+    if content.startswith(CFBF_SIGNATURE):
+        return ".legacy-office"
+
+    return None
+
+
+def validate_uploaded_file_type(filename: str, content: bytes) -> None:
+    extension = get_extension(filename)
+    detected_extension = detect_actual_extension(filename, content)
+
+    if extension == ".pdf" and detected_extension != ".pdf":
+        raise HTTPException(status_code=400, detail=get_type_validation_message(extension, detected_extension))
+
+    if extension in {".docx", ".xlsx"} and detected_extension != extension:
+        raise HTTPException(status_code=400, detail=get_type_validation_message(extension, detected_extension))
+
+    if extension in {".doc", ".xls"} and detected_extension != ".legacy-office":
+        raise HTTPException(status_code=400, detail=get_type_validation_message(extension, detected_extension))
 
 
 def normalize_text(text: str) -> str:
@@ -2127,6 +2188,7 @@ async def upload_document(file: UploadFile = File(...)) -> dict[str, object]:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
     normalized_name = Path(filename).name
+    validate_uploaded_file_type(normalized_name, content)
     ensure_no_completed_duplicate_upload(normalized_name)
     saved = save_content_to_uploads(normalized_name, content, file.content_type)
     logger.info(
@@ -2155,6 +2217,7 @@ def upload_default_file(payload: DefaultFileUploadRequest) -> dict[str, object]:
     if not content:
         raise HTTPException(status_code=400, detail="Default file is empty.")
 
+    validate_uploaded_file_type(filename, content)
     ensure_no_completed_duplicate_upload(filename)
     saved = save_content_to_uploads(filename, content, None)
     logger.info(
