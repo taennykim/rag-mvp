@@ -598,6 +598,18 @@ def save_content_to_uploads(filename: str, content: bytes, content_type: str | N
     return metadata
 
 
+def ensure_no_completed_duplicate_upload(filename: str) -> None:
+    normalized_name = Path(filename).name
+    for file in list_pipeline_files():
+        original_name = file.get("original_name")
+        index_status = file.get("index_status")
+        if original_name == normalized_name and index_status == "completed":
+            raise HTTPException(
+                status_code=409,
+                detail=f"{normalized_name} is already uploaded and indexed. Reset the existing file before uploading it again.",
+            )
+
+
 def get_uploaded_file_path(stored_name: str) -> Path:
     ensure_upload_dir()
     filename = Path(stored_name).name
@@ -2114,7 +2126,9 @@ async def upload_document(file: UploadFile = File(...)) -> dict[str, object]:
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    saved = save_content_to_uploads(Path(filename).name, content, file.content_type)
+    normalized_name = Path(filename).name
+    ensure_no_completed_duplicate_upload(normalized_name)
+    saved = save_content_to_uploads(normalized_name, content, file.content_type)
     logger.info(
         "upload_completed stored_name=%s original_name=%s size_bytes=%s",
         saved["stored_name"],
@@ -2141,6 +2155,7 @@ def upload_default_file(payload: DefaultFileUploadRequest) -> dict[str, object]:
     if not content:
         raise HTTPException(status_code=400, detail="Default file is empty.")
 
+    ensure_no_completed_duplicate_upload(filename)
     saved = save_content_to_uploads(filename, content, None)
     logger.info(
         "default_upload_completed stored_name=%s original_name=%s size_bytes=%s",

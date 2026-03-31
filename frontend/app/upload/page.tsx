@@ -859,7 +859,11 @@ export default function UploadPage() {
                       onClick={() => void handlePreviewToggle(file)}
                       type="button"
                     >
-                      {activePreviewFile === file.stored_name ? "Hide preview" : activeParseFile === file.stored_name ? "Loading..." : "Preview"}
+                      {activePreviewFile === file.stored_name
+                        ? "Hide preview"
+                        : activeParseFile === file.stored_name
+                          ? "Loading..."
+                          : "Show preview"}
                     </button>
                     <button
                       className="upload-button secondary"
@@ -887,7 +891,6 @@ export default function UploadPage() {
                     <div className="quality-metrics">
                       <p>
                         <strong>{formatQualityStatus(file)}</strong>
-                        {file.quality_checked_at ? ` · ${formatUploadedAt(file.quality_checked_at)}` : ""}
                       </p>
                       {typeof file.jaccard_similarity === "number" ? (
                         <p>Jaccard Similarity: {formatSimilarity(file.jaccard_similarity)}</p>
@@ -901,10 +904,9 @@ export default function UploadPage() {
                     </div>
                   ) : null}
                   {activePreviewFile === file.stored_name && file.parse_preview ? (
-                    <details className="parse-json" open>
-                      <summary>Preview</summary>
+                    <div className="parse-json">
                       <pre>{file.parse_preview}</pre>
-                    </details>
+                    </div>
                   ) : null}
                 </div>
                 <div className="file-meta">

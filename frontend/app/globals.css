@@ -381,7 +381,7 @@ a {
 .file-list li {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 16px;
   padding: 16px 18px;
   border: 1px solid var(--line);
@@ -401,6 +401,7 @@ a {
 
 .file-main {
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .file-main strong {
@@ -423,7 +424,8 @@ a {
   background: rgba(16, 35, 63, 0.05);
   color: var(--ink);
   font-size: 0.85rem;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .file-status-chip.indexed {
@@ -446,6 +448,7 @@ a {
   display: grid;
   gap: 4px;
   justify-items: end;
+  flex: 0 0 auto;
 }
 
 .file-meta span {
@@ -487,12 +490,6 @@ a {
   border: 1px solid var(--line);
   border-radius: 18px;
   background: rgba(248, 251, 255, 0.9);
-}
-
-.parse-json summary {
-  cursor: pointer;
-  color: var(--ink);
-  font-weight: 700;
 }
 
 .parse-json pre {
