@@ -21,6 +21,12 @@ type UploadedFile = {
   last_failed_parse_fallback_used?: boolean | null;
   chunk_count?: number | null;
   indexed_chunk_count?: number | null;
+  parse_preview?: string | null;
+  quality_checked_at?: string | null;
+  jaccard_similarity?: number | null;
+  levenshtein_distance?: number | null;
+  quality_warning?: boolean | null;
+  quality_warning_message?: string | null;
 };
 
 type DefaultFile = {
@@ -138,11 +144,11 @@ export default function UploadPage() {
   const [fallbackParser, setFallbackParser] = useState("extension-default");
   const [chunkTargetLength, setChunkTargetLength] = useState(String(DEFAULT_CHUNK_TARGET_LENGTH));
   const [chunkOverlapLength, setChunkOverlapLength] = useState(String(DEFAULT_CHUNK_OVERLAP_LENGTH));
-  const [parseResult, setParseResult] = useState<ParseResult | null>(null);
-  const [parseQualityResult, setParseQualityResult] = useState<ParseQualityResult | null>(null);
   const [activeParseFile, setActiveParseFile] = useState("");
   const [activeQualityFile, setActiveQualityFile] = useState("");
   const [activeDeleteFile, setActiveDeleteFile] = useState("");
+  const [activePreviewFile, setActivePreviewFile] = useState("");
+  const [visibleQualityFile, setVisibleQualityFile] = useState("");
   const [message, setMessage] = useState("Select a PDF, DOC, DOCX, XLS, or XLSX file to upload.");
   const [errorDetail, setErrorDetail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -229,6 +235,14 @@ export default function UploadPage() {
 
   function formatSimilarity(value: number) {
     return value.toFixed(3);
+  }
+
+  function formatQualityStatus(file: UploadedFile) {
+    if (typeof file.quality_warning !== "boolean") {
+      return null;
+    }
+
+    return file.quality_warning ? "Quality warning" : "Quality OK";
   }
 
   function getChunkSettings() {
@@ -413,8 +427,6 @@ export default function UploadPage() {
       updateUploadStage("parse", "active", "Extracting text");
       setMessage("Parsing uploaded file...");
       const parsedResult = await parseUploadedFile(uploadResult.stored_name);
-      setParseResult(parsedResult);
-      setParseQualityResult(null);
       updateUploadStage(
         "parse",
         "completed",
@@ -479,53 +491,12 @@ export default function UploadPage() {
       }
 
       setFiles([]);
-      setParseResult(null);
-      setParseQualityResult(null);
       setErrorDetail("");
       setMessage(`Cleared ${data.removed_count ?? 0} uploaded file(s).`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to clear uploaded files.");
     } finally {
       setIsLoading(false);
-    }
-  }
-
-  async function handleParseTest(file: UploadedFile) {
-    setActiveParseFile(file.stored_name);
-    setErrorDetail("");
-    setMessage(`Parsing ${file.original_name}...`);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/parse`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          stored_name: file.stored_name,
-          primary_parser: primaryParser,
-          fallback_parser: fallbackParser,
-        }),
-      });
-
-      const data = (await response.json()) as ParseResult & { detail?: string };
-      if (!response.ok) {
-        throw new Error(data.detail ?? "Parsing failed.");
-      }
-
-      setParseResult(data);
-      setParseQualityResult(null);
-      setErrorDetail("");
-      await loadFiles();
-      setMessage(`Parsed ${data.original_name}.`);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "Parsing failed.";
-      setMessage(detail);
-      setParseResult(null);
-      setParseQualityResult(null);
-      setErrorDetail(`PARSE failed. ${detail} Check backend log: ${BACKEND_LOG_PATH}`);
-    } finally {
-      setActiveParseFile("");
     }
   }
 
@@ -549,9 +520,12 @@ export default function UploadPage() {
         throw new Error(data.detail ?? "Failed to delete uploaded file.");
       }
 
-      if (parseResult?.stored_name === file.stored_name) {
-        setParseResult(null);
-        setParseQualityResult(null);
+      if (visibleQualityFile === file.stored_name) {
+        setVisibleQualityFile("");
+      }
+
+      if (activePreviewFile === file.stored_name) {
+        setActivePreviewFile("");
       }
 
       await loadFiles();
@@ -566,15 +540,10 @@ export default function UploadPage() {
     }
   }
 
-  async function handleQualityCheck() {
-    if (!parseResult) {
-      setMessage("Run Parse test first.");
-      return;
-    }
-
-    setActiveQualityFile(parseResult.stored_name);
+  async function handleRowQualityCheck(file: UploadedFile) {
+    setActiveQualityFile(file.stored_name);
     setErrorDetail("");
-    setMessage(`Calculating parsing quality for ${parseResult.original_name}...`);
+    setMessage(`Calculating parsing quality for ${file.original_name}...`);
 
     try {
       const response = await fetch(`${API_BASE_URL}/parse/quality`, {
@@ -583,7 +552,7 @@ export default function UploadPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          stored_name: parseResult.stored_name,
+          stored_name: file.stored_name,
           primary_parser: primaryParser,
           fallback_parser: fallbackParser,
         }),
@@ -594,16 +563,83 @@ export default function UploadPage() {
         throw new Error(data.detail ?? "Quality check failed.");
       }
 
-      setParseQualityResult(data);
+      setFiles((current) =>
+        current.map((item) =>
+          item.stored_name === file.stored_name
+            ? {
+                ...item,
+                quality_checked_at: data.uploaded_at,
+                jaccard_similarity: data.jaccard_similarity,
+                levenshtein_distance: data.levenshtein_distance,
+                quality_warning: data.quality_warning,
+                quality_warning_message: data.quality_warning_message,
+              }
+            : item,
+        ),
+      );
+      setVisibleQualityFile(file.stored_name);
       setErrorDetail("");
       setMessage(`Calculated parsing quality for ${data.original_name}.`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Quality check failed.";
       setMessage(detail);
-      setParseQualityResult(null);
       setErrorDetail(`QUALITY CHECK failed. ${detail} Check backend log: ${BACKEND_LOG_PATH}`);
     } finally {
       setActiveQualityFile("");
+    }
+  }
+
+  async function handlePreviewToggle(file: UploadedFile) {
+    if (activePreviewFile === file.stored_name) {
+      setActivePreviewFile("");
+      return;
+    }
+
+    if (file.parse_preview) {
+      setActivePreviewFile(file.stored_name);
+      setMessage(`Preview loaded for ${file.original_name}.`);
+      return;
+    }
+
+    if (file.parse_status !== "completed") {
+      setMessage(`Preview is not available until parsing succeeds for ${file.original_name}.`);
+      return;
+    }
+
+    setActiveParseFile(file.stored_name);
+    setMessage(`Loading preview for ${file.original_name}...`);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/parse`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          stored_name: file.stored_name,
+          primary_parser: primaryParser,
+          fallback_parser: fallbackParser,
+        }),
+      });
+
+      const data = (await response.json()) as ParseResult & { detail?: string };
+      if (!response.ok) {
+        throw new Error(data.detail ?? "Preview load failed.");
+      }
+
+      setFiles((current) =>
+        current.map((item) =>
+          item.stored_name === file.stored_name ? { ...item, parse_preview: data.preview } : item,
+        ),
+      );
+      setActivePreviewFile(file.stored_name);
+      setMessage(`Preview loaded for ${data.original_name}.`);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Preview load failed.";
+      setMessage(detail);
+      setErrorDetail(`PREVIEW failed. ${detail} Check backend log: ${BACKEND_LOG_PATH}`);
+    } finally {
+      setActiveParseFile("");
     }
   }
 
@@ -819,16 +855,24 @@ export default function UploadPage() {
                   <div className="file-actions">
                     <button
                       className="upload-button secondary"
-                      disabled={
-                        isLoading ||
-                        file.parse_status === "failed" ||
-                        activeParseFile === file.stored_name ||
-                        activeDeleteFile === file.stored_name
-                      }
-                      onClick={() => void handleParseTest(file)}
+                      disabled={isLoading || activeDeleteFile === file.stored_name || activeParseFile === file.stored_name}
+                      onClick={() => void handlePreviewToggle(file)}
                       type="button"
                     >
-                      {activeParseFile === file.stored_name ? "Parsing..." : "Parse test"}
+                      {activePreviewFile === file.stored_name ? "Hide preview" : activeParseFile === file.stored_name ? "Loading..." : "Preview"}
+                    </button>
+                    <button
+                      className="upload-button secondary"
+                      disabled={
+                        isLoading ||
+                        file.parse_status !== "completed" ||
+                        activeQualityFile === file.stored_name ||
+                        activeDeleteFile === file.stored_name
+                      }
+                      onClick={() => void handleRowQualityCheck(file)}
+                      type="button"
+                    >
+                      {activeQualityFile === file.stored_name ? "Checking..." : "Check quality"}
                     </button>
                     <button
                       className="upload-button secondary danger"
@@ -839,6 +883,29 @@ export default function UploadPage() {
                       {activeDeleteFile === file.stored_name ? "Resetting..." : "Reset"}
                     </button>
                   </div>
+                  {visibleQualityFile === file.stored_name && formatQualityStatus(file) ? (
+                    <div className="quality-metrics">
+                      <p>
+                        <strong>{formatQualityStatus(file)}</strong>
+                        {file.quality_checked_at ? ` · ${formatUploadedAt(file.quality_checked_at)}` : ""}
+                      </p>
+                      {typeof file.jaccard_similarity === "number" ? (
+                        <p>Jaccard Similarity: {formatSimilarity(file.jaccard_similarity)}</p>
+                      ) : null}
+                      {typeof file.levenshtein_distance === "number" ? (
+                        <p>Levenshtein Distance: {file.levenshtein_distance}</p>
+                      ) : null}
+                      {file.quality_warning_message ? (
+                        <p className="quality-warning">{file.quality_warning_message}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {activePreviewFile === file.stored_name && file.parse_preview ? (
+                    <details className="parse-json" open>
+                      <summary>Preview</summary>
+                      <pre>{file.parse_preview}</pre>
+                    </details>
+                  ) : null}
                 </div>
                 <div className="file-meta">
                   <span>{formatFileSize(file.size_bytes)}</span>
@@ -851,57 +918,6 @@ export default function UploadPage() {
         )}
       </div>
 
-      <div className="card">
-        <p className="eyebrow">Parsing</p>
-        <h2>Parsing test result</h2>
-        {parseResult ? (
-          <div className="parse-result">
-            <p>
-              <strong>{parseResult.original_name}</strong>
-            </p>
-            <p>Stored name: {parseResult.stored_name}</p>
-            <p>Type: {parseResult.file_type}</p>
-            <p>Size: {formatFileSize(parseResult.size_bytes)}</p>
-            <p>Uploaded at: {formatUploadedAt(parseResult.uploaded_at)}</p>
-            <p>Status: {parseResult.status}</p>
-            <p>Primary parser: {parseResult.primary_parser}</p>
-            <p>Second parser: {parseResult.fallback_parser}</p>
-            <p>
-              Parser used: {parseResult.parser_used}
-              {parseResult.fallback_used ? " (fallback used)" : ""}
-            </p>
-            <p>Extracted length: {parseResult.text_length}</p>
-            <button
-              className="upload-button"
-              disabled={activeQualityFile === parseResult.stored_name}
-              onClick={() => void handleQualityCheck()}
-              type="button"
-            >
-              {activeQualityFile === parseResult.stored_name ? "Calculating..." : "Check parsing quality"}
-            </button>
-            {parseQualityResult ? (
-              <div className="quality-metrics">
-                <p>Reference length: {parseQualityResult.reference_text_length}</p>
-                <p>Jaccard Similarity: {formatSimilarity(parseQualityResult.jaccard_similarity)}</p>
-                <p>Levenshtein Distance: {parseQualityResult.levenshtein_distance}</p>
-                <p>
-                  Parser used: {parseQualityResult.parser_used}
-                  {parseQualityResult.fallback_used ? " (fallback used)" : ""}
-                </p>
-                {parseQualityResult.quality_warning ? (
-                  <p className="quality-warning">{parseQualityResult.quality_warning_message}</p>
-                ) : null}
-              </div>
-            ) : null}
-            <details className="parse-json" open>
-              <summary>Preview</summary>
-              <pre>{parseResult.preview}</pre>
-            </details>
-          </div>
-        ) : (
-          <p>Run Parse test from the uploaded file list to inspect extracted text.</p>
-        )}
-      </div>
     </section>
   );
 }

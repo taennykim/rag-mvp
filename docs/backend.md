@@ -59,6 +59,10 @@
   - `fallback_parser`
   - `parser_used`
   - `fallback_used`
+- parse summary / pipeline file 응답:
+  - 성공한 parse summary에는 `preview`를 함께 저장한다.
+  - `POST /parse/quality` 결과는 parse summary에 quality 메타데이터로 반영한다.
+  - `GET /pipeline/files`는 파일별 `parse_preview`, `quality_checked_at`, `jaccard_similarity`, `levenshtein_distance`, `quality_warning`, `quality_warning_message`를 함께 반환한다.
 - parsing 품질 응답:
   - `stored_name`
   - `original_name`
@@ -118,6 +122,7 @@
 - parser selection UI 및 backend parser routing 추가 완료
 - Docling 설치 및 primary parser 검증 완료
 - DOC / Excel fallback parser 구현 및 검증 완료
+- upload list용 parse preview / quality metadata 노출 추가 완료
 - chunking 기능 최소 구현 및 검증 완료
 - indexing 기능 구현 및 검증 완료
 - retrieval 기능 구현 및 1차 품질 점검 완료
@@ -128,6 +133,7 @@
 - `.doc`와 `.xlsx` 기본 파일은 현재 지원 대상이 아니다.
 - 추출 텍스트 저장, 캐싱, 후속 chunk 연계는 아직 없다.
 - quality score는 별도 reference extractor 기준 비교이며 사람 검수 대체는 아니다.
+- parse preview와 quality 메타데이터는 현재 parse summary 파일에 함께 저장된다.
 - chunking은 현재 문자 길이 기준의 규칙 기반 처리라 semantic boundary를 완벽히 보장하지 않는다.
 - `page_number`, `section_header`는 parsing 결과에 구조 정보가 있을 때만 채울 수 있다.
 - 산출방법서 문서군은 전체 파일 대상 retrieval에서 오탐이 남아 있다.
@@ -141,4 +147,3 @@
 - `Docling`과 fallback parser의 PDF 품질 비교를 진행한다.
 - parser 변경이 chunking/retrieval에 주는 영향 범위를 확인한다.
 - retrieval 질문 세트 기준으로 Azure embedding 적용 후 개선 여부를 다시 검증한다.
-- retrieval 이후 grounded answer generation으로 연결한다.

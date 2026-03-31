@@ -25,3 +25,4 @@
 - retrieval 질문 세트 일부를 골라 answer quality를 함께 점검한다.
 - citation 형식과 insufficient-context 응답 톤을 다듬는다.
 - 조건 분기가 많은 질문은 answer와 retrieval 원인을 분리해서 기록한다.
+- answer 품질 기록은 `docs/answer-eval.md` 템플릿을 기준으로 남긴다.

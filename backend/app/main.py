@@ -464,6 +464,7 @@ def write_parse_summary(
     fallback_used: bool,
     text_length: int,
     file_type: str,
+    preview: str | None = None,
     error_detail: str | None = None,
 ) -> Path:
     summary_path = get_parse_summary_path(path)
@@ -475,6 +476,7 @@ def write_parse_summary(
         "parser_used": parser_used,
         "fallback_used": fallback_used,
         "text_length": text_length,
+        "preview": preview,
         "error_detail": error_detail,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -497,8 +499,37 @@ def write_parse_failure_summary(
         fallback_used=fallback_used,
         text_length=0,
         file_type=file_type,
+        preview=None,
         error_detail=error_detail,
     )
+
+
+def update_parse_quality_summary(
+    path: Path,
+    *,
+    parser_used: str,
+    fallback_used: bool,
+    metrics: dict[str, object],
+) -> None:
+    summary_path = get_parse_summary_path(path)
+    summary = read_json_file(summary_path) or {
+        "stored_name": path.name,
+        "original_name": path.name.split("__", 1)[1] if "__" in path.name else path.name,
+        "status": "completed",
+        "file_type": get_extension(path.name),
+    }
+    summary.update(
+        {
+            "parser_used": parser_used,
+            "fallback_used": fallback_used,
+            "quality_checked_at": datetime.now(timezone.utc).isoformat(),
+            "jaccard_similarity": metrics.get("jaccard_similarity"),
+            "levenshtein_distance": metrics.get("levenshtein_distance"),
+            "quality_warning": metrics.get("quality_warning"),
+            "quality_warning_message": metrics.get("quality_warning_message"),
+        }
+    )
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def list_uploaded_files() -> list[dict[str, object]]:
@@ -927,6 +958,7 @@ def build_parsing_result(
         fallback_used=fallback_used,
         text_length=len(text),
         file_type=get_extension(path.name),
+        preview=text[:PREVIEW_LENGTH],
     )
 
     metadata = build_file_metadata(path)
@@ -975,7 +1007,14 @@ def build_parsing_quality_result(
             "fallback_used": fallback_used,
         }
     )
-    metadata.update(build_quality_metrics(parsed_text, reference_text))
+    quality_metrics = build_quality_metrics(parsed_text, reference_text)
+    metadata.update(quality_metrics)
+    update_parse_quality_summary(
+        path,
+        parser_used=parser_used,
+        fallback_used=fallback_used,
+        metrics=quality_metrics,
+    )
     return metadata
 
 
@@ -1968,6 +2007,7 @@ def list_pipeline_files() -> list[dict[str, object]]:
                 "parse_parser_used": parsed.get("parser_used") if parsed and parsed.get("parser_used") else None,
                 "parse_fallback_used": parsed.get("fallback_used") if parsed else None,
                 "parse_error_detail": parsed.get("error_detail") if parsed else None,
+                "parse_preview": parsed.get("preview") if parsed else None,
                 "last_successful_parse_parser_used": (
                     parsed.get("parser_used")
                     if parsed and parsed.get("status") == "completed" and parsed.get("parser_used")
@@ -1990,6 +2030,11 @@ def list_pipeline_files() -> list[dict[str, object]]:
                 ),
                 "chunk_count": chunked.get("chunk_count") if chunked else None,
                 "indexed_chunk_count": indexed.get("chunk_count") if indexed else None,
+                "quality_checked_at": parsed.get("quality_checked_at") if parsed else None,
+                "jaccard_similarity": parsed.get("jaccard_similarity") if parsed else None,
+                "levenshtein_distance": parsed.get("levenshtein_distance") if parsed else None,
+                "quality_warning": parsed.get("quality_warning") if parsed else None,
+                "quality_warning_message": parsed.get("quality_warning_message") if parsed else None,
             }
         )
 

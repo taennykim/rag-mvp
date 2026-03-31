@@ -83,7 +83,8 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - `Default file list` starts from `Select a file`
 - Retrieval test question set is documented in `docs/retrieval-test-set.md`
 - Retrieval pass/fail has been checked on representative questions
-- Pricing-method PDF retrieval remains weak in all-file search and is the main reason to replace the current embedding
+- Azure OpenAI `text-embedding-3-small` embedding replacement and rebuild are complete
+- Pricing-method PDF retrieval still remains weak in all-file search, so the next work is parser/chunking/retrieval quality re-check rather than another embedding swap
 - Backend exposes `GET /parse/parsers` and supports `Docling -> auxiliary parser fallback`
 - Parser catalog now marks `Docling`, `DOC parser`, and `Excel parser` as available on the RAG server
 - Frontend is currently operated more stably with `build + start` than `next dev`
@@ -118,21 +119,26 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 
 ## Resume Tomorrow
 Start from these files first:
-- `docs/status.md`
-- `docs/daily/2026-03-30.md`
-- `docs/llm.md`
+- `AGENTS.md`
+- `docs/plan.md`
 - `TODO.md`
+- `docs/status.md`
+- `docs/answer-eval.md`
+- `docs/llm.md`
+- `docs/daily/2026-03-31.md`
 
 Recommended restart order:
-1. Review `docs/status.md` for the latest completed scope and blockers.
-2. Review `docs/daily/2026-03-30.md` for today's detailed work log.
-3. Review `docs/llm.md` for answer generation scope.
-4. Review `TODO.md` for the next unchecked chat/answer work.
-5. Start by checking answer quality and citation quality on `/chat`.
+1. Review `AGENTS.md` for the working rules and document order.
+2. Review `docs/plan.md` for the current phase and next priority.
+3. Review `TODO.md` for unchecked tasks.
+4. Review `docs/status.md` for the latest completed scope and blockers.
+5. Review related `docs/*.md` such as `docs/answer-eval.md` and `docs/llm.md`.
+6. Review `docs/daily/2026-03-31.md` for the latest session log.
+7. Start the next task.
 
 ## Daily Start Checklist
 1. Review `AGENTS.md` for working rules and project operating constraints.
-2. Review `README.md` for project scope and restart guidance.
-3. Review `docs/status.md` for the latest actual progress and blockers.
-4. Review the latest file in `docs/daily/` for the previous session context.
-5. Review `TODO.md` and choose the first unchecked task for the day.
+2. Review `docs/plan.md` for the current phase and next work.
+3. Review `TODO.md` for unchecked tasks.
+4. Review `docs/status.md` for the latest actual progress and blockers.
+5. Review related `docs/*.md` and the latest `docs/daily/` file before starting.

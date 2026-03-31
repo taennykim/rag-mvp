@@ -26,6 +26,8 @@
   - `Uploaded file list`는 최신 업로드 순으로 정렬되도록 수정 완료
   - `/upload`에서 `Primary parser`, `Second parser` 선택 가능
   - upload 실패 시 실패 단계와 backend log 경로를 UI에서 확인 가능
+  - `Uploaded file list`에서 `Preview` 버튼으로 parse preview 확인 가능
+  - `Uploaded file list`에서 parsing quality 결과를 파일 행 기준으로 확인 가능
   - 업로드 대상 확장자를 `PDF`, `DOC`, `DOCX`, `XLS`, `XLSX`까지 확장 완료
   - `/chat`에서 index된 파일 대상 retrieval 테스트 가능
   - `/chat`에 answer panel 및 citation 카드 UI 추가 완료
@@ -120,6 +122,7 @@
   - `PDF`는 `Docling` 사용 가능 상태지만 문서별 속도/품질 비교는 추가 검증이 필요하다.
   - 같은 파일을 여러 번 업로드하면 `stored_name` 기준으로 별도 행이 누적된다.
   - `Last failure` 표시는 현재 성공 상태와 별개로 과거 parse 실패 이력을 로그 기준으로 함께 노출한다.
+  - parse preview와 quality 결과는 `pipeline/files` 메타데이터 기준으로 파일 행에 함께 표시한다.
   - `Parse test`를 다시 성공시키면 해당 `stored_name`의 최신 parse 결과는 성공 기준으로 덮어써지고, `chunk`를 다시 실행하지 않으면 `chunk_status`는 `pending`으로 남을 수 있다.
 - 남은 점검:
   - `PDF`에서 `Docling`과 `PyMuPDF` 결과 비교
@@ -158,7 +161,11 @@
 - `(무)종신보험표준형_20210101_산출방법서.doc`는 현재 `chunk_count=7`, `target_length=800`, `overlap=120` 기준으로 잘리고 있고, 표/수식 블록 보존이 약한 편이다.
 
 ## 9. 다음 세션 시작 순서
-1. `docs/daily/2026-03-30.md` 확인
-2. `docs/status.md` 확인
-3. retrieval 질문 세트 기준 answer/citation 품질 확인
-4. 산출방법서 계열 chunk 전략 검토
+1. `AGENTS.md` 확인
+2. `docs/plan.md` 확인
+3. `TODO.md` 확인
+4. `docs/status.md` 확인
+5. 관련 `docs/*.md` 확인
+6. `docs/daily/2026-03-31.md` 확인
+7. retrieval 질문 세트 기준 retrieval/answer/citation 품질 확인
+8. 산출방법서 계열 chunk 전략 검토

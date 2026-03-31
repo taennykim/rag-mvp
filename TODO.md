@@ -183,8 +183,8 @@
 
 ## Next Session Start Point
 
-- [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-29.md`, `TODO.md`에 반영
-- [ ] 다음 시작 시 `docs/daily/2026-03-29.md`와 `docs/status.md`부터 확인
+- [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-31.md`, `TODO.md`에 반영
+- [ ] 다음 시작 시 `AGENTS.md` -> `docs/plan.md` -> `TODO.md` -> `docs/status.md` -> 관련 `docs/*.md` -> `docs/daily/2026-03-31.md` 순서로 확인
 - [x] frontend 의존성 설치
 - [x] backend 의존성 설치
 - [x] frontend 실행 확인
@@ -197,6 +197,7 @@
 - [x] 실제 embedding 모델 교체 방식 결정
 - [ ] retrieval 질문 세트 일부 기준 `/chat` answer generation 품질 검증
 - [ ] 산출방법서 계열 표/수식 보존형 chunk 전략 검토
+- [x] answer 품질 점검표 초안 작성 (`docs/answer-eval.md`)
 
 ---
 
