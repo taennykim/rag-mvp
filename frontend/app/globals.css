@@ -492,6 +492,16 @@ a {
   background: rgba(248, 251, 255, 0.9);
 }
 
+.quality-reason-list {
+  display: grid;
+  gap: 4px;
+}
+
+.quality-reason-item {
+  margin: 0;
+  color: var(--muted);
+}
+
 .parse-json pre {
   margin-top: 10px;
 }

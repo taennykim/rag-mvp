@@ -45,6 +45,12 @@
   - reference extractor를 같은 원본 파일에서 별도로 실행
   - `Jaccard Similarity`
   - `Levenshtein Distance`
+  - PDF 추가 감지:
+    - replacement character 포함 여부
+    - control character 비율
+    - suspicious symbol 비율
+    - reference 대비 suspicious symbol ratio delta
+    - parsed/reference text length ratio
   - `Jaccard Similarity < 0.8` 이면 `파싱 품질주의`
 - parsing 응답:
   - `stored_name`
@@ -75,6 +81,14 @@
   - `levenshtein_distance`
   - `quality_warning`
   - `quality_warning_message`
+  - `quality_warning_reasons`
+  - `pdf_garbled_detected`
+  - `pdf_suspicious_char_ratio`
+  - `pdf_reference_suspicious_char_ratio`
+  - `pdf_suspicious_char_ratio_delta`
+  - `pdf_replacement_character_count`
+  - `pdf_control_character_count`
+  - `pdf_text_length_ratio`
   - `primary_parser`
   - `fallback_parser`
   - `parser_used`
@@ -142,8 +156,16 @@
 - `DOC` 파서는 `antiword` 시스템 패키지에 의존한다.
 - `PDF`에 대해서는 `Docling`과 `PyMuPDF` 품질/속도 비교가 아직 더 필요하다.
 - 현재 실제 실행 확인 기준은 RAG 서버 frontend `3000`, backend `8000`이다.
+- 현재 PDF 품질 경고는 heuristic 기반이므로, 실제 샘플 문서 기준 과탐/미탐 점검이 필요하다.
+- 2026-04-01 비교 기준:
+  - `PyMuPDF`는 샘플 약관 PDF, 산출방법서 PDF 모두 즉시 추출 완료
+  - RAG 서버에서 `Docling` PDF 변환은 두 샘플 모두 `timeout 30` 내 완료되지 않음
+  - 산출방법서 PDF는 수식/특수기호 때문에 `suspicious symbol ratio` 단독 기준은 과탐이 났고, 이후 `reference 대비 delta` 기준으로 보정함
+  - 따라서 현재 parser 기본 정책은 `Legacy auto`로 두고, PDF는 `PyMuPDF`를 우선 사용하도록 정리함
 
 ## 5. 다음 작업
-- `Docling`과 fallback parser의 PDF 품질 비교를 진행한다.
+- garbled text 경고가 실제 PDF 샘플에서 적절히 동작하는지 추가 검증한다.
+- `Docling`을 PDF 기본 parser로 유지할지, 운영상 `PyMuPDF` 우선으로 둘지 결정한다.
+- 현재는 운영상 `PyMuPDF` 우선으로 정리했고, `Docling`은 비교 검증용으로 유지한다.
 - parser 변경이 chunking/retrieval에 주는 영향 범위를 확인한다.
 - retrieval 질문 세트 기준으로 Azure embedding 적용 후 개선 여부를 다시 검증한다.

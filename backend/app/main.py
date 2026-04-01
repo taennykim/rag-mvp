@@ -109,6 +109,10 @@ ZIP_SIGNATURE = b"PK\x03\x04"
 CFBF_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 PREVIEW_LENGTH = 300
 QUALITY_WARNING_THRESHOLD = 0.8
+PDF_GARBLED_SUSPICIOUS_CHAR_RATIO_THRESHOLD = 0.35
+PDF_GARBLED_SUSPICIOUS_CHAR_RATIO_DELTA_THRESHOLD = 0.15
+PDF_GARBLED_CONTROL_CHAR_RATIO_THRESHOLD = 0.005
+PDF_GARBLED_LENGTH_RATIO_THRESHOLD = 0.6
 WORD_NAMESPACE = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 CHUNK_TARGET_LENGTH = 800
 CHUNK_OVERLAP_LENGTH = 120
@@ -321,6 +325,29 @@ def tokenize_text(text: str) -> list[str]:
     return re.findall(r"\w+", text.lower())
 
 
+def count_control_characters(text: str) -> int:
+    return sum(1 for char in text if ord(char) < 32 and char not in {"\n", "\r", "\t"})
+
+
+def count_replacement_characters(text: str) -> int:
+    return text.count("\ufffd")
+
+
+def calculate_suspicious_character_ratio(text: str) -> float:
+    meaningful_characters = [char for char in text if not char.isspace()]
+    if not meaningful_characters:
+        return 0.0
+
+    allowed_pattern = re.compile(r"[0-9A-Za-z가-힣ㄱ-ㅎㅏ-ㅣ.,:;!?()\[\]{}<>\-_/\\%&@#*+=~'\"`|]")
+    suspicious_count = sum(1 for char in meaningful_characters if not allowed_pattern.fullmatch(char))
+    return suspicious_count / len(meaningful_characters)
+
+
+def calculate_text_length_ratio(left_text: str, right_text: str) -> float:
+    right_length = max(len(right_text.strip()), 1)
+    return len(left_text.strip()) / right_length
+
+
 def get_default_auxiliary_parser(extension: str) -> str:
     if extension == ".pdf":
         return FALLBACK_PARSER_PYMUPDF
@@ -399,21 +426,21 @@ def get_parser_catalog() -> dict[str, object]:
     excel_parser_available = is_excel_parser_available()
     doc_parser_available = is_command_available("antiword")
     return {
-        "default_primary_parser": PRIMARY_PARSER_DOCLING,
+        "default_primary_parser": PRIMARY_PARSER_LEGACY_AUTO,
         "default_fallback_parser": FALLBACK_PARSER_EXTENSION_DEFAULT,
         "primary_parsers": [
             {
                 "id": PRIMARY_PARSER_DOCLING,
                 "label": "Docling",
                 "available": docling_available,
-                "description": "기본 파서. PDF, DOCX, XLSX를 우선 Docling으로 변환합니다.",
+                "description": "비교 검증용 파서. PDF, DOCX, XLSX를 Docling으로 변환합니다.",
                 "supported_extensions": [".pdf", ".docx", ".xlsx"],
             },
             {
                 "id": PRIMARY_PARSER_LEGACY_AUTO,
                 "label": "Legacy auto parser",
                 "available": True,
-                "description": "파일 확장자에 따라 기존 내장 파서를 바로 사용합니다.",
+                "description": "기본 운영 파서. 파일 확장자에 따라 검증된 내장 파서를 바로 사용합니다.",
                 "supported_extensions": [".pdf", ".doc", ".docx", ".xls", ".xlsx"],
             },
         ],
@@ -588,6 +615,14 @@ def update_parse_quality_summary(
             "levenshtein_distance": metrics.get("levenshtein_distance"),
             "quality_warning": metrics.get("quality_warning"),
             "quality_warning_message": metrics.get("quality_warning_message"),
+            "quality_warning_reasons": metrics.get("quality_warning_reasons"),
+            "pdf_garbled_detected": metrics.get("pdf_garbled_detected"),
+            "pdf_suspicious_char_ratio": metrics.get("pdf_suspicious_char_ratio"),
+            "pdf_reference_suspicious_char_ratio": metrics.get("pdf_reference_suspicious_char_ratio"),
+            "pdf_suspicious_char_ratio_delta": metrics.get("pdf_suspicious_char_ratio_delta"),
+            "pdf_replacement_character_count": metrics.get("pdf_replacement_character_count"),
+            "pdf_control_character_count": metrics.get("pdf_control_character_count"),
+            "pdf_text_length_ratio": metrics.get("pdf_text_length_ratio"),
         }
     )
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -995,17 +1030,65 @@ def calculate_levenshtein_distance(left_tokens: list[str], right_tokens: list[st
     return previous[-1]
 
 
-def build_quality_metrics(parsed_text: str, reference_text: str) -> dict[str, object]:
+def build_pdf_garbled_warnings(parsed_text: str, reference_text: str) -> tuple[bool, list[str], dict[str, object]]:
+    suspicious_char_ratio = calculate_suspicious_character_ratio(parsed_text)
+    reference_suspicious_char_ratio = calculate_suspicious_character_ratio(reference_text)
+    replacement_character_count = count_replacement_characters(parsed_text)
+    control_character_count = count_control_characters(parsed_text)
+    text_length_ratio = calculate_text_length_ratio(parsed_text, reference_text)
+    suspicious_char_ratio_delta = suspicious_char_ratio - reference_suspicious_char_ratio
+
+    warnings: list[str] = []
+    if replacement_character_count > 0:
+        warnings.append("PDF text contains replacement characters.")
+    if control_character_count > 0 and (control_character_count / max(len(parsed_text), 1)) > PDF_GARBLED_CONTROL_CHAR_RATIO_THRESHOLD:
+        warnings.append("PDF text contains unexpected control characters.")
+    if (
+        suspicious_char_ratio > PDF_GARBLED_SUSPICIOUS_CHAR_RATIO_THRESHOLD
+        and suspicious_char_ratio_delta > PDF_GARBLED_SUSPICIOUS_CHAR_RATIO_DELTA_THRESHOLD
+    ):
+        warnings.append("PDF text contains too many suspicious symbols.")
+    if reference_text.strip() and text_length_ratio < PDF_GARBLED_LENGTH_RATIO_THRESHOLD:
+        warnings.append("PDF text is much shorter than the reference extraction.")
+
+    metrics = {
+        "pdf_garbled_detected": bool(warnings),
+        "pdf_suspicious_char_ratio": suspicious_char_ratio,
+        "pdf_reference_suspicious_char_ratio": reference_suspicious_char_ratio,
+        "pdf_suspicious_char_ratio_delta": suspicious_char_ratio_delta,
+        "pdf_replacement_character_count": replacement_character_count,
+        "pdf_control_character_count": control_character_count,
+        "pdf_text_length_ratio": text_length_ratio,
+    }
+    return bool(warnings), warnings, metrics
+
+
+def build_quality_metrics(parsed_text: str, reference_text: str, *, file_type: str) -> dict[str, object]:
     parsed_tokens = tokenize_text(parsed_text)
     reference_tokens = tokenize_text(reference_text)
     jaccard_similarity = calculate_jaccard_similarity(parsed_text, reference_text)
     levenshtein_distance = calculate_levenshtein_distance(parsed_tokens, reference_tokens)
+    warning_reasons: list[str] = []
+
+    if jaccard_similarity < QUALITY_WARNING_THRESHOLD:
+        warning_reasons.append("Reference similarity is below the warning threshold.")
+
+    pdf_garbled_detected = False
+    extra_metrics: dict[str, object] = {}
+    if file_type == ".pdf":
+        pdf_garbled_detected, pdf_warnings, extra_metrics = build_pdf_garbled_warnings(parsed_text, reference_text)
+        warning_reasons.extend(pdf_warnings)
+
+    quality_warning = bool(warning_reasons)
 
     return {
         "jaccard_similarity": jaccard_similarity,
         "levenshtein_distance": levenshtein_distance,
-        "quality_warning": jaccard_similarity < QUALITY_WARNING_THRESHOLD,
-        "quality_warning_message": "파싱 품질주의" if jaccard_similarity < QUALITY_WARNING_THRESHOLD else "",
+        "quality_warning": quality_warning,
+        "quality_warning_message": " / ".join(warning_reasons),
+        "quality_warning_reasons": warning_reasons,
+        "pdf_garbled_detected": pdf_garbled_detected,
+        **extra_metrics,
     }
 
 
@@ -1068,19 +1151,22 @@ def build_parsing_quality_result(
         raise HTTPException(status_code=400, detail="Extracted text is empty.")
 
     metadata = build_file_metadata(path)
+    quality_checked_at = datetime.now(timezone.utc).isoformat()
     metadata.update(
         {
             "status": "quality_checked",
             "file_type": get_extension(path.name),
             "text_length": len(parsed_text),
             "reference_text_length": len(reference_text),
+            "quality_checked_at": quality_checked_at,
             "primary_parser": primary_parser,
             "fallback_parser": fallback_parser,
             "parser_used": parser_used,
             "fallback_used": fallback_used,
         }
     )
-    quality_metrics = build_quality_metrics(parsed_text, reference_text)
+    file_type = get_extension(path.name)
+    quality_metrics = build_quality_metrics(parsed_text, reference_text, file_type=file_type)
     metadata.update(quality_metrics)
     update_parse_quality_summary(
         path,
@@ -2108,6 +2194,14 @@ def list_pipeline_files() -> list[dict[str, object]]:
                 "levenshtein_distance": parsed.get("levenshtein_distance") if parsed else None,
                 "quality_warning": parsed.get("quality_warning") if parsed else None,
                 "quality_warning_message": parsed.get("quality_warning_message") if parsed else None,
+                "quality_warning_reasons": parsed.get("quality_warning_reasons") if parsed else None,
+                "pdf_garbled_detected": parsed.get("pdf_garbled_detected") if parsed else None,
+                "pdf_suspicious_char_ratio": parsed.get("pdf_suspicious_char_ratio") if parsed else None,
+                "pdf_reference_suspicious_char_ratio": parsed.get("pdf_reference_suspicious_char_ratio") if parsed else None,
+                "pdf_suspicious_char_ratio_delta": parsed.get("pdf_suspicious_char_ratio_delta") if parsed else None,
+                "pdf_replacement_character_count": parsed.get("pdf_replacement_character_count") if parsed else None,
+                "pdf_control_character_count": parsed.get("pdf_control_character_count") if parsed else None,
+                "pdf_text_length_ratio": parsed.get("pdf_text_length_ratio") if parsed else None,
             }
         )
 

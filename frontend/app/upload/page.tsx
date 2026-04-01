@@ -27,6 +27,14 @@ type UploadedFile = {
   levenshtein_distance?: number | null;
   quality_warning?: boolean | null;
   quality_warning_message?: string | null;
+  quality_warning_reasons?: string[] | null;
+  pdf_garbled_detected?: boolean | null;
+  pdf_suspicious_char_ratio?: number | null;
+  pdf_reference_suspicious_char_ratio?: number | null;
+  pdf_suspicious_char_ratio_delta?: number | null;
+  pdf_replacement_character_count?: number | null;
+  pdf_control_character_count?: number | null;
+  pdf_text_length_ratio?: number | null;
 };
 
 type DefaultFile = {
@@ -58,11 +66,20 @@ type ParseQualityResult = {
   reference_text_length: number;
   size_bytes: number;
   uploaded_at: string;
+  quality_checked_at?: string;
   status: string;
   jaccard_similarity: number;
   levenshtein_distance: number;
   quality_warning: boolean;
   quality_warning_message: string;
+  quality_warning_reasons?: string[];
+  pdf_garbled_detected?: boolean;
+  pdf_suspicious_char_ratio?: number;
+  pdf_reference_suspicious_char_ratio?: number;
+  pdf_suspicious_char_ratio_delta?: number;
+  pdf_replacement_character_count?: number;
+  pdf_control_character_count?: number;
+  pdf_text_length_ratio?: number;
   primary_parser: string;
   fallback_parser: string;
   parser_used: string;
@@ -235,6 +252,10 @@ export default function UploadPage() {
 
   function formatSimilarity(value: number) {
     return value.toFixed(3);
+  }
+
+  function formatRatioAsPercent(value: number) {
+    return `${(value * 100).toFixed(1)}%`;
   }
 
   function formatQualityStatus(file: UploadedFile) {
@@ -568,11 +589,19 @@ export default function UploadPage() {
           item.stored_name === file.stored_name
             ? {
                 ...item,
-                quality_checked_at: data.uploaded_at,
+                quality_checked_at: data.quality_checked_at ?? new Date().toISOString(),
                 jaccard_similarity: data.jaccard_similarity,
                 levenshtein_distance: data.levenshtein_distance,
                 quality_warning: data.quality_warning,
                 quality_warning_message: data.quality_warning_message,
+                quality_warning_reasons: data.quality_warning_reasons,
+                pdf_garbled_detected: data.pdf_garbled_detected,
+                pdf_suspicious_char_ratio: data.pdf_suspicious_char_ratio,
+                pdf_reference_suspicious_char_ratio: data.pdf_reference_suspicious_char_ratio,
+                pdf_suspicious_char_ratio_delta: data.pdf_suspicious_char_ratio_delta,
+                pdf_replacement_character_count: data.pdf_replacement_character_count,
+                pdf_control_character_count: data.pdf_control_character_count,
+                pdf_text_length_ratio: data.pdf_text_length_ratio,
               }
             : item,
         ),
@@ -687,7 +716,7 @@ export default function UploadPage() {
                 ))}
               </select>
               <p className="parser-note">
-                기본 파서는 Docling을 우선 시도합니다. 현재 환경에 없거나 실패하면 보조 파서로 넘어갑니다.
+                기본값은 Legacy auto parser입니다. PDF는 PyMuPDF를 우선 사용하고, Docling은 비교 검증이 필요할 때 직접 선택합니다.
               </p>
             </div>
 
@@ -898,8 +927,40 @@ export default function UploadPage() {
                       {typeof file.levenshtein_distance === "number" ? (
                         <p>Levenshtein Distance: {file.levenshtein_distance}</p>
                       ) : null}
+                      {typeof file.pdf_garbled_detected === "boolean" ? (
+                        <p>PDF garbled text: {file.pdf_garbled_detected ? "Detected" : "Not detected"}</p>
+                      ) : null}
+                      {typeof file.pdf_suspicious_char_ratio === "number" ? (
+                        <p>Suspicious symbol ratio: {formatRatioAsPercent(file.pdf_suspicious_char_ratio)}</p>
+                      ) : null}
+                      {typeof file.pdf_reference_suspicious_char_ratio === "number" ? (
+                        <p>
+                          Reference suspicious ratio: {formatRatioAsPercent(file.pdf_reference_suspicious_char_ratio)}
+                        </p>
+                      ) : null}
+                      {typeof file.pdf_suspicious_char_ratio_delta === "number" ? (
+                        <p>Suspicious ratio delta: {formatRatioAsPercent(file.pdf_suspicious_char_ratio_delta)}</p>
+                      ) : null}
+                      {typeof file.pdf_text_length_ratio === "number" ? (
+                        <p>Parsed/reference length ratio: {formatRatioAsPercent(file.pdf_text_length_ratio)}</p>
+                      ) : null}
+                      {typeof file.pdf_replacement_character_count === "number" ? (
+                        <p>Replacement chars: {file.pdf_replacement_character_count}</p>
+                      ) : null}
+                      {typeof file.pdf_control_character_count === "number" ? (
+                        <p>Control chars: {file.pdf_control_character_count}</p>
+                      ) : null}
                       {file.quality_warning_message ? (
                         <p className="quality-warning">{file.quality_warning_message}</p>
+                      ) : null}
+                      {file.quality_warning_reasons && file.quality_warning_reasons.length > 0 ? (
+                        <div className="quality-reason-list">
+                          {file.quality_warning_reasons.map((reason) => (
+                            <p key={reason} className="quality-reason-item">
+                              {reason}
+                            </p>
+                          ))}
+                        </div>
                       ) : null}
                     </div>
                   ) : null}

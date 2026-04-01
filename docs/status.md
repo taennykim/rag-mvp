@@ -8,6 +8,7 @@
 - 보험 문서를 업로드하고 문서 근거 기반으로 답변하는 RAG MVP를 완성한다.
 - 현재는 `upload -> parse -> chunk -> index -> retrieve`와 `/chat` answer/citation UI까지 연결했고, chat deployment `gpt-4o` 실응답까지 확인했다.
 - 다음 핵심 작업은 retrieval 질문 세트 기준 answer/citation 품질 검증과 표/수식형 문서 chunk 전략 보정이다.
+- 오늘 기준 parser 고도화 2단계로 PDF garbled text 감지와 upload 품질 경고 세분화를 반영했다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -53,6 +54,8 @@
   - parser selection 구조 추가 완료
   - 기본값은 `Docling + Extension default parser`
   - parse 실패 상태와 parser 시도/실패 이유를 metadata 및 system log 기준으로 추적 가능
+  - `POST /parse/quality`에 PDF garbled text heuristic 감지 추가 완료
+  - quality warning reason과 PDF 세부 지표를 `GET /pipeline/files`로 노출 완료
 - chunking/indexing/retrieval:
   - chunk target length `800`, overlap `120`
   - chunk metadata 저장 구현 완료
@@ -125,13 +128,31 @@
   - parse preview와 quality 결과는 `pipeline/files` 메타데이터 기준으로 파일 행에 함께 표시한다.
   - `Parse test`를 다시 성공시키면 해당 `stored_name`의 최신 parse 결과는 성공 기준으로 덮어써지고, `chunk`를 다시 실행하지 않으면 `chunk_status`는 `pending`으로 남을 수 있다.
 - 남은 점검:
-  - `PDF`에서 `Docling`과 `PyMuPDF` 결과 비교
+  - `PDF`에서 `Docling`과 `PyMuPDF` 결과 비교 보강
   - parser 변경이 chunking/retrieval에 주는 영향 비교
   - `Uploaded file list`에서 latest parse 상태와 success/failure history를 함께 보여주는 최종 UI 검증
   - 산출방법서 계열 표/수식 문서에 맞는 chunk 전략 검토
+  - PDF heuristic 경고의 과탐/미탐 여부 실문서 검증
+
+## 6.1 2026-04-01 PDF parser 비교 메모
+- 샘플:
+  - `약관_(무)신한유니버설종신보험_080312.pdf`
+  - `산출방법서_신한큐브종합건강상해보험(무배당, 해약환급금 미지급형)_230404_v2.pdf`
+- `PyMuPDF`:
+  - 두 샘플 모두 즉시 추출 완료
+  - 약관 PDF는 `parsed/reference length ratio = 1.0`, `jaccard = 1.0`, heuristic warning 없음
+  - 산출방법서 PDF는 초기 heuristic에서 `suspicious symbol ratio` 때문에 warning이 났지만, `reference suspicious ratio delta` 기준 추가 후 warning이 해소됨
+- `Docling`:
+  - RAG 서버에서 import와 converter 초기화는 성공
+  - 그러나 두 샘플 PDF 모두 `timeout 30` 안에 변환이 끝나지 않았음
+- 해석:
+  - 현재 운영 관점에서는 PDF 기본 parser를 `PyMuPDF` 쪽으로 두는 편이 안정적이다.
+  - 현재 garbled text heuristic은 `reference 대비 기호 비율 차이`까지 봐야 수식형 PDF 과탐을 줄일 수 있다.
+  - parser catalog 기본값도 `Legacy auto`로 바꿔 PDF는 `PyMuPDF` 우선 흐름으로 정리했다.
 
 ## 7. 남은 핵심 작업
 - 1차 우선순위:
+  - `Docling` PDF 변환 장시간 실행 원인을 확인하고 기본 parser 정책을 정리
   - retrieval 질문 세트 기준 `/chat` answer generation 품질 및 citation 품질 점검
   - retrieval 질문 세트 기준 Azure embedding 재검증
   - embedding 영향과 parser 영향 분리 비교
@@ -162,9 +183,10 @@
 - upload 단계에서 확장자뿐 아니라 파일 시그니처와 OOXML 내부 구조 기준으로 실제 형식을 검증하도록 강화했다.
 - 내일 parser 고도화는 여기서 이어간다:
   - 1단계 완료: 확장자 + 시그니처 + OOXML 내부 구조 기준 타입 판별 강화
-  - 2단계 예정: PDF garbled text 감지 기준 추가
-  - 3단계 예정: `Docling` / `PyMuPDF` / reference-style 추출 품질 비교
-  - 4단계 예정: parser 품질 경고를 upload 화면에 노출
+  - 2단계 완료: PDF garbled text 감지 기준 추가
+  - 3단계 진행중: `Docling` / `PyMuPDF` / reference-style 추출 품질 비교
+  - 4단계 완료: parser 품질 경고를 upload 화면 구조에 노출
+  - 5단계 완료: 기본 parser 정책을 `Legacy auto / PyMuPDF 우선`으로 조정
 
 ## 9. 다음 세션 시작 순서
 1. `AGENTS.md` 확인
@@ -173,6 +195,6 @@
 4. `docs/status.md` 확인
 5. 관련 `docs/*.md` 확인
 6. `docs/daily/2026-03-31.md` 확인
-7. upload parser 고도화 2단계부터 시작: PDF garbled text 감지 기준 정리
-8. `Docling` / `PyMuPDF` / reference-style 추출 비교 전략 정리
+7. 산출방법서 PDF의 heuristic warning 과탐 보정
+8. `Docling` PDF 변환 장시간 실행 원인 추가 확인
 9. 이후 retrieval 질문 세트 기준 retrieval/answer/citation 품질 확인

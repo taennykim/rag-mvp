@@ -18,7 +18,7 @@
 11. RAGAS 평가 데이터와 결과 UI 추가
 
 ## 3. 현재 진행 상태
-- 현재 단계: `/chat` answer/citation UI 연결, `gpt-4o` deployment 확인, 대표 실질문 answer 검증 완료 / 다음은 retrieval 질문 세트 기준 품질 최적화
+- 현재 단계: retrieval 질문 세트 기준 품질 최적화 진행중 / PDF garbled text 감지와 parser 품질 경고 구조를 먼저 보강 중
 - 완료:
   - AGENTS.md, TODO.md 확인
   - 기본 계획 및 파트 문서 작성
@@ -63,11 +63,12 @@
   - backend `POST /chat` retrieval 기반 answer generation 경로 추가 완료
   - frontend `/chat` answer panel / citation UI 추가 완료
 - 미완료:
+  - `Docling` / `PyMuPDF` / reference-style 비교 기록 보강
   - retrieval 질문 세트 기준 `/chat` answer/citation 품질 기록
   - retrieval 질문 세트 기준 Azure embedding 재검증
   - parser 영향과 embedding 영향 분리 비교
   - `PDF` 기준 `Docling` vs `PyMuPDF` 품질 비교
   - evaluation dataset / RAGAS / evaluation UI
 - 다음 우선 작업:
-  - `docs/answer-eval.md` 기준으로 retrieval 질문 세트의 answer/citation 품질을 기록한다
-  - 이후 Azure embedding 재검증과 parser/chunk 영향 분리 비교를 진행한다
+  - `Docling` PDF 변환 장시간 실행 원인을 추가 확인하되, 현재 기본 parser 정책은 `Legacy auto / PyMuPDF 우선`으로 유지한다
+  - 이후 `docs/answer-eval.md` 기준으로 retrieval 질문 세트의 answer/citation 품질을 기록한다
