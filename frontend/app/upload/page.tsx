@@ -922,33 +922,25 @@ export default function UploadPage() {
                         <strong>{formatQualityStatus(file)}</strong>
                       </p>
                       {typeof file.jaccard_similarity === "number" ? (
-                        <p>Jaccard Similarity: {formatSimilarity(file.jaccard_similarity)}</p>
+                        <p>Jaccard Similarity(집합 유사도): {formatSimilarity(file.jaccard_similarity)}</p>
                       ) : null}
                       {typeof file.levenshtein_distance === "number" ? (
-                        <p>Levenshtein Distance: {file.levenshtein_distance}</p>
+                        <p>Levenshtein Distance(문자열 편집거리): {file.levenshtein_distance}</p>
                       ) : null}
                       {typeof file.pdf_garbled_detected === "boolean" ? (
-                        <p>PDF garbled text: {file.pdf_garbled_detected ? "Detected" : "Not detected"}</p>
+                        <p>PDF garbled text(깨짐 여부 판단): {file.pdf_garbled_detected ? "Detected" : "Not detected"}</p>
                       ) : null}
                       {typeof file.pdf_suspicious_char_ratio === "number" ? (
-                        <p>Suspicious symbol ratio: {formatRatioAsPercent(file.pdf_suspicious_char_ratio)}</p>
-                      ) : null}
-                      {typeof file.pdf_reference_suspicious_char_ratio === "number" ? (
-                        <p>
-                          Reference suspicious ratio: {formatRatioAsPercent(file.pdf_reference_suspicious_char_ratio)}
-                        </p>
-                      ) : null}
-                      {typeof file.pdf_suspicious_char_ratio_delta === "number" ? (
-                        <p>Suspicious ratio delta: {formatRatioAsPercent(file.pdf_suspicious_char_ratio_delta)}</p>
+                        <p>Suspicious symbol ratio(깨진/특수문자 비율): {formatRatioAsPercent(file.pdf_suspicious_char_ratio)}</p>
                       ) : null}
                       {typeof file.pdf_text_length_ratio === "number" ? (
-                        <p>Parsed/reference length ratio: {formatRatioAsPercent(file.pdf_text_length_ratio)}</p>
+                        <p>Parsed/reference length ratio(길이 비율 비교): {formatRatioAsPercent(file.pdf_text_length_ratio)}</p>
                       ) : null}
                       {typeof file.pdf_replacement_character_count === "number" ? (
-                        <p>Replacement chars: {file.pdf_replacement_character_count}</p>
+                        <p>Replacement chars(깨진 문자 개수): {file.pdf_replacement_character_count}</p>
                       ) : null}
                       {typeof file.pdf_control_character_count === "number" ? (
-                        <p>Control chars: {file.pdf_control_character_count}</p>
+                        <p>Control chars(제어문자,줄바꿈,탭,커서이동 문자 개수): {file.pdf_control_character_count}</p>
                       ) : null}
                       {file.quality_warning_message ? (
                         <p className="quality-warning">{file.quality_warning_message}</p>
