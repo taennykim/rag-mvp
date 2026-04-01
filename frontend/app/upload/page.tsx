@@ -928,7 +928,7 @@ export default function UploadPage() {
                         <p>Levenshtein Distance(문자열 편집거리): {file.levenshtein_distance}</p>
                       ) : null}
                       {typeof file.pdf_garbled_detected === "boolean" ? (
-                        <p>PDF garbled text(깨짐 여부 판단): {file.pdf_garbled_detected ? "Detected" : "Not detected"}</p>
+                        <p>PDF garbled text(깨짐 여부 판단): {file.pdf_garbled_detected ? "깨짐 의심" : "정상"}</p>
                       ) : null}
                       {typeof file.pdf_suspicious_char_ratio === "number" ? (
                         <p>Suspicious symbol ratio(깨진/특수문자 비율): {formatRatioAsPercent(file.pdf_suspicious_char_ratio)}</p>
