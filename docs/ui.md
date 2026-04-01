@@ -35,6 +35,7 @@
 - `Uploaded file list`에서 `Preview` 버튼으로 parse preview를 바로 볼 수 있게 정리했다.
 - `Check quality` 결과는 각 파일 행에서 바로 확인하도록 정리했다.
 - PDF 품질 경고는 `Quality warning`, `PDF garbled text`, suspicious symbol ratio, length ratio 기준으로 파일 행에서 바로 본다.
+- quality metric 라벨은 한글 설명 포함 형태로 표시한다.
 - 하단 `Parsing test result` 패널은 preview 중심으로 단순화했다.
 - `/chat`에서는 indexed file 기준 retrieval 테스트와 source 확인이 가능하다.
 - `/evaluation`은 라우트와 기본 페이지만 있고 실제 결과 화면은 아직 없다.
@@ -47,6 +48,7 @@
 - 현재 기본 정책은 `Legacy auto parser`이며, `Docling`은 비교 검증 목적에서만 직접 선택하도록 정리했다.
 - 화면 테스트는 현재 서버가 아니라 RAG 서버에서만 수행해야 한다.
 - PDF 품질 경고는 현재 heuristic 설명 중심이라, 사용자용 문구 단순화 여부를 추가 검토해야 한다.
+- 현재 `PDF garbled text=정상`이어도 실제 preview 문자열이 깨질 수 있어 false negative 보정이 추가로 필요하다.
 
 ## 5. 다음 작업
 - upload 화면의 parse history / preview / quality 표시를 실제 화면 기준으로 검증하고 필요 시 정리한다.

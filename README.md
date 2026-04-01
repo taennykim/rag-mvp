@@ -87,6 +87,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Pricing-method PDF retrieval still remains weak in all-file search, so the next work is parser/chunking/retrieval quality re-check rather than another embedding swap
 - Backend exposes `GET /parse/parsers` and supports `Docling -> auxiliary parser fallback`
 - Parser catalog now marks `Docling`, `DOC parser`, and `Excel parser` as available on the RAG server
+- Parser catalog default primary parser is now `Legacy auto`, so PDF uses `PyMuPDF` first in the normal flow
 - Frontend is currently operated more stably with `build + start` than `next dev`
 - Backend now writes request and parser system logs on the RAG server
 - Upload 화면 UI를 현재 기준으로 리프레시했고, header / stat strip / card 위계를 정리했다
@@ -94,6 +95,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - RAG 서버 테스트용 upload/parse/chunk/index 데이터는 2026-03-29 기준 초기화 완료 상태다
 - Retrieval-backed answer generation is connected
 - Retrieval question-set based answer quality review and evaluation execution are still pending
+- Current PDF garbled detection can still miss cases where both the parsed text and the reference extraction are broken in the same way
 
 ## Screen Test Rule
 - 화면 테스트와 브라우저 확인은 RAG 서버 기준으로만 수행한다.
@@ -120,6 +122,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 ## Resume Tomorrow
 Start from these files first:
 - `AGENTS.md`
+- `README.md`
 - `docs/plan.md`
 - `TODO.md`
 - `docs/status.md`
@@ -129,16 +132,18 @@ Start from these files first:
 
 Recommended restart order:
 1. Review `AGENTS.md` for the working rules and document order.
-2. Review `docs/plan.md` for the current phase and next priority.
-3. Review `TODO.md` for unchecked tasks.
-4. Review `docs/status.md` for the latest completed scope and blockers.
-5. Review related `docs/*.md` such as `docs/answer-eval.md` and `docs/llm.md`.
-6. Review `docs/daily/2026-03-31.md` for the latest session log.
-7. Start the next task.
+2. Review `README.md` for the current runtime and screen-test rules.
+3. Review `docs/plan.md` for the current phase and next priority.
+4. Review `TODO.md` for unchecked tasks.
+5. Review `docs/status.md` for the latest completed scope and blockers.
+6. Review related `docs/*.md` such as `docs/answer-eval.md` and `docs/llm.md`.
+7. Review `docs/daily/2026-04-01.md` for the latest session log.
+8. Start the next task.
 
 ## Daily Start Checklist
 1. Review `AGENTS.md` for working rules and project operating constraints.
-2. Review `docs/plan.md` for the current phase and next work.
-3. Review `TODO.md` for unchecked tasks.
-4. Review `docs/status.md` for the latest actual progress and blockers.
-5. Review related `docs/*.md` and the latest `docs/daily/` file before starting.
+2. Review `README.md` for runtime, deployment, and screen-test rules.
+3. Review `docs/plan.md` for the current phase and next work.
+4. Review `TODO.md` for unchecked tasks.
+5. Review `docs/status.md` for the latest actual progress and blockers.
+6. Review related `docs/*.md` and the latest `docs/daily/` file before starting.

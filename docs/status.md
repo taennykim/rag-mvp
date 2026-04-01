@@ -52,7 +52,7 @@
   - XLS/XLSX는 `openpyxl`, `xlrd` 기반 fallback parser 구현 완료
   - DOCX table, header/footer 추출 포함
   - parser selection 구조 추가 완료
-  - 기본값은 `Docling + Extension default parser`
+  - 현재 기본값은 `Legacy auto + Extension default parser`
   - parse 실패 상태와 parser 시도/실패 이유를 metadata 및 system log 기준으로 추적 가능
   - `POST /parse/quality`에 PDF garbled text heuristic 감지 추가 완료
   - quality warning reason과 PDF 세부 지표를 `GET /pipeline/files`로 노출 완료
@@ -116,10 +116,11 @@
 
 ## 6. parser 현재 상태
 - UI에서 선택 가능:
-  - primary parser: `Docling`
+  - primary parser: `Legacy auto`, `Docling`
   - second parser: `Extension default`, `PyMuPDF`, `python-docx`, `DOC parser`, `Excel parser`
 - 실제 동작:
-  - `Docling`은 현재 환경에 설치되어 있고 primary parser로 동작한다.
+  - `Legacy auto`가 현재 기본 primary parser다.
+  - `Docling`은 현재 환경에 설치되어 있고 비교 검증용 primary parser로 선택할 수 있다.
   - `DOCX`와 `XLSX`는 `Docling` 직접 파싱 검증을 끝냈다.
   - `DOC`는 `Docling` 대상이 아니므로 `antiword` fallback parser가 사용된다.
   - `PDF`는 `Docling` 사용 가능 상태지만 문서별 속도/품질 비교는 추가 검증이 필요하다.
@@ -149,10 +150,12 @@
   - 현재 운영 관점에서는 PDF 기본 parser를 `PyMuPDF` 쪽으로 두는 편이 안정적이다.
   - 현재 garbled text heuristic은 `reference 대비 기호 비율 차이`까지 봐야 수식형 PDF 과탐을 줄일 수 있다.
   - parser catalog 기본값도 `Legacy auto`로 바꿔 PDF는 `PyMuPDF` 우선 흐름으로 정리했다.
+  - 다만 `PyMuPDF`와 reference extractor가 같은 방식으로 깨질 경우 false negative가 날 수 있다.
 
 ## 7. 남은 핵심 작업
 - 1차 우선순위:
-  - `Docling` PDF 변환 장시간 실행 원인을 확인하고 기본 parser 정책을 정리
+  - `Docling` PDF 변환 장시간 실행 원인을 확인
+  - garbled detection false negative를 줄이기 위한 문자군 규칙 또는 별도 기준 추가
   - retrieval 질문 세트 기준 `/chat` answer generation 품질 및 citation 품질 점검
   - retrieval 질문 세트 기준 Azure embedding 재검증
   - embedding 영향과 parser 영향 분리 비교
@@ -190,11 +193,11 @@
 
 ## 9. 다음 세션 시작 순서
 1. `AGENTS.md` 확인
-2. `docs/plan.md` 확인
-3. `TODO.md` 확인
-4. `docs/status.md` 확인
-5. 관련 `docs/*.md` 확인
-6. `docs/daily/2026-03-31.md` 확인
-7. 산출방법서 PDF의 heuristic warning 과탐 보정
-8. `Docling` PDF 변환 장시간 실행 원인 추가 확인
+2. `README.md` 확인
+3. `docs/plan.md` 확인
+4. `TODO.md` 확인
+5. `docs/status.md` 확인
+6. 관련 `docs/*.md` 확인
+7. `docs/daily/2026-04-01.md` 확인
+8. garbled detection false negative 기준 추가 검토
 9. 이후 retrieval 질문 세트 기준 retrieval/answer/citation 품질 확인

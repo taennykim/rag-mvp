@@ -202,6 +202,8 @@
 - [x] 산출방법서 PDF용 garbled text heuristic 과탐 보정
 - [ ] `Docling` PDF 변환 장시간 실행 원인 확인
 - [x] PDF 기본 parser 정책을 `Legacy auto / PyMuPDF 우선`으로 조정
+- [ ] garbled detection false negative 기준 추가
+- [x] quality metric 라벨 한글 설명 반영
 - [ ] parser 영향 기반 chunk/retrieval 재검증
 - [x] 실제 embedding 모델 교체 방식 결정
 - [ ] retrieval 질문 세트 일부 기준 `/chat` answer generation 품질 검증
