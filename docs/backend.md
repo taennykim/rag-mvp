@@ -29,6 +29,8 @@
 - parsing 방식:
   - primary parser:
     - `Docling`
+    - `Make a markdown`
+    - `Legacy auto parser`
   - auxiliary parser:
     - `PyMuPDF` for PDF
     - `python-docx` for DOCX
@@ -36,7 +38,8 @@
     - `openpyxl` / `xlrd` for XLS/XLSX
   - 현재 동작:
     - UI에서 primary parser와 auxiliary parser를 선택할 수 있다.
-    - 기본값은 `Docling + Extension default parser`이다.
+    - 기본값은 `Legacy auto + Extension default parser`이다.
+    - `Make a markdown`는 fallback 없이 Docling만 사용하고 Markdown file output을 저장한다.
     - Docling이 설치되지 않았거나 실패하면 auxiliary parser로 fallback한다.
     - 현재 fallback 구현은 PDF, DOC, DOCX, XLS, XLSX를 처리한다.
 - parsing 품질 비교:
@@ -65,10 +68,12 @@
   - `fallback_parser`
   - `parser_used`
   - `fallback_used`
+  - `markdown_path`
 - parse summary / pipeline file 응답:
   - 성공한 parse summary에는 `preview`를 함께 저장한다.
+  - `Make a markdown` 성공 시 `markdown_path`를 함께 저장한다.
   - `POST /parse/quality` 결과는 parse summary에 quality 메타데이터로 반영한다.
-  - `GET /pipeline/files`는 파일별 `parse_preview`, `quality_checked_at`, `jaccard_similarity`, `levenshtein_distance`, `quality_warning`, `quality_warning_message`를 함께 반환한다.
+  - `GET /pipeline/files`는 파일별 `parse_preview`, `markdown_path`, `quality_checked_at`, `jaccard_similarity`, `levenshtein_distance`, `quality_warning`, `quality_warning_message`를 함께 반환한다.
 - parsing 품질 응답:
   - `stored_name`
   - `original_name`
@@ -135,6 +140,7 @@
 - parse와 quality check 분리 완료
 - parser selection UI 및 backend parser routing 추가 완료
 - Docling 설치 및 primary parser 검증 완료
+- `Make a markdown` parser option 및 Markdown output path 반환 구현 완료
 - DOC / Excel fallback parser 구현 및 검증 완료
 - upload list용 parse preview / quality metadata 노출 추가 완료
 - chunking 기능 최소 구현 및 검증 완료

@@ -8,6 +8,7 @@
   - `PDF`, `DOC`, `DOCX`, `XLS`, `XLSX` 업로드
   - default file 업로드
   - `Primary parser`, `Second parser` 선택
+  - `Make a markdown` 선택 시 second parser 비활성화
   - `target_length`, `overlap` chunk 설정 입력
   - 업로드된 파일 목록 표시
   - 파일별 indexing 상태, chunk 수, 업로드 시간 표시
@@ -15,6 +16,7 @@
   - 파일별 `Preview` 확인
   - parsing quality check 실행 및 결과 표시
   - PDF garbled text 경고와 세부 이유 표시
+  - `Make a markdown` 성공 시 Markdown output path 표시
   - upload + index 삭제
   - pipeline 실패 단계와 backend log 경로 표시
 - `/chat`
@@ -46,6 +48,7 @@
 - 같은 원본 파일명을 여러 번 업로드하면 서로 다른 `stored_name` 항목이 누적되어 사용자 혼동이 생길 수 있다.
 - parser 옵션은 검증에는 유용하지만 실제 사용자 기본 흐름에서는 자동 정책 고정이 더 적합할 수 있다.
 - 현재 기본 정책은 `Legacy auto parser`이며, `Docling`은 비교 검증 목적에서만 직접 선택하도록 정리했다.
+- `Make a markdown`는 Docling만 사용해서 Markdown 산출물을 만드는 전용 옵션이다.
 - 화면 테스트는 현재 서버가 아니라 RAG 서버에서만 수행해야 한다.
 - PDF 품질 경고는 현재 heuristic 설명 중심이라, 사용자용 문구 단순화 여부를 추가 검토해야 한다.
 - 현재 `PDF garbled text=정상`이어도 실제 preview 문자열이 깨질 수 있어 false negative 보정이 추가로 필요하다.

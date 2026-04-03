@@ -26,6 +26,7 @@
   - upload 실패 후에도 `Uploaded file list`가 즉시 refresh되도록 수정 완료
   - `Uploaded file list`는 최신 업로드 순으로 정렬되도록 수정 완료
   - `/upload`에서 `Primary parser`, `Second parser` 선택 가능
+  - `/upload`에서 `Make a markdown` 선택 시 second parser 비활성화 및 `markdown_path` 노출 완료
   - upload 실패 시 실패 단계와 backend log 경로를 UI에서 확인 가능
   - `Uploaded file list`에서 `Preview` 버튼으로 parse preview 확인 가능
   - `Uploaded file list`에서 parsing quality 결과를 파일 행 기준으로 확인 가능
@@ -45,6 +46,7 @@
   - `POST /chat` grounded answer API 추가 완료
   - upload 직후 자동 indexing 연결 완료
   - parser catalog API `GET /parse/parsers` 추가 완료
+  - `Make a markdown` 전용 Docling parse 및 Markdown file output 저장 구현 완료
 - parsing:
   - `Docling` 설치 및 primary parser 연결 완료
   - PDF는 `PyMuPDF`, DOCX는 `python-docx` fallback 유지
@@ -70,6 +72,8 @@
   - RAG 서버 backend `127.0.0.1:8000/health` 응답 확인 완료
   - RAG 서버 frontend `127.0.0.1:3000/upload`, `/chat` 응답 확인 완료
   - `GET /parse/parsers`에서 `Docling`, `DOC parser`, `Excel parser` 사용 가능 상태 확인 완료
+  - 2026-04-03 기준 RAG 서버 `GET /parse/parsers`에서 `Make a markdown` 노출 확인 완료
+  - 2026-04-03 기준 RAG 서버 `Make a markdown` parse 실행 시 `markdown_path` 반환 확인 완료
   - sample `DOC` 파일은 `doc-parser`로 파싱 검증 완료
   - sample `XLSX` 파일은 `docling` 및 `excel-parser` 둘 다 파싱 검증 완료
   - sample `DOCX` 파일은 `docling` 직접 파싱 검증 완료
@@ -116,17 +120,19 @@
 
 ## 6. parser 현재 상태
 - UI에서 선택 가능:
-  - primary parser: `Legacy auto`, `Docling`
+  - primary parser: `Legacy auto`, `Docling`, `Make a markdown`
   - second parser: `Extension default`, `PyMuPDF`, `python-docx`, `DOC parser`, `Excel parser`
 - 실제 동작:
   - `Legacy auto`가 현재 기본 primary parser다.
   - `Docling`은 현재 환경에 설치되어 있고 비교 검증용 primary parser로 선택할 수 있다.
+  - `Make a markdown`는 fallback 없이 Docling만 사용하고, parse 성공 시 Markdown 파일을 저장한다.
   - `DOCX`와 `XLSX`는 `Docling` 직접 파싱 검증을 끝냈다.
   - `DOC`는 `Docling` 대상이 아니므로 `antiword` fallback parser가 사용된다.
   - `PDF`는 `Docling` 사용 가능 상태지만 문서별 속도/품질 비교는 추가 검증이 필요하다.
   - 같은 파일을 여러 번 업로드하면 `stored_name` 기준으로 별도 행이 누적된다.
   - `Last failure` 표시는 현재 성공 상태와 별개로 과거 parse 실패 이력을 로그 기준으로 함께 노출한다.
   - parse preview와 quality 결과는 `pipeline/files` 메타데이터 기준으로 파일 행에 함께 표시한다.
+  - `Make a markdown` 성공 시 `markdown_path`가 `pipeline/files`와 upload list에 함께 노출된다.
   - `Parse test`를 다시 성공시키면 해당 `stored_name`의 최신 parse 결과는 성공 기준으로 덮어써지고, `chunk`를 다시 실행하지 않으면 `chunk_status`는 `pending`으로 남을 수 있다.
 - 남은 점검:
   - `PDF`에서 `Docling`과 `PyMuPDF` 결과 비교 보강

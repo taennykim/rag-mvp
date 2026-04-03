@@ -102,6 +102,7 @@ UPLOAD_DIR = BASE_DIR / "data" / "uploads"
 DEFAULT_FILE_DIR = BASE_DIR / "data" / "default-files"
 PARSE_METADATA_DIR = BASE_DIR / "data" / "parse-metadata"
 CHUNK_METADATA_DIR = BASE_DIR / "data" / "chunk-metadata"
+MARKDOWN_OUTPUT_DIR = BASE_DIR / "data" / "markdown"
 CHROMA_DIR = BASE_DIR / "data" / "chroma"
 ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx"}
 PDF_SIGNATURE = b"%PDF-"
@@ -121,6 +122,7 @@ EMBEDDING_DIMENSION = 256
 RETRIEVAL_CANDIDATE_MULTIPLIER = 5
 RETRIEVAL_MAX_CANDIDATES = 50
 PRIMARY_PARSER_DOCLING = "docling"
+PRIMARY_PARSER_DOCLING_MARKDOWN = "docling-markdown"
 PRIMARY_PARSER_LEGACY_AUTO = "legacy-auto"
 FALLBACK_PARSER_EXTENSION_DEFAULT = "extension-default"
 FALLBACK_PARSER_NONE = "none"
@@ -196,6 +198,10 @@ def ensure_chunk_metadata_dir() -> None:
     CHUNK_METADATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def ensure_markdown_output_dir() -> None:
+    MARKDOWN_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
 def ensure_chroma_dir() -> None:
     CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -206,6 +212,12 @@ def summarize_request(request: Request) -> str:
 
 def summarize_parser_selection(primary_parser: str, fallback_parser: str) -> str:
     return f"primary={primary_parser}, fallback={fallback_parser}"
+
+
+def normalize_fallback_parser(primary_parser: str, fallback_parser: str) -> str:
+    if primary_parser == PRIMARY_PARSER_DOCLING_MARKDOWN:
+        return FALLBACK_PARSER_NONE
+    return fallback_parser
 
 
 def get_parse_history_from_logs() -> dict[str, dict[str, object]]:
@@ -361,7 +373,7 @@ def get_default_auxiliary_parser(extension: str) -> str:
 
 
 def parser_supports_extension(parser_id: str, extension: str) -> bool:
-    if parser_id == PRIMARY_PARSER_DOCLING:
+    if parser_id in {PRIMARY_PARSER_DOCLING, PRIMARY_PARSER_DOCLING_MARKDOWN}:
         return extension in {".pdf", ".docx", ".xlsx"}
     if parser_id == PRIMARY_PARSER_LEGACY_AUTO:
         return extension in ALLOWED_EXTENSIONS
@@ -379,6 +391,7 @@ def parser_supports_extension(parser_id: str, extension: str) -> bool:
 def get_parser_label(parser_id: str) -> str:
     labels = {
         PRIMARY_PARSER_DOCLING: "Docling",
+        PRIMARY_PARSER_DOCLING_MARKDOWN: "Make a markdown",
         PRIMARY_PARSER_LEGACY_AUTO: "Legacy auto parser",
         FALLBACK_PARSER_EXTENSION_DEFAULT: "Extension default parser",
         FALLBACK_PARSER_NONE: "No fallback",
@@ -434,6 +447,13 @@ def get_parser_catalog() -> dict[str, object]:
                 "label": "Docling",
                 "available": docling_available,
                 "description": "비교 검증용 파서. PDF, DOCX, XLSX를 Docling으로 변환합니다.",
+                "supported_extensions": [".pdf", ".docx", ".xlsx"],
+            },
+            {
+                "id": PRIMARY_PARSER_DOCLING_MARKDOWN,
+                "label": "Make a markdown",
+                "available": docling_available,
+                "description": "Docling만 사용하고, 선택된 파일을 Markdown 전용 산출물로 변환합니다.",
                 "supported_extensions": [".pdf", ".docx", ".xlsx"],
             },
             {
@@ -553,6 +573,7 @@ def write_parse_summary(
     text_length: int,
     file_type: str,
     preview: str | None = None,
+    markdown_path: str | None = None,
     error_detail: str | None = None,
 ) -> Path:
     summary_path = get_parse_summary_path(path)
@@ -565,6 +586,7 @@ def write_parse_summary(
         "fallback_used": fallback_used,
         "text_length": text_length,
         "preview": preview,
+        "markdown_path": markdown_path,
         "error_detail": error_detail,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -588,6 +610,7 @@ def write_parse_failure_summary(
         text_length=0,
         file_type=file_type,
         preview=None,
+        markdown_path=None,
         error_detail=error_detail,
     )
 
@@ -881,12 +904,28 @@ def extract_docling_text(path: Path) -> str:
     return normalize_text(text)
 
 
+def get_markdown_output_path(path: Path) -> Path:
+    ensure_markdown_output_dir()
+    return MARKDOWN_OUTPUT_DIR / f"{path.stem}.md"
+
+
+def write_docling_markdown_file(path: Path, markdown_text: str) -> Path:
+    output_path = get_markdown_output_path(path)
+    output_path.write_text(markdown_text, encoding="utf-8")
+    return output_path
+
+
 def extract_with_parser(path: Path, parser_id: str) -> tuple[str, str]:
     extension = get_extension(path.name)
 
     if parser_id == PRIMARY_PARSER_DOCLING:
         if not parser_supports_extension(parser_id, extension):
             raise HTTPException(status_code=400, detail=f"Docling does not support {extension} in the current parser policy.")
+        return extract_docling_text(path), parser_id
+
+    if parser_id == PRIMARY_PARSER_DOCLING_MARKDOWN:
+        if not parser_supports_extension(parser_id, extension):
+            raise HTTPException(status_code=400, detail=f"Make a markdown does not support {extension} in the current parser policy.")
         return extract_docling_text(path), parser_id
 
     if parser_id in {PRIMARY_PARSER_LEGACY_AUTO, FALLBACK_PARSER_EXTENSION_DEFAULT}:
@@ -1098,6 +1137,7 @@ def build_parsing_result(
     primary_parser: str = PRIMARY_PARSER_DOCLING,
     fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT,
 ) -> dict[str, object]:
+    fallback_parser = normalize_fallback_parser(primary_parser, fallback_parser)
     text, parser_used, fallback_used = extract_text_from_file(
         path,
         primary_parser=primary_parser,
@@ -1107,6 +1147,10 @@ def build_parsing_result(
     if not text.strip():
         raise HTTPException(status_code=400, detail="Extracted text is empty.")
 
+    markdown_path: str | None = None
+    if parser_used == PRIMARY_PARSER_DOCLING_MARKDOWN:
+        markdown_path = str(write_docling_markdown_file(path, text))
+
     write_parse_summary(
         path,
         status="completed",
@@ -1115,6 +1159,7 @@ def build_parsing_result(
         text_length=len(text),
         file_type=get_extension(path.name),
         preview=text[:PREVIEW_LENGTH],
+        markdown_path=markdown_path,
     )
 
     metadata = build_file_metadata(path)
@@ -1129,6 +1174,7 @@ def build_parsing_result(
             "fallback_parser": fallback_parser,
             "parser_used": parser_used,
             "fallback_used": fallback_used,
+            "markdown_path": markdown_path,
         }
     )
     return metadata
@@ -1140,6 +1186,7 @@ def build_parsing_quality_result(
     primary_parser: str = PRIMARY_PARSER_DOCLING,
     fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT,
 ) -> dict[str, object]:
+    fallback_parser = normalize_fallback_parser(primary_parser, fallback_parser)
     parsed_text, parser_used, fallback_used = extract_text_from_file(
         path,
         primary_parser=primary_parser,
@@ -1343,6 +1390,7 @@ def build_chunking_result(
     chunk_target_length: int | None = None,
     chunk_overlap_length: int | None = None,
 ) -> dict[str, object]:
+    fallback_parser = normalize_fallback_parser(primary_parser, fallback_parser)
     resolved_target_length, resolved_overlap_length = normalize_chunk_settings(
         chunk_target_length,
         chunk_overlap_length,
@@ -2026,6 +2074,10 @@ def delete_uploaded_file_and_index(stored_name: str) -> dict[str, object]:
     path = get_uploaded_file_path(stored_name)
     metadata = build_file_metadata(path)
     removed_index_count = delete_indexed_chunks(path.name)
+    markdown_output_path = get_markdown_output_path(path)
+    removed_markdown_output = markdown_output_path.is_file()
+    if removed_markdown_output:
+        markdown_output_path.unlink()
 
     parse_summary_path = get_parse_summary_path(path)
     parse_summary_removed = parse_summary_path.is_file()
@@ -2046,6 +2098,7 @@ def delete_uploaded_file_and_index(stored_name: str) -> dict[str, object]:
         "removed_index_count": removed_index_count,
         "removed_parse_summary": parse_summary_removed,
         "removed_chunk_summary": chunk_summary_removed,
+        "removed_markdown_output": removed_markdown_output,
     }
 
 
@@ -2167,6 +2220,7 @@ def list_pipeline_files() -> list[dict[str, object]]:
                 "parse_fallback_used": parsed.get("fallback_used") if parsed else None,
                 "parse_error_detail": parsed.get("error_detail") if parsed else None,
                 "parse_preview": parsed.get("preview") if parsed else None,
+                "markdown_path": parsed.get("markdown_path") if parsed else None,
                 "last_successful_parse_parser_used": (
                     parsed.get("parser_used")
                     if parsed and parsed.get("status") == "completed" and parsed.get("parser_used")
@@ -2342,24 +2396,25 @@ def get_parse_parsers() -> dict[str, object]:
 @app.post("/parse")
 def parse_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
+    fallback_parser = normalize_fallback_parser(payload.primary_parser, payload.fallback_parser)
     logger.info(
         "parse_started stored_name=%s original_name=%s %s",
         payload.stored_name,
         path.name.split("__", 1)[1] if "__" in path.name else path.name,
-        summarize_parser_selection(payload.primary_parser, payload.fallback_parser),
+        summarize_parser_selection(payload.primary_parser, fallback_parser),
     )
     try:
         result = build_parsing_result(
             path,
             primary_parser=payload.primary_parser,
-            fallback_parser=payload.fallback_parser,
+            fallback_parser=fallback_parser,
         )
     except HTTPException as exc:
         write_parse_failure_summary(
             path,
             file_type=get_extension(path.name),
-            parser_used=f"{payload.primary_parser} -> {payload.fallback_parser}",
-            fallback_used=payload.fallback_parser != FALLBACK_PARSER_NONE,
+            parser_used=f"{payload.primary_parser} -> {fallback_parser}",
+            fallback_used=fallback_parser != FALLBACK_PARSER_NONE,
             error_detail=str(exc.detail),
         )
         raise
@@ -2382,15 +2437,16 @@ def parse_uploaded_file_by_name(stored_name: str) -> dict[str, object]:
 @app.post("/parse/quality")
 def parse_uploaded_file_quality(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
+    fallback_parser = normalize_fallback_parser(payload.primary_parser, payload.fallback_parser)
     logger.info(
         "parse_quality_started stored_name=%s %s",
         payload.stored_name,
-        summarize_parser_selection(payload.primary_parser, payload.fallback_parser),
+        summarize_parser_selection(payload.primary_parser, fallback_parser),
     )
     result = build_parsing_quality_result(
         path,
         primary_parser=payload.primary_parser,
-        fallback_parser=payload.fallback_parser,
+        fallback_parser=fallback_parser,
     )
     logger.info(
         "parse_quality_completed stored_name=%s parser_used=%s fallback_used=%s jaccard_similarity=%s",
@@ -2418,6 +2474,7 @@ def get_chunk_status() -> dict[str, object]:
 @app.post("/chunk")
 def chunk_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
+    fallback_parser = normalize_fallback_parser(payload.primary_parser, payload.fallback_parser)
     resolved_target_length, resolved_overlap_length = normalize_chunk_settings(
         payload.chunk_target_length,
         payload.chunk_overlap_length,
@@ -2425,14 +2482,14 @@ def chunk_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     logger.info(
         "chunk_started stored_name=%s %s chunk_target_length=%s chunk_overlap_length=%s",
         payload.stored_name,
-        summarize_parser_selection(payload.primary_parser, payload.fallback_parser),
+        summarize_parser_selection(payload.primary_parser, fallback_parser),
         resolved_target_length,
         resolved_overlap_length,
     )
     result = build_chunking_result(
         path,
         primary_parser=payload.primary_parser,
-        fallback_parser=payload.fallback_parser,
+        fallback_parser=fallback_parser,
         chunk_target_length=resolved_target_length,
         chunk_overlap_length=resolved_overlap_length,
     )
@@ -2499,6 +2556,7 @@ def delete_indexed_files() -> dict[str, object]:
 @app.post("/index")
 def index_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     path = get_uploaded_file_path(payload.stored_name)
+    fallback_parser = normalize_fallback_parser(payload.primary_parser, payload.fallback_parser)
     resolved_target_length, resolved_overlap_length = normalize_chunk_settings(
         payload.chunk_target_length,
         payload.chunk_overlap_length,
@@ -2506,14 +2564,14 @@ def index_uploaded_file(payload: ParseRequest) -> dict[str, object]:
     logger.info(
         "index_started stored_name=%s %s chunk_target_length=%s chunk_overlap_length=%s",
         payload.stored_name,
-        summarize_parser_selection(payload.primary_parser, payload.fallback_parser),
+        summarize_parser_selection(payload.primary_parser, fallback_parser),
         resolved_target_length,
         resolved_overlap_length,
     )
     result = index_chunks(
         path,
         primary_parser=payload.primary_parser,
-        fallback_parser=payload.fallback_parser,
+        fallback_parser=fallback_parser,
         chunk_target_length=resolved_target_length,
         chunk_overlap_length=resolved_overlap_length,
     )
@@ -2531,19 +2589,20 @@ def index_uploaded_file(payload: ParseRequest) -> dict[str, object]:
 
 @app.post("/index/rebuild")
 def rebuild_indexed_files(payload: RebuildIndexRequest) -> dict[str, object]:
+    fallback_parser = normalize_fallback_parser(payload.primary_parser, payload.fallback_parser)
     resolved_target_length, resolved_overlap_length = normalize_chunk_settings(
         payload.chunk_target_length,
         payload.chunk_overlap_length,
     )
     logger.info(
         "index_rebuild_started %s chunk_target_length=%s chunk_overlap_length=%s",
-        summarize_parser_selection(payload.primary_parser, payload.fallback_parser),
+        summarize_parser_selection(payload.primary_parser, fallback_parser),
         resolved_target_length,
         resolved_overlap_length,
     )
     result = rebuild_all_indexes(
         primary_parser=payload.primary_parser,
-        fallback_parser=payload.fallback_parser,
+        fallback_parser=fallback_parser,
         chunk_target_length=resolved_target_length,
         chunk_overlap_length=resolved_overlap_length,
     )

@@ -22,6 +22,7 @@ type UploadedFile = {
   chunk_count?: number | null;
   indexed_chunk_count?: number | null;
   parse_preview?: string | null;
+  markdown_path?: string | null;
   quality_checked_at?: string | null;
   jaccard_similarity?: number | null;
   levenshtein_distance?: number | null;
@@ -56,6 +57,7 @@ type ParseResult = {
   fallback_parser: string;
   parser_used: string;
   fallback_used: boolean;
+  markdown_path?: string | null;
 };
 
 type ParseQualityResult = {
@@ -84,6 +86,7 @@ type ParseQualityResult = {
   fallback_parser: string;
   parser_used: string;
   fallback_used: boolean;
+  markdown_path?: string | null;
 };
 
 type UploadResult = {
@@ -141,6 +144,8 @@ const API_BASE_URL = "/api";
 const BACKEND_LOG_PATH = "/home/ubuntu/rag-mvp/backend/logs/app.log";
 const DEFAULT_CHUNK_TARGET_LENGTH = 800;
 const DEFAULT_CHUNK_OVERLAP_LENGTH = 120;
+const PRIMARY_PARSER_ONLY_DOCLING = "docling-markdown";
+const FALLBACK_PARSER_NONE = "none";
 
 function createUploadStages(): UploadStage[] {
   return [
@@ -170,6 +175,7 @@ export default function UploadPage() {
   const [errorDetail, setErrorDetail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [uploadStages, setUploadStages] = useState<UploadStage[]>(createUploadStages);
+  const isOnlyDocling = primaryParser === PRIMARY_PARSER_ONLY_DOCLING;
 
   async function loadFiles() {
     try {
@@ -225,6 +231,12 @@ export default function UploadPage() {
     void loadDefaultFiles();
     void loadParserCatalog();
   }, []);
+
+  useEffect(() => {
+    if (isOnlyDocling && fallbackParser !== FALLBACK_PARSER_NONE) {
+      setFallbackParser(FALLBACK_PARSER_NONE);
+    }
+  }, [fallbackParser, isOnlyDocling]);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     setSelectedFile(event.target.files?.[0] ?? null);
@@ -315,6 +327,10 @@ export default function UploadPage() {
     );
   }
 
+  function getSelectedFallbackParser() {
+    return isOnlyDocling ? FALLBACK_PARSER_NONE : fallbackParser;
+  }
+
   async function parseUploadedFile(storedName: string) {
     const response = await fetch(`${API_BASE_URL}/parse`, {
       method: "POST",
@@ -324,7 +340,7 @@ export default function UploadPage() {
       body: JSON.stringify({
         stored_name: storedName,
         primary_parser: primaryParser,
-        fallback_parser: fallbackParser,
+        fallback_parser: getSelectedFallbackParser(),
       }),
     });
 
@@ -346,7 +362,7 @@ export default function UploadPage() {
       body: JSON.stringify({
         stored_name: storedName,
         primary_parser: primaryParser,
-        fallback_parser: fallbackParser,
+        fallback_parser: getSelectedFallbackParser(),
         ...chunkSettings,
       }),
     });
@@ -369,7 +385,7 @@ export default function UploadPage() {
       body: JSON.stringify({
         stored_name: storedName,
         primary_parser: primaryParser,
-        fallback_parser: fallbackParser,
+        fallback_parser: getSelectedFallbackParser(),
         ...chunkSettings,
       }),
     });
@@ -451,7 +467,9 @@ export default function UploadPage() {
       updateUploadStage(
         "parse",
         "completed",
-        `${parsedResult.text_length} chars via ${parsedResult.parser_used}${parsedResult.fallback_used ? " (fallback)" : ""}`,
+        parsedResult.markdown_path
+          ? `${parsedResult.text_length} chars via ${parsedResult.parser_used} -> Markdown`
+          : `${parsedResult.text_length} chars via ${parsedResult.parser_used}${parsedResult.fallback_used ? " (fallback)" : ""}`,
       );
 
       currentStage = "chunk";
@@ -483,8 +501,9 @@ export default function UploadPage() {
       const parserNote = indexResult.parser_used
         ? ` Parser: ${indexResult.parser_used}${indexResult.fallback_used ? " (fallback)" : ""}.`
         : "";
+      const markdownNote = parsedResult.markdown_path ? ` Markdown: ${parsedResult.markdown_path}.` : "";
       setMessage(
-        `Uploaded and indexed ${indexResult.original_name}. ${indexResult.indexed_count} chunk(s) stored (${indexResult.chunk_target_length}/${indexResult.chunk_overlap_length}).${parserNote}`,
+        `Uploaded and indexed ${indexResult.original_name}. ${indexResult.indexed_count} chunk(s) stored (${indexResult.chunk_target_length}/${indexResult.chunk_overlap_length}).${parserNote}${markdownNote}`,
       );
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Upload or indexing failed.";
@@ -575,7 +594,7 @@ export default function UploadPage() {
         body: JSON.stringify({
           stored_name: file.stored_name,
           primary_parser: primaryParser,
-          fallback_parser: fallbackParser,
+          fallback_parser: getSelectedFallbackParser(),
         }),
       });
 
@@ -647,7 +666,7 @@ export default function UploadPage() {
         body: JSON.stringify({
           stored_name: file.stored_name,
           primary_parser: primaryParser,
-          fallback_parser: fallbackParser,
+          fallback_parser: getSelectedFallbackParser(),
         }),
       });
 
@@ -716,7 +735,7 @@ export default function UploadPage() {
                 ))}
               </select>
               <p className="parser-note">
-                기본값은 Legacy auto parser입니다. PDF는 PyMuPDF를 우선 사용하고, Docling은 비교 검증이 필요할 때 직접 선택합니다.
+                기본값은 Legacy auto parser입니다. `Make a markdown`를 선택하면 fallback 없이 Docling 결과를 Markdown 파일로 저장합니다.
               </p>
             </div>
 
@@ -726,6 +745,7 @@ export default function UploadPage() {
               </label>
               <select
                 className="default-file-select"
+                disabled={isOnlyDocling}
                 id="fallback-parser-select"
                 onChange={(event) => setFallbackParser(event.target.value)}
                 value={fallbackParser}
@@ -738,7 +758,9 @@ export default function UploadPage() {
                 ))}
               </select>
               <p className="parser-note">
-                PDF, DOC, DOCX, XLS, XLSX용 보조 파서를 선택할 수 있습니다. 환경에 없는 파서는 실행 시 안내됩니다.
+                {isOnlyDocling
+                  ? "Make a markdown 모드에서는 second parser를 사용하지 않습니다."
+                  : "PDF, DOC, DOCX, XLS, XLSX용 보조 파서를 선택할 수 있습니다. 환경에 없는 파서는 실행 시 안내됩니다."}
               </p>
             </div>
           </div>
@@ -916,6 +938,11 @@ export default function UploadPage() {
                       {activeDeleteFile === file.stored_name ? "Resetting..." : "Reset"}
                     </button>
                   </div>
+                  {file.markdown_path ? (
+                    <p className="parser-note">
+                      Markdown output: <code>{file.markdown_path}</code>
+                    </p>
+                  ) : null}
                   {visibleQualityFile === file.stored_name && formatQualityStatus(file) ? (
                     <div className="quality-metrics">
                       <p>
