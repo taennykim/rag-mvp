@@ -141,6 +141,9 @@
 - [x] Fall back to internal retrieval when `/chat` RAG endpoint is blank
 - [x] Clarify `Generated answer` vs `Retrieved chunks` on `/chat`
 - [x] Render `View full chunk` and sample preview blocks without truncation
+- [x] Extend `/chat` backend input schema with `conversation_context` and `metadata`
+- [x] Replace simple retrieval rewrite with structured rewrite result on `/chat`
+- [ ] Show rewrite result and route hints on `/chat`
 
 ---
 
@@ -216,6 +219,7 @@
 - [x] 실제 embedding 모델 교체 방식 결정
 - [x] 현재 서버와 RAG 서버의 핵심 소스/문서 동기화 확인
 - [ ] retrieval 질문 세트 일부 기준 `/chat` answer generation 품질 검증
+- [ ] `/chat` frontend에서 `conversation_context` / `metadata` 입력과 rewrite 결과 표시 연결
 - [ ] 산출방법서 계열 표/수식 보존형 chunk 전략 검토
 - [x] answer 품질 점검표 초안 작성 (`docs/answer-eval.md`)
 

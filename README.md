@@ -79,6 +79,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Chat page now shows answer panel and citation cards
 - Chat page now accepts an optional RAG API endpoint; when left blank it falls back to internal `POST /retrieve`
 - Chat page now rewrites the user question for retrieval before calling the RAG API
+- Chat backend now accepts `conversation_context` and `metadata`, rewrites the question into structured retrieval signals, and returns `rewritten_query`, `search_queries`, `intent`, `entities`, and `routing_hints`
 - Chat page now separates the final answer from retrieved evidence more clearly and renders full chunks in a bounded block
 - Upload list supports file-level delete of upload + index
 - Upload list shows per-file indexing status and chunk count

@@ -28,7 +28,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 app = FastAPI(title="Insurance Document RAG MVP API")
@@ -1452,11 +1452,33 @@ class RetrieveRequest(BaseModel):
     stored_name: str | None = None
 
 
+class ConversationTurn(BaseModel):
+    role: str
+    content: str
+
+
+class ChatMetadata(BaseModel):
+    product: str | None = None
+    document_type: str | None = None
+    locale: str | None = "ko-KR"
+
+
 class ChatRequest(BaseModel):
     query: str
     top_k: int = DEFAULT_CHAT_TOP_K
     stored_name: str | None = None
     rag_endpoint: str | None = None
+    conversation_context: list[ConversationTurn] = Field(default_factory=list)
+    metadata: ChatMetadata | None = None
+
+
+class RewriteResult(BaseModel):
+    original_query: str
+    rewritten_query: str
+    search_queries: list[str] = Field(default_factory=list)
+    intent: str | None = None
+    entities: dict[str, str] = Field(default_factory=dict)
+    routing_hints: dict[str, str] = Field(default_factory=dict)
 
 
 class RebuildIndexRequest(BaseModel):
@@ -1918,6 +1940,91 @@ def retrieve_chunks(payload: RetrieveRequest) -> dict[str, object]:
     }
 
 
+def build_query_candidates_for_chat(payload: ChatRequest, rewrite_result: RewriteResult) -> list[str]:
+    candidates = [
+        payload.query.strip(),
+        rewrite_result.rewritten_query.strip(),
+        *[query.strip() for query in rewrite_result.search_queries],
+    ]
+    unique_candidates: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized_candidate = candidate.strip()
+        if not normalized_candidate or normalized_candidate in seen:
+            continue
+        seen.add(normalized_candidate)
+        unique_candidates.append(normalized_candidate)
+    return unique_candidates
+
+
+def retrieve_chunks_for_queries(
+    *,
+    queries: list[str],
+    top_k: int,
+    stored_name: str | None,
+    rerank_query: str,
+) -> dict[str, object]:
+    filtered_queries = [query.strip() for query in queries if query.strip()]
+    if not filtered_queries:
+        raise HTTPException(status_code=400, detail="Query text is required.")
+
+    top_k = max(1, min(top_k, 20))
+    collection = get_chroma_collection()
+    embedding_config = get_embedding_config()
+    where = {"stored_name": stored_name} if stored_name else None
+    candidate_count = min(max(top_k * RETRIEVAL_CANDIDATE_MULTIPLIER, top_k), RETRIEVAL_MAX_CANDIDATES)
+
+    aggregated_hits: dict[str, dict[str, object]] = {}
+    executed_queries: list[str] = []
+    for query in filtered_queries:
+        query_embedding = build_embeddings([query])[0]
+        result = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=candidate_count,
+            where=where,
+            include=["documents", "metadatas", "distances"],
+        )
+        executed_queries.append(query)
+
+        for hit in build_retrieval_hits(result):
+            hit_id = str(hit.get("id") or "")
+            if not hit_id:
+                continue
+
+            existing_hit = aggregated_hits.get(hit_id)
+            hit_copy = dict(hit)
+            hit_copy["matched_queries"] = [query]
+            if existing_hit is None:
+                aggregated_hits[hit_id] = hit_copy
+                continue
+
+            matched_queries = existing_hit.get("matched_queries")
+            if not isinstance(matched_queries, list):
+                matched_queries = []
+            if query not in matched_queries:
+                matched_queries.append(query)
+            existing_hit["matched_queries"] = matched_queries
+
+            existing_distance = float(existing_hit.get("distance") or 0.0)
+            new_distance = float(hit_copy.get("distance") or 0.0)
+            if new_distance < existing_distance:
+                hit_copy["matched_queries"] = matched_queries
+                aggregated_hits[hit_id] = hit_copy
+
+    hits = rerank_hits(rerank_query.strip() or filtered_queries[0], list(aggregated_hits.values()), top_k)
+    return {
+        "status": "retrieved",
+        "query": rerank_query.strip() or filtered_queries[0],
+        "executed_queries": executed_queries,
+        "top_k": top_k,
+        "hit_count": len(hits),
+        "collection_name": embedding_config["collection_name"],
+        "embedding_provider": embedding_config["provider"],
+        "embedding_model": embedding_config["model"],
+        "hits": hits,
+    }
+
+
 def build_chat_citations(hits: list[dict[str, object]]) -> list[dict[str, object]]:
     citations: list[dict[str, object]] = []
     for hit in hits:
@@ -1972,21 +2079,69 @@ def parse_chat_completion(content: str) -> tuple[bool, str]:
     return status == "insufficient", answer
 
 
-def interpret_query_for_retrieval(query: str) -> str:
-    trimmed_query = query.strip()
+def extract_json_object(text: str) -> dict[str, object]:
+    trimmed_text = text.strip()
+    if not trimmed_text:
+        raise ValueError("JSON payload is empty.")
+
+    if trimmed_text.startswith("```"):
+        fenced_match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", trimmed_text, re.DOTALL)
+        if fenced_match:
+            trimmed_text = fenced_match.group(1).strip()
+
+    start = trimmed_text.find("{")
+    end = trimmed_text.rfind("}")
+    if start == -1 or end == -1 or start >= end:
+        raise ValueError("JSON object not found.")
+
+    payload = json.loads(trimmed_text[start : end + 1])
+    if not isinstance(payload, dict):
+        raise ValueError("JSON payload must be an object.")
+    return payload
+
+
+def serialize_chat_metadata(metadata: ChatMetadata | None) -> dict[str, object]:
+    if metadata is None:
+        return {}
+    if hasattr(metadata, "model_dump"):
+        return metadata.model_dump(exclude_none=True)
+    return metadata.dict(exclude_none=True)
+
+
+# Normalize user input into retrieval-ready signals for the chat-side Hybrid RAG flow.
+def rewrite_chat_query(payload: ChatRequest) -> RewriteResult:
+    trimmed_query = payload.query.strip()
     if not trimmed_query:
         raise HTTPException(status_code=400, detail="Query text is required.")
 
+    context_lines = [
+        f"{turn.role}: {turn.content.strip()}"
+        for turn in payload.conversation_context
+        if turn.content.strip()
+    ]
+    metadata = serialize_chat_metadata(payload.metadata)
+
     system_prompt = (
-        "You rewrite user questions into concise retrieval queries for a RAG search API.\n"
-        "Keep the original meaning.\n"
+        "You are a query rewriter for a Hybrid RAG system.\n"
+        "Return JSON only.\n"
+        "Preserve the original meaning.\n"
         "Respond in Korean when the user question is Korean.\n"
-        "Return only the rewritten retrieval query with no label or explanation."
+        "Use conversation context and metadata to resolve omitted subjects such as product or document names.\n"
+        "The JSON schema is:\n"
+        "{\n"
+        '  "rewritten_query": string,\n'
+        '  "search_queries": string[],\n'
+        '  "intent": string,\n'
+        '  "entities": object,\n'
+        '  "routing_hints": object\n'
+        "}"
     )
     user_prompt = (
-        "Rewrite this user question into a retrieval-friendly search query.\n"
-        "Keep important entities, document terms, and conditions.\n\n"
-        f"Question:\n{trimmed_query}"
+        "Rewrite the user question into retrieval-friendly search queries.\n"
+        "Keep important entities, document terms, and conditions.\n"
+        "Infer the most likely product or document name from the context when omitted.\n"
+        "routing_hints should include likely category such as terms, pricing, or general when possible.\n\n"
+        f"Input:\n{json.dumps({'query': trimmed_query, 'conversation_context': context_lines, 'metadata': metadata}, ensure_ascii=False)}"
     )
 
     try:
@@ -1996,12 +2151,44 @@ def interpret_query_for_retrieval(query: str) -> str:
                 {"role": "user", "content": user_prompt},
             ]
         )
-    except HTTPException:
-        logger.warning("query_interpretation_failed original_query=%s", trimmed_query)
-        return trimmed_query
+        response_payload = extract_json_object(response_text)
+        rewritten_query = str(response_payload.get("rewritten_query") or "").strip() or trimmed_query
+        raw_search_queries = response_payload.get("search_queries")
+        search_queries: list[str] = []
+        if isinstance(raw_search_queries, list):
+            for item in raw_search_queries:
+                if isinstance(item, str) and item.strip():
+                    search_queries.append(item.strip())
+        if rewritten_query not in search_queries:
+            search_queries.insert(0, rewritten_query)
 
-    interpreted_query = response_text.strip()
-    return interpreted_query or trimmed_query
+        raw_entities = response_payload.get("entities")
+        entities = {str(key): str(value) for key, value in raw_entities.items()} if isinstance(raw_entities, dict) else {}
+        raw_routing_hints = response_payload.get("routing_hints")
+        routing_hints = (
+            {str(key): str(value) for key, value in raw_routing_hints.items()}
+            if isinstance(raw_routing_hints, dict)
+            else {}
+        )
+        intent = response_payload.get("intent")
+        if intent is not None:
+            intent = str(intent).strip() or None
+
+        return RewriteResult(
+            original_query=trimmed_query,
+            rewritten_query=rewritten_query,
+            search_queries=search_queries or [trimmed_query],
+            intent=intent,
+            entities=entities,
+            routing_hints=routing_hints,
+        )
+    except (HTTPException, ValueError, json.JSONDecodeError) as exc:
+        logger.warning("query_rewrite_failed original_query=%s error=%s", trimmed_query, exc)
+        return RewriteResult(
+            original_query=trimmed_query,
+            rewritten_query=trimmed_query,
+            search_queries=[trimmed_query],
+        )
 
 
 def validate_retrieval_response(payload: object) -> dict[str, object]:
@@ -2066,30 +2253,30 @@ def call_rag_retrieval_endpoint(
     return validate_retrieval_response(response_payload)
 
 
-def resolve_retrieval_for_chat(payload: ChatRequest, interpreted_query: str) -> tuple[dict[str, object], str]:
+def resolve_retrieval_for_chat(payload: ChatRequest, rewrite_result: RewriteResult) -> tuple[dict[str, object], str]:
+    retrieval_query = rewrite_result.rewritten_query
     if payload.rag_endpoint and payload.rag_endpoint.strip():
         retrieval = call_rag_retrieval_endpoint(
             payload.rag_endpoint,
-            query=interpreted_query,
+            query=retrieval_query,
             top_k=payload.top_k,
             stored_name=payload.stored_name,
         )
         return retrieval, payload.rag_endpoint.strip()
 
-    retrieval = retrieve_chunks(
-        RetrieveRequest(
-            query=interpreted_query,
-            top_k=payload.top_k,
-            stored_name=payload.stored_name,
-        )
+    retrieval = retrieve_chunks_for_queries(
+        queries=build_query_candidates_for_chat(payload, rewrite_result),
+        top_k=payload.top_k,
+        stored_name=payload.stored_name,
+        rerank_query=payload.query.strip() or retrieval_query,
     )
     return retrieval, "internal:/retrieve"
 
 
 def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
     original_query = payload.query.strip()
-    interpreted_query = interpret_query_for_retrieval(original_query)
-    retrieval, rag_endpoint = resolve_retrieval_for_chat(payload, interpreted_query)
+    rewrite_result = rewrite_chat_query(payload)
+    retrieval, rag_endpoint = resolve_retrieval_for_chat(payload, rewrite_result)
     hits = retrieval["hits"]
     if not isinstance(hits, list):
         hits = []
@@ -2098,7 +2285,12 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         return {
             "status": "answered",
             "query": original_query,
-            "interpreted_query": interpreted_query,
+            "interpreted_query": rewrite_result.rewritten_query,
+            "rewritten_query": rewrite_result.rewritten_query,
+            "search_queries": rewrite_result.search_queries,
+            "intent": rewrite_result.intent,
+            "entities": rewrite_result.entities,
+            "routing_hints": rewrite_result.routing_hints,
             "top_k": retrieval["top_k"],
             "hit_count": 0,
             "collection_name": retrieval["collection_name"],
@@ -2125,7 +2317,7 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
     )
     user_prompt = (
         f"Original Question:\n{original_query}\n\n"
-        f"Interpreted Retrieval Query:\n{interpreted_query}\n\n"
+        f"Interpreted Retrieval Query:\n{rewrite_result.rewritten_query}\n\n"
         f"Context:\n{format_chat_context(hits)}\n\n"
         "Rules:\n"
         "- Answer only from the context.\n"
@@ -2147,7 +2339,12 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
     return {
         "status": "answered",
         "query": original_query,
-        "interpreted_query": interpreted_query,
+        "interpreted_query": rewrite_result.rewritten_query,
+        "rewritten_query": rewrite_result.rewritten_query,
+        "search_queries": rewrite_result.search_queries,
+        "intent": rewrite_result.intent,
+        "entities": rewrite_result.entities,
+        "routing_hints": rewrite_result.routing_hints,
         "top_k": retrieval["top_k"],
         "hit_count": retrieval["hit_count"],
         "collection_name": retrieval["collection_name"],

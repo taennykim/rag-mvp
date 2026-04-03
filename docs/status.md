@@ -9,7 +9,7 @@
 - 현재는 `upload -> parse -> chunk -> index -> retrieve`와 `/chat` answer/citation UI까지 연결했고, chat deployment `gpt-4o` 실응답까지 확인했다.
 - 다음 핵심 작업은 retrieval 질문 세트 기준 answer/citation 품질 검증과 표/수식형 문서 chunk 전략 보정이다.
 - 오늘 기준 parser 고도화 2단계로 PDF garbled text 감지와 upload 품질 경고 세분화를 반영했다.
-- 오늘 기준 `/chat`은 질의 해석 -> RAG 검색 API 호출 -> grounded answer 생성 흐름으로 정리했고, 외부 endpoint 미입력 시 내부 retrieval로 fallback한다.
+- 오늘 기준 `/chat`은 Input 정규화 -> structured rewrite -> RAG 검색 API 호출 -> grounded answer 생성 흐름으로 정리했고, 외부 endpoint 미입력 시 내부 retrieval로 fallback한다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -49,7 +49,7 @@
   - index API 및 indexed file list API 구현 완료
   - retrieve API 구현 완료
   - `POST /chat` grounded answer API 추가 완료
-  - `POST /chat`에서 retrieval query 해석 후 external/internal RAG endpoint 분기 호출 구현 완료
+  - `POST /chat`에서 `conversation_context` / `metadata` 입력을 받아 structured rewrite 후 external/internal RAG endpoint 분기 호출 구현 완료
   - upload 직후 자동 indexing 연결 완료
   - parser catalog API `GET /parse/parsers` 추가 완료
   - `Docling(md)` 전용 Docling parse 및 Markdown file output 저장 구현 완료
@@ -95,6 +95,7 @@
   - 2026-03-30 기준 Azure OpenAI chat deployment `gpt-4o` 실제 응답 확인 완료
   - 2026-03-30 기준 `/chat` 실질문 answer/citation 응답 확인 완료
   - 2026-03-30 기준 frontend stale `3000` 프로세스 및 `.next` 캐시 정리 후 최신 chat UI 반영 확인 완료
+  - 2026-04-03 기준 local backend에 `Input + Rewrite` 구조화 반영 완료
 
 ## 4. 현재 동작 기준
 - frontend 실행 기준:
@@ -168,6 +169,7 @@
 
 ## 7. 남은 핵심 작업
 - 1차 우선순위:
+  - `/chat` frontend에서 `conversation_context` / `metadata` 입력과 rewrite 결과 노출 UI를 추가
   - `Docling` PDF 변환 장시간 실행 원인을 확인
   - garbled detection false negative를 줄이기 위한 문자군 규칙 또는 별도 기준 추가
   - retrieval 질문 세트 기준 `/chat` answer generation 품질 및 citation 품질 점검

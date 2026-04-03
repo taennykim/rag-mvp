@@ -64,7 +64,8 @@
   - backend `POST /chat` retrieval 기반 answer generation 경로 추가 완료
   - frontend `/chat` answer panel / citation UI 추가 완료
   - frontend `/chat` RAG endpoint 입력 및 internal fallback UI 반영 완료
-  - backend `/chat` query interpretation + external/internal RAG endpoint 분기 반영 완료
+- backend `/chat` query interpretation + external/internal RAG endpoint 분기 반영 완료
+  - backend `/chat` Input 정규화 + structured rewrite 반영 완료
 - 미완료:
   - `Docling` / `PyMuPDF` / reference-style 비교 기록 보강
   - garbled detection false negative 보정
@@ -78,4 +79,5 @@
   - `Docling` PDF 변환 장시간 실행 원인을 추가 확인하되, 현재 PDF 기본 parser 정책은 `Legacy auto / PyMuPDF 우선`으로 유지한다
   - `Docling(md)`와 일반 `Docling`이 chunk/retrieval 품질에 주는 차이를 대표 문서 기준으로 점검한다
   - `/chat` 대표 질문 기준으로 internal RAG와 retrieval/answer/citation 품질을 먼저 기록한다
-  - 이후 `docs/answer-eval.md` 기준으로 retrieval 질문 세트의 answer/citation 품질을 기록한다
+- 이후 `docs/answer-eval.md` 기준으로 retrieval 질문 세트의 answer/citation 품질을 기록한다
+  - 이후 `/chat` frontend에 rewrite 결과와 route hint를 노출한다
