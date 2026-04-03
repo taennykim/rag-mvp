@@ -9,6 +9,7 @@
 - 현재는 `upload -> parse -> chunk -> index -> retrieve`와 `/chat` answer/citation UI까지 연결했고, chat deployment `gpt-4o` 실응답까지 확인했다.
 - 다음 핵심 작업은 retrieval 질문 세트 기준 answer/citation 품질 검증과 표/수식형 문서 chunk 전략 보정이다.
 - 오늘 기준 parser 고도화 2단계로 PDF garbled text 감지와 upload 품질 경고 세분화를 반영했다.
+- 오늘 기준 `/chat`은 질의 해석 -> RAG 검색 API 호출 -> grounded answer 생성 흐름으로 정리했고, 외부 endpoint 미입력 시 내부 retrieval로 fallback한다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -26,13 +27,17 @@
   - upload 실패 후에도 `Uploaded file list`가 즉시 refresh되도록 수정 완료
   - `Uploaded file list`는 최신 업로드 순으로 정렬되도록 수정 완료
   - `/upload`에서 `Primary parser`, `Second parser` 선택 가능
-  - `/upload`에서 `Make a markdown` 선택 시 second parser 비활성화 및 `markdown_path` 노출 완료
+  - `/upload`에서 `Docling(md)` 선택 시 second parser 비활성화 및 `markdown_path` 노출 완료
   - upload 실패 시 실패 단계와 backend log 경로를 UI에서 확인 가능
   - `Uploaded file list`에서 `Preview` 버튼으로 parse preview 확인 가능
   - `Uploaded file list`에서 parsing quality 결과를 파일 행 기준으로 확인 가능
   - 업로드 대상 확장자를 `PDF`, `DOC`, `DOCX`, `XLS`, `XLSX`까지 확장 완료
   - `/chat`에서 index된 파일 대상 retrieval 테스트 가능
   - `/chat`에 answer panel 및 citation 카드 UI 추가 완료
+  - `/chat`에 optional `RAG API endpoint` 입력 추가 완료
+  - `/chat`에서 endpoint 미입력 시 내부 `POST /retrieve` fallback 동작 추가 완료
+  - `/chat`에서 `Generated answer`와 `Retrieved chunks` 역할 설명 정리 완료
+  - `/chat`에서 `View full chunk`와 preview block overflow 정리 완료
   - `/chat` question 입력 기본값 제거 완료
   - header / nav / card / form control / result card 기준 UI refresh 완료
   - upload 화면 상단 stat strip 추가 완료
@@ -44,9 +49,10 @@
   - index API 및 indexed file list API 구현 완료
   - retrieve API 구현 완료
   - `POST /chat` grounded answer API 추가 완료
+  - `POST /chat`에서 retrieval query 해석 후 external/internal RAG endpoint 분기 호출 구현 완료
   - upload 직후 자동 indexing 연결 완료
   - parser catalog API `GET /parse/parsers` 추가 완료
-  - `Make a markdown` 전용 Docling parse 및 Markdown file output 저장 구현 완료
+  - `Docling(md)` 전용 Docling parse 및 Markdown file output 저장 구현 완료
 - parsing:
   - `Docling` 설치 및 primary parser 연결 완료
   - PDF는 `PyMuPDF`, DOCX는 `python-docx` fallback 유지
@@ -72,8 +78,10 @@
   - RAG 서버 backend `127.0.0.1:8000/health` 응답 확인 완료
   - RAG 서버 frontend `127.0.0.1:3000/upload`, `/chat` 응답 확인 완료
   - `GET /parse/parsers`에서 `Docling`, `DOC parser`, `Excel parser` 사용 가능 상태 확인 완료
-  - 2026-04-03 기준 RAG 서버 `GET /parse/parsers`에서 `Make a markdown` 노출 확인 완료
-  - 2026-04-03 기준 RAG 서버 `Make a markdown` parse 실행 시 `markdown_path` 반환 확인 완료
+  - 2026-04-03 기준 RAG 서버 `GET /parse/parsers`에서 `Docling(md)` 노출 확인 완료
+  - 2026-04-03 기준 RAG 서버 `Docling(md)` parse 실행 시 `markdown_path` 반환 확인 완료
+  - 2026-04-03 기준 RAG 서버 `/chat`에서 blank endpoint 요청 시 `rag_endpoint=internal:/retrieve` 응답 확인 완료
+  - 2026-04-03 기준 현재 서버와 RAG 서버의 핵심 소스/문서 해시 일치 확인 완료
   - sample `DOC` 파일은 `doc-parser`로 파싱 검증 완료
   - sample `XLSX` 파일은 `docling` 및 `excel-parser` 둘 다 파싱 검증 완료
   - sample `DOCX` 파일은 `docling` 직접 파싱 검증 완료
@@ -120,19 +128,19 @@
 
 ## 6. parser 현재 상태
 - UI에서 선택 가능:
-  - primary parser: `Legacy auto`, `Docling`, `Make a markdown`
+  - primary parser: `Legacy auto`, `Docling`, `Docling(md)`
   - second parser: `Extension default`, `PyMuPDF`, `python-docx`, `DOC parser`, `Excel parser`
 - 실제 동작:
   - `Legacy auto`가 현재 기본 primary parser다.
   - `Docling`은 현재 환경에 설치되어 있고 비교 검증용 primary parser로 선택할 수 있다.
-  - `Make a markdown`는 fallback 없이 Docling만 사용하고, parse 성공 시 Markdown 파일을 저장한다.
+  - `Docling(md)`는 fallback 없이 Docling만 사용하고, parse 성공 시 Markdown 파일을 저장한다.
   - `DOCX`와 `XLSX`는 `Docling` 직접 파싱 검증을 끝냈다.
   - `DOC`는 `Docling` 대상이 아니므로 `antiword` fallback parser가 사용된다.
   - `PDF`는 `Docling` 사용 가능 상태지만 문서별 속도/품질 비교는 추가 검증이 필요하다.
   - 같은 파일을 여러 번 업로드하면 `stored_name` 기준으로 별도 행이 누적된다.
   - `Last failure` 표시는 현재 성공 상태와 별개로 과거 parse 실패 이력을 로그 기준으로 함께 노출한다.
   - parse preview와 quality 결과는 `pipeline/files` 메타데이터 기준으로 파일 행에 함께 표시한다.
-  - `Make a markdown` 성공 시 `markdown_path`가 `pipeline/files`와 upload list에 함께 노출된다.
+  - `Docling(md)` 성공 시 `markdown_path`가 `pipeline/files`와 upload list에 함께 노출된다.
   - `Parse test`를 다시 성공시키면 해당 `stored_name`의 최신 parse 결과는 성공 기준으로 덮어써지고, `chunk`를 다시 실행하지 않으면 `chunk_status`는 `pending`으로 남을 수 있다.
 - 남은 점검:
   - `PDF`에서 `Docling`과 `PyMuPDF` 결과 비교 보강
@@ -185,6 +193,7 @@
 - 중복 파일명 문서가 여러 건 있을 때 최신 항목과 과거 항목이 섞여 보여 사용자 혼동이 발생할 수 있다.
 - parse 성공/실패 history를 한 행에서 함께 보여주기 위한 backend/frontend 수정은 진행했지만, RAG 서버 화면 기준 최종 검증은 다음 세션에서 다시 확인이 필요하다.
 - frontend 반영이 안 보일 때는 stale `3000` 프로세스나 `.next` 캐시가 원인일 수 있다.
+- 2026-04-03 기준 `backend/app/main.py`, `frontend/app/upload/page.tsx`, `frontend/app/chat/page.tsx`, `frontend/app/globals.css`, `README.md`, `TODO.md`, `docs/*.md` 주요 파일은 현재 서버와 RAG 서버 해시가 일치한다.
 - `DELETE /index/files`는 현재 환경에서 sqlite readonly 오류가 날 수 있어, stale backend PID를 함께 점검해야 한다.
 - 현재 chat deployment는 `gpt-4o`로 확인됐고, answer 품질 검증이 다음 단계다.
 - `계약자 변경을 위한 서류를 알려줘` 질문에서는 grounded answer가 동작했지만, 조건부 서류와 공통 서류를 섞어 말하는 경향이 있어 prompt 보정을 반영했다.

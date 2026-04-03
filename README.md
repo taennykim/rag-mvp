@@ -66,7 +66,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Upload page includes in-browser parse test, full extracted text view, and separate quality-check action
 - Upload page includes `Primary parser` / `Second parser` selection UI
 - Docling is installed on the RAG server and works as the primary parser
-- Upload page now includes `Make a markdown`, which uses Docling only and writes a Markdown output file
+- Upload page now includes `Docling(md)`, which uses Docling only and writes a Markdown output file
 - DOC fallback parser uses `antiword`
 - Excel fallback parser uses `openpyxl` / `xlrd`
 - Parser smoke tests for `DOC`, `DOCX`, and `XLSX` were verified on the RAG server
@@ -77,6 +77,9 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Chat page can query retrieved chunks and inspect sources
 - Chat page now calls Azure OpenAI `gpt-4o` for grounded answers using retrieved context only
 - Chat page now shows answer panel and citation cards
+- Chat page now accepts an optional RAG API endpoint; when left blank it falls back to internal `POST /retrieve`
+- Chat page now rewrites the user question for retrieval before calling the RAG API
+- Chat page now separates the final answer from retrieved evidence more clearly and renders full chunks in a bounded block
 - Upload list supports file-level delete of upload + index
 - Upload list shows per-file indexing status and chunk count
 - Upload list now refreshes immediately even when parse/chunk/index fails after upload
@@ -87,12 +90,13 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Azure OpenAI `text-embedding-3-small` embedding replacement and rebuild are complete
 - Pricing-method PDF retrieval still remains weak in all-file search, so the next work is parser/chunking/retrieval quality re-check rather than another embedding swap
 - Backend exposes `GET /parse/parsers` and supports `Docling -> auxiliary parser fallback`
-- Parser catalog now marks `Docling`, `Make a markdown`, `DOC parser`, and `Excel parser` as available on the RAG server
+- Parser catalog now marks `Docling`, `Docling(md)`, `DOC parser`, and `Excel parser` as available on the RAG server
 - Parser catalog default primary parser is now `Legacy auto`, so PDF uses `PyMuPDF` first in the normal flow
 - Frontend is currently operated more stably with `build + start` than `next dev`
 - Backend now writes request and parser system logs on the RAG server
 - Upload 화면 UI를 현재 기준으로 리프레시했고, header / stat strip / card 위계를 정리했다
-- `Make a markdown` parse 성공 시 upload list에서 `markdown_path`를 함께 확인할 수 있다
+- `Docling(md)` parse 성공 시 upload list에서 `markdown_path`를 함께 확인할 수 있다
+- 2026-04-03 기준 현재 서버와 RAG 서버의 핵심 소스/문서 해시가 일치함을 확인했다
 - Parse success/failure history UI는 구조상 노출되며, duplicate upload와 과거 실패 이력이 함께 보일 수 있다
 - RAG 서버 테스트용 upload/parse/chunk/index 데이터는 2026-03-29 기준 초기화 완료 상태다
 - Retrieval-backed answer generation is connected

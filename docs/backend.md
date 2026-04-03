@@ -26,10 +26,11 @@
   - `DELETE /index/files`
   - `GET /retrieve`
   - `POST /retrieve`
+  - `POST /chat`
 - parsing 방식:
   - primary parser:
     - `Docling`
-    - `Make a markdown`
+    - `Docling(md)`
     - `Legacy auto parser`
   - auxiliary parser:
     - `PyMuPDF` for PDF
@@ -39,7 +40,7 @@
   - 현재 동작:
     - UI에서 primary parser와 auxiliary parser를 선택할 수 있다.
     - 기본값은 `Legacy auto + Extension default parser`이다.
-    - `Make a markdown`는 fallback 없이 Docling만 사용하고 Markdown file output을 저장한다.
+    - `Docling(md)`는 fallback 없이 Docling만 사용하고 Markdown file output을 저장한다.
     - Docling이 설치되지 않았거나 실패하면 auxiliary parser로 fallback한다.
     - 현재 fallback 구현은 PDF, DOC, DOCX, XLS, XLSX를 처리한다.
 - parsing 품질 비교:
@@ -71,7 +72,7 @@
   - `markdown_path`
 - parse summary / pipeline file 응답:
   - 성공한 parse summary에는 `preview`를 함께 저장한다.
-  - `Make a markdown` 성공 시 `markdown_path`를 함께 저장한다.
+  - `Docling(md)` 성공 시 `markdown_path`를 함께 저장한다.
   - `POST /parse/quality` 결과는 parse summary에 quality 메타데이터로 반영한다.
   - `GET /pipeline/files`는 파일별 `parse_preview`, `markdown_path`, `quality_checked_at`, `jaccard_similarity`, `levenshtein_distance`, `quality_warning`, `quality_warning_message`를 함께 반환한다.
 - parsing 품질 응답:
@@ -131,6 +132,11 @@
   - `stored_name`으로 검색 대상을 특정 파일에 한정할 수 있다.
   - retrieval 응답에는 source metadata와 preview가 포함된다.
   - ranking 보정용 lexical rerank가 추가되어 있다.
+- chat:
+  - `/chat`은 사용자 질의를 retrieval용으로 한 번 해석한 뒤 RAG 검색을 수행한다.
+  - `rag_endpoint`가 입력되면 해당 endpoint로 retrieval request를 보내고, 비어 있으면 내부 `POST /retrieve`를 사용한다.
+  - retrieval 결과와 citation 후보를 기반으로 grounded answer를 생성한다.
+  - 응답에는 `interpreted_query`와 실제 사용한 `rag_endpoint`를 포함한다.
 
 ## 3. 현재 상태
 - 진행중
@@ -140,13 +146,14 @@
 - parse와 quality check 분리 완료
 - parser selection UI 및 backend parser routing 추가 완료
 - Docling 설치 및 primary parser 검증 완료
-- `Make a markdown` parser option 및 Markdown output path 반환 구현 완료
+- `Docling(md)` parser option 및 Markdown output path 반환 구현 완료
 - DOC / Excel fallback parser 구현 및 검증 완료
 - upload list용 parse preview / quality metadata 노출 추가 완료
 - chunking 기능 최소 구현 및 검증 완료
 - indexing 기능 구현 및 검증 완료
 - retrieval 기능 구현 및 1차 품질 점검 완료
 - Azure OpenAI embedding 연결 및 재인덱싱 완료
+- `/chat` external/internal RAG endpoint 분기와 internal fallback 검증 완료
 
 ## 4. 이슈 및 문제
 - parsing 결과는 아직 메모리 기준 단건 응답만 제공한다.

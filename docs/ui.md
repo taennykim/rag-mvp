@@ -8,7 +8,7 @@
   - `PDF`, `DOC`, `DOCX`, `XLS`, `XLSX` 업로드
   - default file 업로드
   - `Primary parser`, `Second parser` 선택
-  - `Make a markdown` 선택 시 second parser 비활성화
+  - `Docling(md)` 선택 시 second parser 비활성화
   - `target_length`, `overlap` chunk 설정 입력
   - 업로드된 파일 목록 표시
   - 파일별 indexing 상태, chunk 수, 업로드 시간 표시
@@ -16,14 +16,19 @@
   - 파일별 `Preview` 확인
   - parsing quality check 실행 및 결과 표시
   - PDF garbled text 경고와 세부 이유 표시
-  - `Make a markdown` 성공 시 Markdown output path 표시
+  - `Docling(md)` 성공 시 Markdown output path 표시
   - upload + index 삭제
   - pipeline 실패 단계와 backend log 경로 표시
 - `/chat`
   - 질문 입력
+  - optional `RAG API endpoint` 입력
   - `Target file` 선택
   - `top_k` 선택
+  - interpreted retrieval query 표시
+  - 실제 사용된 RAG endpoint 표시
+  - `Generated answer`와 `Retrieved chunks` 역할 분리 표시
   - retrieval 결과 chunk와 source metadata 출력
+  - `View full chunk` 확장 블록 표시
 - `/evaluation`
   - 페이지 skeleton만 존재
   - 실제 평가 결과 UI는 아직 미구현
@@ -40,6 +45,9 @@
 - quality metric 라벨은 한글 설명 포함 형태로 표시한다.
 - 하단 `Parsing test result` 패널은 preview 중심으로 단순화했다.
 - `/chat`에서는 indexed file 기준 retrieval 테스트와 source 확인이 가능하다.
+- `/chat`에서는 endpoint를 비우면 내부 retrieval을 사용하고, endpoint를 입력하면 해당 RAG API를 호출한다.
+- `/chat` answer card는 최종 응답을, retrieved chunks card는 RAG 근거 후보를 분리해서 보여준다.
+- `/chat` preview / citation / full chunk 블록은 긴 텍스트가 잘리지 않도록 overflow를 정리했다.
 - `/evaluation`은 라우트와 기본 페이지만 있고 실제 결과 화면은 아직 없다.
 - 실제 화면 확인 기준은 RAG 서버 frontend `127.0.0.1:3000`이다.
 
@@ -48,7 +56,7 @@
 - 같은 원본 파일명을 여러 번 업로드하면 서로 다른 `stored_name` 항목이 누적되어 사용자 혼동이 생길 수 있다.
 - parser 옵션은 검증에는 유용하지만 실제 사용자 기본 흐름에서는 자동 정책 고정이 더 적합할 수 있다.
 - 현재 기본 정책은 `Legacy auto parser`이며, `Docling`은 비교 검증 목적에서만 직접 선택하도록 정리했다.
-- `Make a markdown`는 Docling만 사용해서 Markdown 산출물을 만드는 전용 옵션이다.
+- `Docling(md)`는 Docling만 사용해서 Markdown 산출물을 만드는 전용 옵션이다.
 - 화면 테스트는 현재 서버가 아니라 RAG 서버에서만 수행해야 한다.
 - PDF 품질 경고는 현재 heuristic 설명 중심이라, 사용자용 문구 단순화 여부를 추가 검토해야 한다.
 - 현재 `PDF garbled text=정상`이어도 실제 preview 문자열이 깨질 수 있어 false negative 보정이 추가로 필요하다.

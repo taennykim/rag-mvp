@@ -57,6 +57,8 @@ type ChatResponse = RetrievalResponse & {
   insufficient_context: boolean;
   citations: ChatCitation[];
   chat_model?: string | null;
+  interpreted_query?: string;
+  rag_endpoint?: string;
 };
 
 const API_BASE_URL = "/api";
@@ -66,9 +68,10 @@ export default function ChatPage() {
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [selectedStoredName, setSelectedStoredName] = useState("");
   const [query, setQuery] = useState("");
+  const [ragEndpoint, setRagEndpoint] = useState("");
   const [topK, setTopK] = useState(5);
   const [result, setResult] = useState<ChatResponse | null>(null);
-  const [message, setMessage] = useState("질문을 넣으면 retrieval 근거와 answer를 함께 확인합니다.");
+  const [message, setMessage] = useState("질의 해석 후 RAG 검색 API를 호출하고, 검색 결과 기반으로 answer를 생성합니다.");
   const [isLoading, setIsLoading] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -142,6 +145,7 @@ export default function ChatPage() {
           query,
           top_k: topK,
           stored_name: selectedStoredName || null,
+          rag_endpoint: ragEndpoint.trim() || null,
         }),
       });
 
@@ -154,7 +158,7 @@ export default function ChatPage() {
       setMessage(
         data.insufficient_context
           ? `Retrieved ${data.hit_count} chunk(s), but the context was not sufficient for a grounded answer.`
-          : `Generated an answer from ${data.hit_count} retrieved chunk(s).`,
+          : `Generated an answer from ${data.hit_count} retrieved chunk(s) via ${data.rag_endpoint ?? "internal:/retrieve"}.`,
       );
     } catch (error) {
       setResult(null);
@@ -193,7 +197,7 @@ export default function ChatPage() {
       <div className="card">
         <p className="eyebrow">Chat</p>
         <h2>Grounded answer</h2>
-        <p>질문을 넣고, retrieval 근거만으로 답변과 citation을 확인합니다.</p>
+        <p>질의를 해석하고 RAG 검색 API를 호출한 뒤, 검색 결과와 LLM reasoning을 종합해 답변과 citation을 만듭니다.</p>
         <div className="chat-toolbar">
           <button className="upload-button secondary" onClick={() => void loadFiles()} type="button">
             Refresh indexed files
@@ -214,6 +218,19 @@ export default function ChatPage() {
             rows={4}
             value={query}
           />
+          <div className="default-file-row">
+            <label className="upload-label" htmlFor="chat-rag-endpoint">
+              RAG API endpoint
+            </label>
+            <input
+              className="default-file-select"
+              id="chat-rag-endpoint"
+              onChange={(event) => setRagEndpoint(event.target.value)}
+              placeholder="비워두면 internal:/retrieve, 예: http://127.0.0.1:8000/retrieve"
+              type="text"
+              value={ragEndpoint}
+            />
+          </div>
           <div className="chat-controls">
             <div className="default-file-row">
               <label className="upload-label" htmlFor="chat-file-select">
@@ -264,6 +281,7 @@ export default function ChatPage() {
       <div className="card">
         <p className="eyebrow">Answer</p>
         <h2>Generated answer</h2>
+        <p>LLM이 해석된 질의와 retrieved chunk를 종합해서 만든 최종 응답입니다.</p>
         {!result ? (
           <p>No answer yet.</p>
         ) : (
@@ -271,6 +289,8 @@ export default function ChatPage() {
             <div className="answer-summary">
               <span>{result.insufficient_context ? "Insufficient context" : "Grounded answer"}</span>
               <span>Hits: {result.hit_count}</span>
+              {result.interpreted_query ? <span>Interpreted: {result.interpreted_query}</span> : null}
+              {result.rag_endpoint ? <span>RAG API: {result.rag_endpoint}</span> : null}
               {result.chat_model ? <span>Model: {result.chat_model}</span> : null}
             </div>
             <div className={`answer-body${result.insufficient_context ? " warning" : ""}`}>{result.answer}</div>
@@ -294,12 +314,14 @@ export default function ChatPage() {
       <div className="card">
         <p className="eyebrow">Results</p>
         <h2>Retrieved chunks</h2>
+        <p>RAG 검색 API가 먼저 찾은 근거 후보입니다. 최종 답변은 이 chunk들을 바탕으로 별도로 생성됩니다.</p>
         {!result || result.hit_count === 0 ? (
           <p>No retrieved chunks yet.</p>
         ) : (
           <div className="retrieval-list">
             <div className="retrieval-summary">
               <span>Query: {result.query}</span>
+              {result.interpreted_query ? <span>RAG query: {result.interpreted_query}</span> : null}
               <span>Top K: {result.top_k}</span>
               <span>Hits: {result.hit_count}</span>
             </div>
@@ -319,9 +341,11 @@ export default function ChatPage() {
                   </div>
                 </div>
                 <div className="retrieval-preview">{hit.preview ?? hit.text}</div>
-                <details className="parse-json">
+                <details className="parse-json retrieval-full">
                   <summary>View full chunk</summary>
-                  <pre>{hit.text}</pre>
+                  <div className="retrieval-full-body">
+                    <pre>{hit.text}</pre>
+                  </div>
                 </details>
               </article>
             ))}

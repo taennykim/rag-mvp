@@ -504,6 +504,9 @@ a {
 
 .parse-json pre {
   margin-top: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .chat-form {
@@ -585,6 +588,8 @@ a {
   background: linear-gradient(180deg, rgba(240, 253, 250, 0.92), rgba(236, 253, 245, 0.82));
   line-height: 1.75;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .answer-body.warning {
@@ -613,6 +618,9 @@ a {
   margin-top: 10px;
   color: var(--muted);
   line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .retrieval-list {
@@ -690,6 +698,41 @@ a {
   background: linear-gradient(180deg, rgba(246, 250, 255, 0.96), rgba(239, 246, 255, 0.88));
   color: var(--ink);
   line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.retrieval-full {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(247, 250, 253, 0.9);
+  overflow: hidden;
+}
+
+.retrieval-full summary {
+  cursor: pointer;
+  padding: 14px 16px;
+  font-weight: 700;
+  color: var(--ink);
+  list-style: none;
+}
+
+.retrieval-full summary::-webkit-details-marker {
+  display: none;
+}
+
+.retrieval-full-body {
+  border-top: 1px solid var(--line);
+  padding: 0 16px 16px;
+}
+
+.retrieval-full-body pre {
+  margin: 0;
+  padding-top: 14px;
+  background: transparent;
+  border: 0;
 }
 
 @media (max-width: 640px) {

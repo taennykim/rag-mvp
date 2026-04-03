@@ -83,6 +83,8 @@
 - [ ] Compare parser choice impact on chunking/retrieval
 - [x] Add PDF garbled text warning heuristics to parsing quality check
 - [x] Expose parser quality warning reasons in upload file list
+- [x] Add `Docling(md)` parser option for Markdown output generation
+- [x] Expose `markdown_path` in upload file list for Markdown parse results
 
 ---
 
@@ -135,6 +137,10 @@
 - [x] Show answer output
 - [x] Show retrieved chunks and sources
 - [x] Connect LLM answer flow to chat screen
+- [x] Add optional RAG API endpoint input on `/chat`
+- [x] Fall back to internal retrieval when `/chat` RAG endpoint is blank
+- [x] Clarify `Generated answer` vs `Retrieved chunks` on `/chat`
+- [x] Render `View full chunk` and sample preview blocks without truncation
 
 ---
 
@@ -145,6 +151,7 @@
 - [x] Show file-level indexing status and chunk count
 - [x] Show pipeline failure stage and backend log path in UI
 - [ ] Final UI verification for parse success/failure history in uploaded file list
+- [x] Verify `Docling(md)` UI flow on the RAG server and confirm second parser disable behavior in runtime build
 
 ---
 
@@ -205,7 +212,9 @@
 - [ ] garbled detection false negative 기준 추가
 - [x] quality metric 라벨 한글 설명 반영
 - [ ] parser 영향 기반 chunk/retrieval 재검증
+- [x] parser 운영 정책을 `Legacy auto` / `Docling` / `Docling(md)` 기준으로 정리
 - [x] 실제 embedding 모델 교체 방식 결정
+- [x] 현재 서버와 RAG 서버의 핵심 소스/문서 동기화 확인
 - [ ] retrieval 질문 세트 일부 기준 `/chat` answer generation 품질 검증
 - [ ] 산출방법서 계열 표/수식 보존형 chunk 전략 검토
 - [x] answer 품질 점검표 초안 작성 (`docs/answer-eval.md`)

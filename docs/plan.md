@@ -19,6 +19,7 @@
 
 ## 3. 현재 진행 상태
 - 현재 단계: retrieval 질문 세트 기준 품질 최적화 진행중 / PDF garbled text 감지와 parser 기본 정책 정리는 반영했고 false negative 보정이 남아 있음
+- 현재 단계: retrieval 질문 세트 기준 품질 최적화 진행중 / parser 정책과 `/chat` RAG endpoint 분기 UI는 반영됐고 answer/citation 품질 검증이 남아 있음
 - 완료:
   - AGENTS.md, TODO.md 확인
   - 기본 계획 및 파트 문서 작성
@@ -62,6 +63,8 @@
   - RAG 서버 frontend/backend 재기동 및 `3000/8000` 응답 확인 완료
   - backend `POST /chat` retrieval 기반 answer generation 경로 추가 완료
   - frontend `/chat` answer panel / citation UI 추가 완료
+  - frontend `/chat` RAG endpoint 입력 및 internal fallback UI 반영 완료
+  - backend `/chat` query interpretation + external/internal RAG endpoint 분기 반영 완료
 - 미완료:
   - `Docling` / `PyMuPDF` / reference-style 비교 기록 보강
   - garbled detection false negative 보정
@@ -71,6 +74,8 @@
   - `PDF` 기준 `Docling` vs `PyMuPDF` 품질 비교
   - evaluation dataset / RAGAS / evaluation UI
 - 다음 우선 작업:
-  - `Docling` PDF 변환 장시간 실행 원인을 추가 확인하되, 현재 기본 parser 정책은 `Legacy auto / PyMuPDF 우선`으로 유지한다
-  - 깨진 문자군 패턴 기반으로 garbled detection false negative 보정 기준을 추가 검토한다
+  - parser 운영 정책은 `Legacy auto` 기본, `Docling` 비교 검증용, `Docling(md)` Markdown 산출물 생성용으로 유지한다
+  - `Docling` PDF 변환 장시간 실행 원인을 추가 확인하되, 현재 PDF 기본 parser 정책은 `Legacy auto / PyMuPDF 우선`으로 유지한다
+  - `Docling(md)`와 일반 `Docling`이 chunk/retrieval 품질에 주는 차이를 대표 문서 기준으로 점검한다
+  - `/chat` 대표 질문 기준으로 internal RAG와 retrieval/answer/citation 품질을 먼저 기록한다
   - 이후 `docs/answer-eval.md` 기준으로 retrieval 질문 세트의 answer/citation 품질을 기록한다

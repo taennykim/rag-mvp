@@ -735,7 +735,7 @@ export default function UploadPage() {
                 ))}
               </select>
               <p className="parser-note">
-                기본값은 Legacy auto parser입니다. `Make a markdown`를 선택하면 fallback 없이 Docling 결과를 Markdown 파일로 저장합니다.
+                기본값은 Legacy auto parser입니다. `Docling(md)`를 선택하면 fallback 없이 Docling 결과를 Markdown 파일로 저장합니다.
               </p>
             </div>
 
@@ -759,7 +759,7 @@ export default function UploadPage() {
               </select>
               <p className="parser-note">
                 {isOnlyDocling
-                  ? "Make a markdown 모드에서는 second parser를 사용하지 않습니다."
+                  ? "Docling(md) 모드에서는 second parser를 사용하지 않습니다."
                   : "PDF, DOC, DOCX, XLS, XLSX용 보조 파서를 선택할 수 있습니다. 환경에 없는 파서는 실행 시 안내됩니다."}
               </p>
             </div>

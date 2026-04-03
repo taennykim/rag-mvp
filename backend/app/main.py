@@ -391,7 +391,7 @@ def parser_supports_extension(parser_id: str, extension: str) -> bool:
 def get_parser_label(parser_id: str) -> str:
     labels = {
         PRIMARY_PARSER_DOCLING: "Docling",
-        PRIMARY_PARSER_DOCLING_MARKDOWN: "Make a markdown",
+        PRIMARY_PARSER_DOCLING_MARKDOWN: "Docling(md)",
         PRIMARY_PARSER_LEGACY_AUTO: "Legacy auto parser",
         FALLBACK_PARSER_EXTENSION_DEFAULT: "Extension default parser",
         FALLBACK_PARSER_NONE: "No fallback",
@@ -451,7 +451,7 @@ def get_parser_catalog() -> dict[str, object]:
             },
             {
                 "id": PRIMARY_PARSER_DOCLING_MARKDOWN,
-                "label": "Make a markdown",
+                "label": "Docling(md)",
                 "available": docling_available,
                 "description": "Docling만 사용하고, 선택된 파일을 Markdown 전용 산출물로 변환합니다.",
                 "supported_extensions": [".pdf", ".docx", ".xlsx"],
@@ -925,7 +925,7 @@ def extract_with_parser(path: Path, parser_id: str) -> tuple[str, str]:
 
     if parser_id == PRIMARY_PARSER_DOCLING_MARKDOWN:
         if not parser_supports_extension(parser_id, extension):
-            raise HTTPException(status_code=400, detail=f"Make a markdown does not support {extension} in the current parser policy.")
+            raise HTTPException(status_code=400, detail=f"Docling(md) does not support {extension} in the current parser policy.")
         return extract_docling_text(path), parser_id
 
     if parser_id in {PRIMARY_PARSER_LEGACY_AUTO, FALLBACK_PARSER_EXTENSION_DEFAULT}:
@@ -1456,6 +1456,7 @@ class ChatRequest(BaseModel):
     query: str
     top_k: int = DEFAULT_CHAT_TOP_K
     stored_name: str | None = None
+    rag_endpoint: str | None = None
 
 
 class RebuildIndexRequest(BaseModel):
@@ -1971,14 +1972,124 @@ def parse_chat_completion(content: str) -> tuple[bool, str]:
     return status == "insufficient", answer
 
 
-def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
+def interpret_query_for_retrieval(query: str) -> str:
+    trimmed_query = query.strip()
+    if not trimmed_query:
+        raise HTTPException(status_code=400, detail="Query text is required.")
+
+    system_prompt = (
+        "You rewrite user questions into concise retrieval queries for a RAG search API.\n"
+        "Keep the original meaning.\n"
+        "Respond in Korean when the user question is Korean.\n"
+        "Return only the rewritten retrieval query with no label or explanation."
+    )
+    user_prompt = (
+        "Rewrite this user question into a retrieval-friendly search query.\n"
+        "Keep important entities, document terms, and conditions.\n\n"
+        f"Question:\n{trimmed_query}"
+    )
+
+    try:
+        response_text = build_azure_openai_chat_completion(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+        )
+    except HTTPException:
+        logger.warning("query_interpretation_failed original_query=%s", trimmed_query)
+        return trimmed_query
+
+    interpreted_query = response_text.strip()
+    return interpreted_query or trimmed_query
+
+
+def validate_retrieval_response(payload: object) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=502, detail="RAG retrieval response must be a JSON object.")
+
+    hits = payload.get("hits")
+    if not isinstance(hits, list):
+        raise HTTPException(status_code=502, detail="RAG retrieval response is missing hits.")
+
+    return {
+        "status": str(payload.get("status") or "retrieved"),
+        "query": str(payload.get("query") or ""),
+        "top_k": int(payload.get("top_k") or 0),
+        "hit_count": int(payload.get("hit_count") or len(hits)),
+        "collection_name": str(payload.get("collection_name") or ""),
+        "embedding_provider": payload.get("embedding_provider"),
+        "embedding_model": payload.get("embedding_model"),
+        "hits": hits,
+    }
+
+
+def call_rag_retrieval_endpoint(
+    endpoint: str,
+    *,
+    query: str,
+    top_k: int,
+    stored_name: str | None,
+) -> dict[str, object]:
+    normalized_endpoint = endpoint.strip()
+    if not normalized_endpoint:
+        raise HTTPException(status_code=400, detail="RAG endpoint is required when calling an external retrieval API.")
+    if not normalized_endpoint.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="RAG endpoint must start with http:// or https://.")
+
+    payload = {
+        "query": query,
+        "top_k": top_k,
+        "stored_name": stored_name,
+    }
+    request = urllib_request.Request(
+        normalized_endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+
+    try:
+        with urllib_request.urlopen(request, timeout=120) as response:
+            raw_body = response.read()
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise HTTPException(status_code=502, detail=f"RAG retrieval request failed: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"RAG retrieval request failed: {exc.reason}") from exc
+
+    try:
+        response_payload = json.loads(raw_body.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail="RAG retrieval response was not valid JSON.") from exc
+
+    return validate_retrieval_response(response_payload)
+
+
+def resolve_retrieval_for_chat(payload: ChatRequest, interpreted_query: str) -> tuple[dict[str, object], str]:
+    if payload.rag_endpoint and payload.rag_endpoint.strip():
+        retrieval = call_rag_retrieval_endpoint(
+            payload.rag_endpoint,
+            query=interpreted_query,
+            top_k=payload.top_k,
+            stored_name=payload.stored_name,
+        )
+        return retrieval, payload.rag_endpoint.strip()
+
     retrieval = retrieve_chunks(
         RetrieveRequest(
-            query=payload.query,
+            query=interpreted_query,
             top_k=payload.top_k,
             stored_name=payload.stored_name,
         )
     )
+    return retrieval, "internal:/retrieve"
+
+
+def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
+    original_query = payload.query.strip()
+    interpreted_query = interpret_query_for_retrieval(original_query)
+    retrieval, rag_endpoint = resolve_retrieval_for_chat(payload, interpreted_query)
     hits = retrieval["hits"]
     if not isinstance(hits, list):
         hits = []
@@ -1986,12 +2097,14 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
     if not hits:
         return {
             "status": "answered",
-            "query": retrieval["query"],
+            "query": original_query,
+            "interpreted_query": interpreted_query,
             "top_k": retrieval["top_k"],
             "hit_count": 0,
             "collection_name": retrieval["collection_name"],
             "embedding_provider": retrieval["embedding_provider"],
             "embedding_model": retrieval["embedding_model"],
+            "rag_endpoint": rag_endpoint,
             "answer": "문서에서 충분한 근거를 찾지 못했습니다.",
             "insufficient_context": True,
             "citations": [],
@@ -2011,7 +2124,8 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         "ANSWER: <final answer>"
     )
     user_prompt = (
-        f"Question:\n{retrieval['query']}\n\n"
+        f"Original Question:\n{original_query}\n\n"
+        f"Interpreted Retrieval Query:\n{interpreted_query}\n\n"
         f"Context:\n{format_chat_context(hits)}\n\n"
         "Rules:\n"
         "- Answer only from the context.\n"
@@ -2032,12 +2146,14 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
 
     return {
         "status": "answered",
-        "query": retrieval["query"],
+        "query": original_query,
+        "interpreted_query": interpreted_query,
         "top_k": retrieval["top_k"],
         "hit_count": retrieval["hit_count"],
         "collection_name": retrieval["collection_name"],
         "embedding_provider": retrieval["embedding_provider"],
         "embedding_model": retrieval["embedding_model"],
+        "rag_endpoint": rag_endpoint,
         "answer": answer,
         "insufficient_context": insufficient_context,
         "citations": build_chat_citations(hits),
