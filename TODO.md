@@ -196,7 +196,7 @@
 ## Next Session Start Point
 
 - [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-31.md`, `TODO.md`에 반영
-- [ ] 다음 시작 시 `AGENTS.md` -> `docs/plan.md` -> `TODO.md` -> `docs/status.md` -> 관련 `docs/*.md` -> `docs/daily/2026-03-31.md` 순서로 확인
+- [ ] 다음 시작 시 `AGENTS.md` -> `README.md` -> `docs/plan.md` -> `TODO.md` -> `docs/status.md` -> 관련 `docs/*.md` -> 최신 `docs/daily/*` 순서로 확인
 - [x] frontend 의존성 설치
 - [x] backend 의존성 설치
 - [x] frontend 실행 확인

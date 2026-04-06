@@ -48,11 +48,12 @@ This document defines how the agent should operate across all projects.
 - 이전 작업 흐름을 기반으로 이어서 진행한다.
 - 작업 시작 시 문서는 아래 순서로 확인한다:
   1. `AGENTS.md`
-  2. `docs/plan.md`
-  3. `TODO.md`
-  4. `docs/status.md`
-  5. `docs/*.md`
-  6. 최신 `docs/daily/*`
+  2. `README.md`
+  3. `docs/plan.md`
+  4. `TODO.md`
+  5. `docs/status.md`
+  6. `docs/*.md`
+  7. 최신 `docs/daily/*`
 
 # 작업은 단절되지 않고 이어져야 한다.
 
@@ -63,6 +64,7 @@ This document defines how the agent should operate across all projects.
 작업 시작 전 반드시 아래 파일을 읽는다:
 
 - AGENTS.md
+- README.md
 - docs/plan.md
 - TODO.md
 - docs/status.md
@@ -197,17 +199,18 @@ This document defines how the agent should operate across all projects.
 작업은 반드시 아래 순서를 따른다:
 
 1. `AGENTS.md` 확인
-2. `docs/plan.md` 확인
-3. `TODO.md` 확인
-4. `docs/status.md` 확인
-5. 관련 `docs/*.md` 확인
-6. 최신 `docs/daily/*` 확인
-7. 작업 수행
-8. `docs/plan.md` 업데이트
-9. `TODO.md` 업데이트
-10. `docs/status.md` 업데이트
-11. 필요한 `docs/*.md` 업데이트
-12. `docs/daily/YYYY-MM-DD.md` 기록
+2. `README.md` 확인
+3. `docs/plan.md` 확인
+4. `TODO.md` 확인
+5. `docs/status.md` 확인
+6. 관련 `docs/*.md` 확인
+7. 최신 `docs/daily/*` 확인
+8. 작업 수행
+9. `docs/plan.md` 업데이트
+10. `TODO.md` 업데이트
+11. `docs/status.md` 업데이트
+12. 필요한 `docs/*.md` 업데이트
+13. `docs/daily/YYYY-MM-DD.md` 기록
 
 ---
 
