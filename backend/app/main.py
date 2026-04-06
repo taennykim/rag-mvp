@@ -29,6 +29,12 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from app.query_routing import (
+    get_document_hint_expansions,
+    get_question_type_expansions,
+    infer_document_hint_from_rules,
+    infer_question_type_from_rules,
+)
 
 
 app = FastAPI(title="Insurance Document RAG MVP API")
@@ -1477,6 +1483,7 @@ class RewriteResult(BaseModel):
     rewritten_query: str
     search_queries: list[str] = Field(default_factory=list)
     intent: str | None = None
+    question_type: str | None = None
     entities: dict[str, str] = Field(default_factory=dict)
     routing_hints: dict[str, str] = Field(default_factory=dict)
 
@@ -1941,10 +1948,18 @@ def retrieve_chunks(payload: RetrieveRequest) -> dict[str, object]:
 
 
 def build_query_candidates_for_chat(payload: ChatRequest, rewrite_result: RewriteResult) -> list[str]:
+    document_hint = (rewrite_result.routing_hints.get("document_hint") or "").strip().lower()
+    question_type = (rewrite_result.question_type or "").strip().lower()
+    routing_candidates = (
+        get_document_hint_expansions(document_hint)
+        + get_question_type_expansions(question_type)
+    )
+
     candidates = [
         payload.query.strip(),
         rewrite_result.rewritten_query.strip(),
         *[query.strip() for query in rewrite_result.search_queries],
+        *routing_candidates,
     ]
     unique_candidates: list[str] = []
     seen: set[str] = set()
@@ -2108,6 +2123,63 @@ def serialize_chat_metadata(metadata: ChatMetadata | None) -> dict[str, object]:
     return metadata.dict(exclude_none=True)
 
 
+def infer_question_type(query: str) -> str | None:
+    return infer_question_type_from_rules(query)
+
+
+def infer_document_hint(
+    query: str,
+    metadata: ChatMetadata | None,
+    entities: dict[str, str],
+    routing_hints: dict[str, str],
+) -> str | None:
+    combined_text = " ".join(
+        [
+            query,
+            " ".join(f"{key}:{value}" for key, value in entities.items()),
+            " ".join(f"{key}:{value}" for key, value in routing_hints.items()),
+            metadata.document_type if metadata and metadata.document_type else "",
+            metadata.product if metadata and metadata.product else "",
+        ]
+    )
+    return infer_document_hint_from_rules(combined_text)
+
+
+def enrich_rewrite_result(payload: ChatRequest, rewrite_result: RewriteResult) -> RewriteResult:
+    entities = dict(rewrite_result.entities)
+    routing_hints = dict(rewrite_result.routing_hints)
+    search_queries = [query.strip() for query in rewrite_result.search_queries if query.strip()]
+    question_type = rewrite_result.question_type or infer_question_type(payload.query)
+    document_hint = infer_document_hint(payload.query, payload.metadata, entities, routing_hints)
+
+    if question_type and "question_type" not in entities:
+        entities["question_type"] = question_type
+    if document_hint:
+        routing_hints["document_hint"] = document_hint
+
+    search_queries.extend(get_document_hint_expansions(document_hint))
+    search_queries.extend(get_question_type_expansions(question_type))
+
+    unique_queries: list[str] = []
+    seen: set[str] = set()
+    for candidate in [rewrite_result.rewritten_query, *search_queries]:
+        normalized = candidate.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique_queries.append(normalized)
+
+    return RewriteResult(
+        original_query=rewrite_result.original_query,
+        rewritten_query=rewrite_result.rewritten_query,
+        search_queries=unique_queries or [rewrite_result.rewritten_query],
+        intent=rewrite_result.intent,
+        question_type=question_type,
+        entities=entities,
+        routing_hints=routing_hints,
+    )
+
+
 # Normalize user input into retrieval-ready signals for the chat-side Hybrid RAG flow.
 def rewrite_chat_query(payload: ChatRequest) -> RewriteResult:
     trimmed_query = payload.query.strip()
@@ -2132,6 +2204,7 @@ def rewrite_chat_query(payload: ChatRequest) -> RewriteResult:
         '  "rewritten_query": string,\n'
         '  "search_queries": string[],\n'
         '  "intent": string,\n'
+        '  "question_type": string,\n'
         '  "entities": object,\n'
         '  "routing_hints": object\n'
         "}"
@@ -2140,7 +2213,8 @@ def rewrite_chat_query(payload: ChatRequest) -> RewriteResult:
         "Rewrite the user question into retrieval-friendly search queries.\n"
         "Keep important entities, document terms, and conditions.\n"
         "Infer the most likely product or document name from the context when omitted.\n"
-        "routing_hints should include likely category such as terms, pricing, or general when possible.\n\n"
+        "question_type should be one of documents, period, numeric, definition, conditions, comparison, or general when possible.\n"
+        "routing_hints should include likely category such as terms, pricing_method, change_process, or general when possible.\n\n"
         f"Input:\n{json.dumps({'query': trimmed_query, 'conversation_context': context_lines, 'metadata': metadata}, ensure_ascii=False)}"
     )
 
@@ -2173,21 +2247,31 @@ def rewrite_chat_query(payload: ChatRequest) -> RewriteResult:
         intent = response_payload.get("intent")
         if intent is not None:
             intent = str(intent).strip() or None
+        question_type = response_payload.get("question_type")
+        if question_type is not None:
+            question_type = str(question_type).strip() or None
 
-        return RewriteResult(
-            original_query=trimmed_query,
-            rewritten_query=rewritten_query,
-            search_queries=search_queries or [trimmed_query],
-            intent=intent,
-            entities=entities,
-            routing_hints=routing_hints,
+        return enrich_rewrite_result(
+            payload,
+            RewriteResult(
+                original_query=trimmed_query,
+                rewritten_query=rewritten_query,
+                search_queries=search_queries or [trimmed_query],
+                intent=intent,
+                question_type=question_type,
+                entities=entities,
+                routing_hints=routing_hints,
+            ),
         )
     except (HTTPException, ValueError, json.JSONDecodeError) as exc:
         logger.warning("query_rewrite_failed original_query=%s error=%s", trimmed_query, exc)
-        return RewriteResult(
-            original_query=trimmed_query,
-            rewritten_query=trimmed_query,
-            search_queries=[trimmed_query],
+        return enrich_rewrite_result(
+            payload,
+            RewriteResult(
+                original_query=trimmed_query,
+                rewritten_query=trimmed_query,
+                search_queries=[trimmed_query],
+            ),
         )
 
 
@@ -2289,6 +2373,7 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
             "rewritten_query": rewrite_result.rewritten_query,
             "search_queries": rewrite_result.search_queries,
             "intent": rewrite_result.intent,
+            "question_type": rewrite_result.question_type,
             "entities": rewrite_result.entities,
             "routing_hints": rewrite_result.routing_hints,
             "top_k": retrieval["top_k"],
@@ -2343,6 +2428,7 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         "rewritten_query": rewrite_result.rewritten_query,
         "search_queries": rewrite_result.search_queries,
         "intent": rewrite_result.intent,
+        "question_type": rewrite_result.question_type,
         "entities": rewrite_result.entities,
         "routing_hints": rewrite_result.routing_hints,
         "top_k": retrieval["top_k"],
@@ -2933,7 +3019,11 @@ def rebuild_indexed_files(payload: RebuildIndexRequest) -> dict[str, object]:
 @app.get("/index/{stored_name}")
 def index_uploaded_file_by_name(stored_name: str) -> dict[str, object]:
     path = get_uploaded_file_path(stored_name)
-    return index_chunks(path)
+    return index_chunks(
+        path,
+        primary_parser=PRIMARY_PARSER_LEGACY_AUTO,
+        fallback_parser=FALLBACK_PARSER_EXTENSION_DEFAULT,
+    )
 
 
 @app.get("/retrieve")

@@ -19,6 +19,7 @@
   - Terraform으로 RAG EC2 생성 완료
   - 현재 서버에서 RAG 서버로 `ssh -p 2022` 접속 가능
   - RAG 서버에 frontend/backend 실행 환경 설치 완료
+  - 2026-04-06 기준 RAG EC2 `i-09c547c2adaefff77`의 IMDSv2 `HttpTokens=required` 변경 요청 및 Terraform 반영 완료
 - frontend:
   - `/upload`, `/chat`, `/evaluation` 페이지 구성 완료
   - `/` -> `/upload` redirect 완료
@@ -71,6 +72,8 @@
   - Azure OpenAI 기반 실제 embedding 연결 완료
   - embedding provider별 collection 분리 및 전체 재인덱싱 API 추가 완료
   - retrieval candidate 확장 + lexical rerank 보정 추가 완료
+  - `/chat` query preprocessing에 `question_type` / `document_hint` 기반 search query expansion 추가 완료
+  - query routing 규칙을 `backend/app/query_routing.py`로 분리 완료
   - retrieval context만 사용하는 answer prompt 흐름 추가 완료
   - Azure OpenAI chat deployment `gpt-4o` 사용 가능 확인 완료
   - 조건부 항목을 공통 항목처럼 말하지 않도록 answer prompt 보정 완료
@@ -96,6 +99,7 @@
   - 2026-03-30 기준 `/chat` 실질문 answer/citation 응답 확인 완료
   - 2026-03-30 기준 frontend stale `3000` 프로세스 및 `.next` 캐시 정리 후 최신 chat UI 반영 확인 완료
   - 2026-04-03 기준 local backend에 `Input + Rewrite` 구조화 반영 완료
+  - 2026-04-06 기준 RAG 서버 backend `127.0.0.1:8000/health`, frontend `127.0.0.1:3000/upload`, `/chat` 재확인 완료
 
 ## 4. 현재 동작 기준
 - frontend 실행 기준:
@@ -122,7 +126,9 @@
   - 약관 PDF 질문군은 pass
   - 산출방법서 PDF 질문군은 전체 파일 검색에서 fail이 남아 있음
 - 판단:
+  - 2026-04-06 기준 약관 PDF를 다시 인덱싱 세트에 복구했고 duplicate `300233_test.docx`는 제거했다.
   - 산출방법서는 파일 단독 검색에서는 hit 되므로 indexing 누락 문제는 아니다.
+  - 현재 남은 핵심 병목은 산출방법서 질문을 약관/일반 약관 용어와 분리하는 query routing과 retrieval 가중치다.
   - 기존 핵심 병목이었던 `hash embedding` 한계는 제거했다.
   - 2026-03-29 기준 테스트 데이터는 다시 비워 둔 상태다.
   - 이제 남은 검증 포인트는 retrieval 질문 세트 기준 실제 품질 비교와 parser 영향 재확인, answer 품질 기록, 산출방법서 계열 chunk 전략 보정이다.
@@ -170,6 +176,7 @@
 ## 7. 남은 핵심 작업
 - 1차 우선순위:
   - `/chat` frontend에서 `conversation_context` / `metadata` 입력과 rewrite 결과 노출 UI를 추가
+  - `document_hint`와 indexed 문서 메타데이터를 연결하는 retrieval soft routing 기준 추가
   - `Docling` PDF 변환 장시간 실행 원인을 확인
   - garbled detection false negative를 줄이기 위한 문자군 규칙 또는 별도 기준 추가
   - retrieval 질문 세트 기준 `/chat` answer generation 품질 및 citation 품질 점검
@@ -189,7 +196,8 @@
 - `DOC` 파서는 `antiword` 시스템 패키지에 의존한다.
 - Excel 샘플은 `openpyxl` 경고가 한 번 출력됐지만 파싱 결과는 정상적으로 생성됐다.
 - GitHub push는 SSH 443 경로로 전환해 정상 동작하는 상태다.
-- 현재 기준 실제 작업본은 RAG 서버와 GitHub에 반영되어 있다.
+- 2026-04-06 기준 핵심 소스 파일 해시는 현재 서버와 RAG 서버가 일치한다.
+- 현재 Git commit 기준으로는 로컬/GitHub와 RAG 서버가 다를 수 있으므로, 서버 동기화 판단은 파일 내용 기준으로 본다.
 - backend는 request 시작/종료, upload/parse/chunk/index 시작/완료, parser attempt/failure reason을 system log에 남긴다.
 - upload 화면 실패 시 UI에 실패 단계와 backend system log 경로를 함께 표시한다.
 - 중복 파일명 문서가 여러 건 있을 때 최신 항목과 과거 항목이 섞여 보여 사용자 혼동이 발생할 수 있다.

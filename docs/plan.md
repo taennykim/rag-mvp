@@ -61,6 +61,7 @@
   - `POST /index/rebuild` 전체 재인덱싱 API 추가 완료
   - Azure embedding 기준 전체 재인덱싱 및 retrieval 응답 검증 완료
   - RAG 서버 frontend/backend 재기동 및 `3000/8000` 응답 확인 완료
+  - RAG 서버 EC2 IMDSv2 `HttpTokens=required` 적용 및 Terraform 설정 반영 완료
   - backend `POST /chat` retrieval 기반 answer generation 경로 추가 완료
   - frontend `/chat` answer panel / citation UI 추가 완료
   - frontend `/chat` RAG endpoint 입력 및 internal fallback UI 반영 완료

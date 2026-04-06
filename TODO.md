@@ -218,7 +218,14 @@
 - [x] parser 운영 정책을 `Legacy auto` / `Docling` / `Docling(md)` 기준으로 정리
 - [x] 실제 embedding 모델 교체 방식 결정
 - [x] 현재 서버와 RAG 서버의 핵심 소스/문서 동기화 확인
+- [x] RAG 서버 EC2 IMDSv2 `HttpTokens=required` 적용
+- [x] Terraform EC2 metadata option을 `http_tokens = "required"`로 반영
+- [x] 약관 PDF 복구 및 duplicate `300233_test.docx` 제거로 3문서 기준 인덱스 정상화
+- [x] `/index/{stored_name}`가 운영 parser 정책 `Legacy auto / Extension default`를 따르도록 수정
+- [x] `/chat` query preprocessing에 `question_type` 추가
+- [x] `document_hint` / `question_type` 규칙을 `backend/app/query_routing.py`로 분리
 - [ ] retrieval 질문 세트 일부 기준 `/chat` answer generation 품질 검증
+- [ ] `document_hint`와 indexed 문서 메타데이터를 연결하는 retrieval soft routing 추가
 - [ ] `/chat` frontend에서 `conversation_context` / `metadata` 입력과 rewrite 결과 표시 연결
 - [ ] 산출방법서 계열 표/수식 보존형 chunk 전략 검토
 - [x] answer 품질 점검표 초안 작성 (`docs/answer-eval.md`)

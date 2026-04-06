@@ -138,3 +138,112 @@
 - 메모:
   - 초기 답변은 조건부 서류와 공통 서류를 한 목록처럼 합쳤다.
   - prompt 보정 후 공통/조건부 구조는 개선됐지만, 여전히 어떤 경우의 공통 서류인지 세부 분기 점검이 더 필요하다.
+
+### 9.2 2026-04-06
+- 질문:
+  - `계약자 변경 시 동의가 필요한 대상은 누구인가?`
+- 기대 source:
+  - `300233_계약관계자변경.docx`
+- 실제 top 1 source:
+  - `300233_계약관계자변경.docx`
+- 실제 top 3 source:
+  - `300233_계약관계자변경.docx`
+  - `300233_test.docx`
+  - `300233_계약관계자변경.docx`
+- answer:
+  - 현재 계약자, 주피보험자 및 종피보험자, 변경 후 계약자로 답변
+- citation source/chunk:
+  - `300233_계약관계자변경.docx#4`
+  - `300233_test.docx#4`
+- retrieval 판정:
+  - `pass`
+- answer 판정:
+  - `pass`
+- citation 판정:
+  - `borderline`
+- 원인 분류:
+  - `citation mismatch`
+- 메모:
+  - 핵심 답변은 맞지만 duplicate 업로드 파일 `300233_test.docx`가 citation에 함께 섞인다.
+
+- 질문:
+  - `계약자 변경을 위한 서류를 알려줘`
+- 기대 source:
+  - `300233_계약관계자변경.docx`
+- 실제 top 1 source:
+  - `300233_계약관계자변경.docx`
+- 실제 top 3 source:
+  - `300233_계약관계자변경.docx`
+  - `300233_test.docx`
+  - `300233_test.docx`
+- answer:
+  - 공통 서류와 조건부 추가 서류를 나눠 답변
+- citation source/chunk:
+  - `300233_계약관계자변경.docx#4`
+  - `300233_test.docx#4`
+  - `300233_test.docx#15`
+- retrieval 판정:
+  - `pass`
+- answer 판정:
+  - `borderline`
+- citation 판정:
+  - `borderline`
+- 원인 분류:
+  - `conditional mixing`
+- 메모:
+  - 공통/조건부 구분은 유지되지만 조건부 항목 범위와 duplicate source 노출이 남아 있다.
+
+- 질문:
+  - `청약 철회는 며칠 안에 가능한가?`
+- 기대 source:
+  - `약관_(무)신한유니버설종신보험_080312.pdf`
+- 실제 top 1 source:
+  - `300233_계약관계자변경.docx`
+- 실제 top 3 source:
+  - `300233_계약관계자변경.docx`
+  - `300233_test.docx`
+  - `300233_test.docx`
+- answer:
+  - 제공된 문맥에는 정보가 없다고 응답
+- citation source/chunk:
+  - `300233_계약관계자변경.docx#1`
+  - `300233_test.docx#1`
+  - `300233_test.docx#33`
+- retrieval 판정:
+  - `fail`
+- answer 판정:
+  - `borderline`
+- citation 판정:
+  - `fail`
+- 원인 분류:
+  - `retrieval`
+- 메모:
+  - insufficient-context 처리는 맞지만, 근본 원인은 약관 문서가 현재 인덱스에 없어서 질문이 잘못된 문서군으로 흘렀다.
+
+- 질문:
+  - `이 상품의 적용 이율은 얼마인가?`
+- 기대 source:
+  - `산출방법서_신한큐브종합건강상해보험(무배당, 해약환급금 미지급형)_230404_v2.pdf`
+- 실제 top 1 source:
+  - `300233_test.docx`
+- 실제 top 3 source:
+  - `300233_test.docx`
+  - `300233_계약관계자변경.docx`
+  - `300233_계약관계자변경.docx`
+- answer:
+  - 연복리 2.25%로 응답
+- citation source/chunk:
+  - `300233_test.docx#8`
+  - `300233_계약관계자변경.docx#8`
+  - `300233_계약관계자변경.docx#2`
+- retrieval 판정:
+  - `fail`
+- answer 판정:
+  - `fail`
+- citation 판정:
+  - `fail`
+- 원인 분류:
+  - `retrieval`
+- 메모:
+  - 답 자체는 맞지만 현재 top hit와 citation이 산출방법서가 아니므로 grounded answer 기준에서는 fail로 본다.
+  - retrieval hit와 answer가 분리되어 있어, 외부 근거와 내부 모델 지식을 화면에서 분리 표시해야 할 필요가 크다.

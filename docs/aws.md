@@ -29,6 +29,9 @@
     - `owner`
 - Terraform 파일 위치:
   - `infra/terraform/`
+ - EC2 metadata options:
+   - `http_endpoint = enabled`
+   - `http_tokens = required`
 
 ## 3. 현재 상태
 - 기준 EC2 스펙을 바탕으로 Terraform 코드 작성 완료
@@ -54,6 +57,9 @@
     - `pip3`, `python3.10-venv` 설치
     - `frontend/node_modules` 설치 완료
     - `backend/.venv` 생성 및 `requirements.txt` 설치 완료
+  - 2026-04-06 기준 IMDSv2:
+    - 실제 EC2 `i-09c547c2adaefff77`의 `HttpTokens`를 `required`로 변경 요청 완료
+    - Terraform `infra/terraform/main.tf`도 `http_tokens = "required"`로 수정 완료
 
 ## 4. 이슈 및 문제
 - 보안그룹, 서브넷, IAM instance profile은 기존 리소스를 재사용하므로 계정 내 존재해야 한다.
@@ -62,8 +68,10 @@
 - 퍼블릭 IP가 없으므로 직접 SSH보다 SSM 기반 접속 경로가 우선이다.
 - SSM 원격 명령은 발행됐지만 즉시 완료되지는 않아 실제 셸 명령 성공 여부는 추가 확인이 필요하다.
 - 인스턴스 간 통신 규칙은 CIDR보다 security group reference 기준으로 여는 것이 맞다.
+- Terraform state와 실제 AWS metadata option이 어긋나지 않도록 이후 plan/apply 시 drift 여부를 다시 확인해야 한다.
 
 ## 5. 다음 작업
 - RAG 서버에서 frontend/backend 실제 실행 검증
 - upload 이후 parsing 단계 구현
 - 필요 시 앱 실행 스크립트 또는 systemd 운영 방식 정리
+- Terraform 기준으로 IMDSv2 `required` 상태가 유지되는지 다음 검증 시 재확인
