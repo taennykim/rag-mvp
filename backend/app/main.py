@@ -1473,7 +1473,8 @@ class ChatRequest(BaseModel):
     query: str
     top_k: int = DEFAULT_CHAT_TOP_K
     stored_name: str | None = None
-    rag_endpoint: str | None = None
+    search_api_endpoint: str | None = None
+    lookup_api_endpoint: str | None = None
     conversation_context: list[ConversationTurn] = Field(default_factory=list)
     metadata: ChatMetadata | None = None
 
@@ -1911,6 +1912,106 @@ def rerank_hits(query: str, hits: list[dict[str, object]], top_k: int) -> list[d
     return scored_hits[:top_k]
 
 
+def should_use_lexical_fallback(exc: HTTPException) -> bool:
+    detail = str(exc.detail or "")
+    return "Azure OpenAI embedding request failed" in detail
+
+
+def build_lexical_fallback_hits(
+    *,
+    queries: list[str],
+    top_k: int,
+    stored_name: str | None,
+    rerank_query: str,
+) -> dict[str, object]:
+    ensure_upload_dir()
+    filtered_queries = [query.strip() for query in queries if query.strip()]
+    if not filtered_queries:
+        raise HTTPException(status_code=400, detail="Query text is required.")
+
+    candidate_paths: list[Path] = []
+    if stored_name:
+        path = UPLOAD_DIR / stored_name
+        if path.is_file():
+            candidate_paths.append(path)
+    else:
+        for path in sorted(UPLOAD_DIR.iterdir(), key=lambda item: item.stat().st_mtime, reverse=True):
+            if path.is_file():
+                candidate_paths.append(path)
+
+    aggregated_hits: dict[str, dict[str, object]] = {}
+    executed_queries: list[str] = []
+    for path in candidate_paths:
+        try:
+            chunking_result = build_chunking_result(
+                path,
+                primary_parser=PRIMARY_PARSER_LEGACY_AUTO,
+                fallback_parser=FALLBACK_PARSER_EXTENSION_DEFAULT,
+            )
+        except HTTPException as exc:
+            logger.warning("lexical_fallback_chunking_failed stored_name=%s detail=%s", path.name, exc.detail)
+            continue
+
+        chunks = chunking_result.get("chunks")
+        if not isinstance(chunks, list):
+            continue
+
+        for query in filtered_queries:
+            executed_queries.append(query)
+            query_tokens = tokenize_text(query)
+            if not query_tokens:
+                continue
+
+            for chunk in chunks:
+                if not isinstance(chunk, dict):
+                    continue
+                hit = {
+                    "id": f"{path.name}:{int(chunk.get('chunk_index', 0))}",
+                    "text": str(chunk.get("text") or ""),
+                    "distance": 0.0,
+                    "stored_name": path.name,
+                    "original_name": chunking_result.get("original_name"),
+                    "source": chunk.get("source") or chunking_result.get("original_name"),
+                    "chunk_index": chunk.get("chunk_index"),
+                    "text_length": chunk.get("text_length"),
+                    "start_char": chunk.get("start_char"),
+                    "end_char": chunk.get("end_char"),
+                    "page_number": chunk.get("page_number"),
+                    "section_header": chunk.get("section_header"),
+                    "preview": chunk.get("preview"),
+                }
+                score = score_hit(query_tokens, hit)
+                if score <= 0:
+                    continue
+
+                existing_hit = aggregated_hits.get(hit["id"])
+                if existing_hit is None or float(existing_hit.get("rerank_score") or 0.0) < score:
+                    hit["rerank_score"] = score
+                    hit["matched_queries"] = [query]
+                    aggregated_hits[hit["id"]] = hit
+                    continue
+
+                matched_queries = existing_hit.get("matched_queries")
+                if not isinstance(matched_queries, list):
+                    matched_queries = []
+                if query not in matched_queries:
+                    matched_queries.append(query)
+                existing_hit["matched_queries"] = matched_queries
+
+    hits = rerank_hits(rerank_query.strip() or filtered_queries[0], list(aggregated_hits.values()), top_k)
+    return {
+        "status": "retrieved",
+        "query": rerank_query.strip() or filtered_queries[0],
+        "executed_queries": filtered_queries,
+        "top_k": top_k,
+        "hit_count": len(hits),
+        "collection_name": "local-lexical-fallback",
+        "embedding_provider": "local-lexical-fallback",
+        "embedding_model": "none",
+        "hits": hits,
+    }
+
+
 def retrieve_chunks(payload: RetrieveRequest) -> dict[str, object]:
     query = payload.query.strip()
     if not query:
@@ -1924,8 +2025,20 @@ def retrieve_chunks(payload: RetrieveRequest) -> dict[str, object]:
         where = {"stored_name": payload.stored_name}
 
     candidate_count = min(max(top_k * RETRIEVAL_CANDIDATE_MULTIPLIER, top_k), RETRIEVAL_MAX_CANDIDATES)
-    query_embedding = build_embeddings([query])[0]
     embedding_config = get_embedding_config()
+
+    try:
+        query_embedding = build_embeddings([query])[0]
+    except HTTPException as exc:
+        if not should_use_lexical_fallback(exc):
+            raise
+        logger.warning("retrieve_embedding_failed query=%s detail=%s", query, exc.detail)
+        return build_lexical_fallback_hits(
+            queries=[query],
+            top_k=top_k,
+            stored_name=payload.stored_name,
+            rerank_query=query,
+        )
 
     result = collection.query(
         query_embeddings=[query_embedding],
@@ -1992,7 +2105,18 @@ def retrieve_chunks_for_queries(
     aggregated_hits: dict[str, dict[str, object]] = {}
     executed_queries: list[str] = []
     for query in filtered_queries:
-        query_embedding = build_embeddings([query])[0]
+        try:
+            query_embedding = build_embeddings([query])[0]
+        except HTTPException as exc:
+            if not should_use_lexical_fallback(exc):
+                raise
+            logger.warning("retrieve_multi_embedding_failed query=%s detail=%s", query, exc.detail)
+            return build_lexical_fallback_hits(
+                queries=filtered_queries,
+                top_k=top_k,
+                stored_name=stored_name,
+                rerank_query=rerank_query,
+            )
         result = collection.query(
             query_embeddings=[query_embedding],
             n_results=candidate_count,
@@ -2298,9 +2422,11 @@ def validate_retrieval_response(payload: object) -> dict[str, object]:
 def call_rag_retrieval_endpoint(
     endpoint: str,
     *,
+    question: str,
     query: str,
     top_k: int,
     stored_name: str | None,
+    lookup_api_endpoint: str | None,
 ) -> dict[str, object]:
     normalized_endpoint = endpoint.strip()
     if not normalized_endpoint:
@@ -2309,9 +2435,12 @@ def call_rag_retrieval_endpoint(
         raise HTTPException(status_code=400, detail="RAG endpoint must start with http:// or https://.")
 
     payload = {
+        "question": question,
         "query": query,
+        "rewritten_query": query,
         "top_k": top_k,
         "stored_name": stored_name,
+        "lookup_api_endpoint": lookup_api_endpoint.strip() if lookup_api_endpoint else None,
     }
     request = urllib_request.Request(
         normalized_endpoint,
@@ -2339,14 +2468,16 @@ def call_rag_retrieval_endpoint(
 
 def resolve_retrieval_for_chat(payload: ChatRequest, rewrite_result: RewriteResult) -> tuple[dict[str, object], str]:
     retrieval_query = rewrite_result.rewritten_query
-    if payload.rag_endpoint and payload.rag_endpoint.strip():
+    if payload.search_api_endpoint and payload.search_api_endpoint.strip():
         retrieval = call_rag_retrieval_endpoint(
-            payload.rag_endpoint,
+            payload.search_api_endpoint,
+            question=payload.query.strip(),
             query=retrieval_query,
             top_k=payload.top_k,
             stored_name=payload.stored_name,
+            lookup_api_endpoint=payload.lookup_api_endpoint,
         )
-        return retrieval, payload.rag_endpoint.strip()
+        return retrieval, payload.search_api_endpoint.strip()
 
     retrieval = retrieve_chunks_for_queries(
         queries=build_query_candidates_for_chat(payload, rewrite_result),
@@ -2382,6 +2513,8 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
             "embedding_provider": retrieval["embedding_provider"],
             "embedding_model": retrieval["embedding_model"],
             "rag_endpoint": rag_endpoint,
+            "search_api_endpoint": payload.search_api_endpoint.strip() if payload.search_api_endpoint else None,
+            "lookup_api_endpoint": payload.lookup_api_endpoint.strip() if payload.lookup_api_endpoint else None,
             "answer": "문서에서 충분한 근거를 찾지 못했습니다.",
             "insufficient_context": True,
             "citations": [],
@@ -2437,6 +2570,8 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         "embedding_provider": retrieval["embedding_provider"],
         "embedding_model": retrieval["embedding_model"],
         "rag_endpoint": rag_endpoint,
+        "search_api_endpoint": payload.search_api_endpoint.strip() if payload.search_api_endpoint else None,
+        "lookup_api_endpoint": payload.lookup_api_endpoint.strip() if payload.lookup_api_endpoint else None,
         "answer": answer,
         "insufficient_context": insufficient_context,
         "citations": build_chat_citations(hits),

@@ -21,14 +21,12 @@
   - pipeline 실패 단계와 backend log 경로 표시
 - `/chat`
   - 질문 입력
-  - optional `RAG API endpoint` 입력
-  - `Target file` 선택
-  - `top_k` 선택
-  - interpreted retrieval query 표시
-  - 실제 사용된 RAG endpoint 표시
-  - `Generated answer`와 `Retrieved chunks` 역할 분리 표시
-  - retrieval 결과 chunk와 source metadata 출력
-  - `View full chunk` 확장 블록 표시
+  - `Search API endpoint` 입력
+  - `Lookup API endpoint` 입력
+  - response 표시 영역
+  - evidence 표시 영역
+  - reference context 표시 영역
+  - `전체 context 보기` 확장 블록 표시
 - `/evaluation`
   - 페이지 skeleton만 존재
   - 실제 평가 결과 UI는 아직 미구현
@@ -44,10 +42,10 @@
 - PDF 품질 경고는 `Quality warning`, `PDF garbled text`, suspicious symbol ratio, length ratio 기준으로 파일 행에서 바로 본다.
 - quality metric 라벨은 한글 설명 포함 형태로 표시한다.
 - 하단 `Parsing test result` 패널은 preview 중심으로 단순화했다.
-- `/chat`에서는 indexed file 기준 retrieval 테스트와 source 확인이 가능하다.
-- `/chat`에서는 endpoint를 비우면 내부 retrieval을 사용하고, endpoint를 입력하면 해당 RAG API를 호출한다.
-- `/chat` answer card는 최종 응답을, retrieved chunks card는 RAG 근거 후보를 분리해서 보여준다.
-- `/chat` preview / citation / full chunk 블록은 긴 텍스트가 잘리지 않도록 overflow를 정리했다.
+- `/chat`은 외부 RAG 연동 스키마가 확정되기 전까지 schema-light shell로 유지한다.
+- `/chat` main form은 질문, `Search API endpoint`, `Lookup API endpoint`만 받도록 유지하고 `Target file` 같은 retrieval tuning control은 주 화면에서 제외했다.
+- `/chat` answer card는 최종 응답 영역, citation card는 근거 영역, context card는 참고용 context 확인용으로 나눴다.
+- `/chat` preview / citation / raw chunk 블록은 긴 텍스트가 잘리지 않도록 overflow를 정리했다.
 - `/evaluation`은 라우트와 기본 페이지만 있고 실제 결과 화면은 아직 없다.
 - 실제 화면 확인 기준은 RAG 서버 frontend `127.0.0.1:3000`이다.
 
@@ -60,8 +58,10 @@
 - 화면 테스트는 현재 서버가 아니라 RAG 서버에서만 수행해야 한다.
 - PDF 품질 경고는 현재 heuristic 설명 중심이라, 사용자용 문구 단순화 여부를 추가 검토해야 한다.
 - 현재 `PDF garbled text=정상`이어도 실제 preview 문자열이 깨질 수 있어 false negative 보정이 추가로 필요하다.
+- 외부 RAG request/response 스키마가 아직 확정되지 않아 `/chat`의 adapter 입력 폼과 응답 매핑은 일부러 보류했다.
 
 ## 5. 다음 작업
 - upload 화면의 parse history / preview / quality 표시를 실제 화면 기준으로 검증하고 필요 시 정리한다.
 - parser별 PDF 비교 결과를 어떤 문구로 경고에 매핑할지 다듬는다.
+- 외부 RAG contract가 정해지면 `/chat` adapter와 결과 매핑 UI를 그 스키마 기준으로 다시 연결한다.
 - evaluation 실행 흐름이 준비되면 `/evaluation` 실제 결과 UI를 구현한다.

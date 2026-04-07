@@ -74,13 +74,10 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Upload now triggers indexing automatically after the file is stored
 - Indexing API stores chunk embeddings in Chroma
 - Indexed file list API and retrieval API are implemented
-- Chat page can query retrieved chunks and inspect sources
-- Chat page now calls Azure OpenAI `gpt-4o` for grounded answers using retrieved context only
-- Chat page now shows answer panel and citation cards
-- Chat page now accepts an optional RAG API endpoint; when left blank it falls back to internal `POST /retrieve`
-- Chat page now rewrites the user question for retrieval before calling the RAG API
-- Chat backend now accepts `conversation_context` and `metadata`, rewrites the question into structured retrieval signals, and returns `rewritten_query`, `search_queries`, `intent`, `entities`, and `routing_hints`
-- Chat page now separates the final answer from retrieved evidence more clearly and renders full chunks in a bounded block
+- Chat page is currently organized as an external RAG-ready shell
+- Chat page keeps question input, response area, citation slots, and optional debug context visible
+- External RAG API request/response schema is not finalized yet, so `/chat` avoids depending on request tuning controls in the main UI
+- Current backend can still return retrieval-backed answers and citations while the external contract is pending
 - Upload list supports file-level delete of upload + index
 - Upload list shows per-file indexing status and chunk count
 - Upload list now refreshes immediately even when parse/chunk/index fails after upload
@@ -100,8 +97,8 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - 2026-04-03 기준 현재 서버와 RAG 서버의 핵심 소스/문서 해시가 일치함을 확인했다
 - Parse success/failure history UI는 구조상 노출되며, duplicate upload와 과거 실패 이력이 함께 보일 수 있다
 - RAG 서버 테스트용 upload/parse/chunk/index 데이터는 2026-03-29 기준 초기화 완료 상태다
-- Retrieval-backed answer generation is connected
-- Retrieval question-set based answer quality review and evaluation execution are still pending
+- Retrieval-backed answer generation is connected in the current backend
+- Retrieval question-set based answer quality review and evaluation execution are deferred behind external RAG contract definition
 - Current PDF garbled detection can still miss cases where both the parsed text and the reference extraction are broken in the same way
 
 ## Screen Test Rule

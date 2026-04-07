@@ -7,9 +7,10 @@
 ## 2. 현재 목표
 - 보험 문서를 업로드하고 문서 근거 기반으로 답변하는 RAG MVP를 완성한다.
 - 현재는 `upload -> parse -> chunk -> index -> retrieve`와 `/chat` answer/citation UI까지 연결했고, chat deployment `gpt-4o` 실응답까지 확인했다.
-- 다음 핵심 작업은 retrieval 질문 세트 기준 answer/citation 품질 검증과 표/수식형 문서 chunk 전략 보정이다.
+- 현재 `/chat` 우선순위는 외부 RAG contract 미확정 상태에서도 유지 가능한 question / answer / citation shell 정리다.
+- 다음 핵심 작업은 외부 RAG contract 정의 전까지 필요한 UI shell 유지와 answer/citation 품질 기록이다.
 - 오늘 기준 parser 고도화 2단계로 PDF garbled text 감지와 upload 품질 경고 세분화를 반영했다.
-- 오늘 기준 `/chat`은 Input 정규화 -> structured rewrite -> RAG 검색 API 호출 -> grounded answer 생성 흐름으로 정리했고, 외부 endpoint 미입력 시 내부 retrieval로 fallback한다.
+- backend `/chat`은 여전히 Input 정규화 -> structured rewrite -> RAG 검색 API 호출 -> grounded answer 생성 흐름을 유지하지만, frontend는 이에 강하게 결합하지 않도록 단순화했다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -20,6 +21,7 @@
   - 현재 서버에서 RAG 서버로 `ssh -p 2022` 접속 가능
   - RAG 서버에 frontend/backend 실행 환경 설치 완료
   - 2026-04-06 기준 RAG EC2 `i-09c547c2adaefff77`의 IMDSv2 `HttpTokens=required` 변경 요청 및 Terraform 반영 완료
+  - 2026-04-07 기준 현재 서버와 RAG 서버 최신 소스 동기화 및 stale frontend `3000` 프로세스 교체 완료
 - frontend:
   - `/upload`, `/chat`, `/evaluation` 페이지 구성 완료
   - `/` -> `/upload` redirect 완료
@@ -33,12 +35,11 @@
   - `Uploaded file list`에서 `Preview` 버튼으로 parse preview 확인 가능
   - `Uploaded file list`에서 parsing quality 결과를 파일 행 기준으로 확인 가능
   - 업로드 대상 확장자를 `PDF`, `DOC`, `DOCX`, `XLS`, `XLSX`까지 확장 완료
-  - `/chat`에서 index된 파일 대상 retrieval 테스트 가능
   - `/chat`에 answer panel 및 citation 카드 UI 추가 완료
-  - `/chat`에 optional `RAG API endpoint` 입력 추가 완료
-  - `/chat`에서 endpoint 미입력 시 내부 `POST /retrieve` fallback 동작 추가 완료
-  - `/chat`에서 `Generated answer`와 `Retrieved chunks` 역할 설명 정리 완료
-  - `/chat`에서 `View full chunk`와 preview block overflow 정리 완료
+  - `/chat` main UI를 external RAG-ready shell로 단순화 완료
+  - `/chat`에서 question 입력만으로 response shell을 확인할 수 있도록 정리 완료
+  - `/chat` debug card에서 현재 backend가 반환하는 raw context를 임시 확인 가능
+  - `/chat`에서 `View raw chunk`와 preview block overflow 정리 완료
   - `/chat` question 입력 기본값 제거 완료
   - header / nav / card / form control / result card 기준 UI refresh 완료
   - upload 화면 상단 stat strip 추가 완료
@@ -100,6 +101,8 @@
   - 2026-03-30 기준 frontend stale `3000` 프로세스 및 `.next` 캐시 정리 후 최신 chat UI 반영 확인 완료
   - 2026-04-03 기준 local backend에 `Input + Rewrite` 구조화 반영 완료
   - 2026-04-06 기준 RAG 서버 backend `127.0.0.1:8000/health`, frontend `127.0.0.1:3000/upload`, `/chat` 재확인 완료
+  - 2026-04-07 기준 RAG 서버 `/chat`에서 `Search API endpoint`, `Lookup API endpoint` 노출 및 `Target file` 비노출 확인 완료
+  - 2026-04-07 기준 RAG 서버 `default-files`로 대표 문서 3건을 다시 업로드하고 `chunk_count=103` 상태까지 복구 완료
 
 ## 4. 현재 동작 기준
 - frontend 실행 기준:
@@ -118,7 +121,21 @@
   - 브라우저에서 화면 확인 시 반드시 `3000` 포트를 기준으로 본다.
   - 현재 frontend는 `next dev`보다 `build + start` 방식이 더 안정적이다.
   - 현재 서버에는 소스만 유지하고 실제 실행과 화면 확인은 RAG 서버에서만 한다.
+  - 프로젝트 전체를 `rsync --delete`로 동기화하면 RAG 서버의 `backend/data/uploads`, `parse-metadata` 같은 런타임 데이터도 현재 서버 상태로 덮일 수 있다.
   - 장애 확인 시 먼저 backend system log를 보고, 그다음 frontend/backend runtime log를 확인한다.
+
+## 4.1 2026-04-07 복구 메모
+- RAG 서버 `Upload` 화면의 `files/chunks=0`은 UI 버그가 아니라, 현재 서버의 빈 `uploads` 상태가 `rsync --delete`로 서버에도 반영된 결과였다.
+- 복구 방식은 `default-files`에서 대표 문서 3건을 다시 업로드하고 `chunk`를 재생성하는 방식으로 진행했다.
+- 현재 복구 후 상태:
+  - `files = 3`
+  - `chunk_count = 103`
+  - `parse_status = completed`
+  - `chunk_status = completed`
+  - `index_status = pending`
+  - `indexed chunks = 0`
+- 마지막 두 항목은 Azure embedding firewall `403` 영향으로 남아 있으며, 현재 구조상 정상적인 표시다.
+- `/chat`은 index가 비어 있어도 내부 lexical fallback 경로로 최소 검색은 가능하도록 보정돼 있다.
 
 ## 5. retrieval 현재 상태
 - 대표 질문 기준으로:
@@ -175,14 +192,10 @@
 
 ## 7. 남은 핵심 작업
 - 1차 우선순위:
-  - `/chat` frontend에서 `conversation_context` / `metadata` 입력과 rewrite 결과 노출 UI를 추가
-  - `document_hint`와 indexed 문서 메타데이터를 연결하는 retrieval soft routing 기준 추가
+  - 외부 RAG contract 확정 전까지 `/chat` question / answer / citation shell 유지
   - `Docling` PDF 변환 장시간 실행 원인을 확인
   - garbled detection false negative를 줄이기 위한 문자군 규칙 또는 별도 기준 추가
-  - retrieval 질문 세트 기준 `/chat` answer generation 품질 및 citation 품질 점검
-  - retrieval 질문 세트 기준 Azure embedding 재검증
-  - embedding 영향과 parser 영향 분리 비교
-  - parser 변경 후 chunk/retrieval 재검증
+  - retrieval 질문 세트 기준 `/chat` answer generation 품질 및 citation 품질 기록
   - `Uploaded file list` parse success/failure history UI 최종 화면 검증
 - 2차 우선순위:
   - parser별 품질 비교 기준 정리

@@ -1,139 +1,92 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-
-type UploadedFile = {
-  stored_name: string;
-  original_name: string;
-  size_bytes: number;
-  uploaded_at: string;
-};
-
-type IndexedFile = {
-  stored_name: string;
-  original_name: string;
-  file_type: string;
-  chunk_count: number;
-};
+import { FormEvent, useState } from "react";
 
 type RetrievalHit = {
   id: string;
   text: string;
-  distance: number;
-  stored_name?: string;
-  original_name?: string;
+  distance?: number;
   source?: string;
+  original_name?: string;
   chunk_index?: number;
-  text_length?: number;
-  start_char?: number;
-  end_char?: number;
   page_number?: number;
   section_header?: string;
   preview?: string;
-};
-
-type RetrievalResponse = {
-  status: string;
-  query: string;
-  top_k: number;
-  hit_count: number;
-  collection_name: string;
-  hits: RetrievalHit[];
 };
 
 type ChatCitation = {
   id?: string;
   source?: string;
   original_name?: string;
-  stored_name?: string;
   chunk_index?: number;
   page_number?: number;
   section_header?: string;
   preview?: string;
 };
 
-type ChatResponse = RetrievalResponse & {
-  answer: string;
-  insufficient_context: boolean;
-  citations: ChatCitation[];
-  chat_model?: string | null;
-  interpreted_query?: string;
-  rag_endpoint?: string;
+type ChatResponse = {
+  answer?: string;
+  insufficient_context?: boolean;
+  citations?: ChatCitation[];
+  hits?: RetrievalHit[];
+  detail?: string;
+  search_api_endpoint?: string | null;
+  lookup_api_endpoint?: string | null;
 };
 
 const API_BASE_URL = "/api";
 
+function formatAnswerState(result: ChatResponse | null) {
+  if (!result) {
+    return "Waiting";
+  }
+  if (result.insufficient_context) {
+    return "Insufficient context";
+  }
+  if (!result.answer?.trim()) {
+    return "Empty response";
+  }
+  return "Ready";
+}
+
+function buildEvidenceMetaParts(item: {
+  chunk_index?: number;
+  page_number?: number;
+  section_header?: string;
+}) {
+  const parts: string[] = [];
+  if (typeof item.chunk_index === "number") {
+    parts.push(`chunk #${item.chunk_index}`);
+  }
+  if (typeof item.page_number === "number") {
+    parts.push(`page ${item.page_number}`);
+  }
+  if (item.section_header?.trim()) {
+    parts.push(item.section_header.trim());
+  }
+  return parts;
+}
+
 export default function ChatPage() {
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
-  const [selectedStoredName, setSelectedStoredName] = useState("");
   const [query, setQuery] = useState("");
-  const [ragEndpoint, setRagEndpoint] = useState("");
-  const [topK, setTopK] = useState(5);
+  const [searchApiEndpoint, setSearchApiEndpoint] = useState("");
+  const [lookupApiEndpoint, setLookupApiEndpoint] = useState("");
   const [result, setResult] = useState<ChatResponse | null>(null);
-  const [message, setMessage] = useState("질의 해석 후 RAG 검색 API를 호출하고, 검색 결과 기반으로 answer를 생성합니다.");
+  const [message, setMessage] = useState(
+    "질문 입력과 응답 확인에 집중할 수 있도록 채팅 화면을 단순하게 유지합니다.",
+  );
   const [isLoading, setIsLoading] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
-
-  async function loadFiles() {
-    try {
-      const [uploadedResponse, indexedResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/upload/files`, { cache: "no-store" }),
-        fetch(`${API_BASE_URL}/index/files`, { cache: "no-store" }),
-      ]);
-      if (!uploadedResponse.ok) {
-        throw new Error("Failed to load uploaded files.");
-      }
-      if (!indexedResponse.ok) {
-        throw new Error("Failed to load indexed files.");
-      }
-
-      const uploadedData = (await uploadedResponse.json()) as { files: UploadedFile[] };
-      const indexedData = (await indexedResponse.json()) as { files: IndexedFile[] };
-      setUploadedFiles(uploadedData.files);
-      setIndexedFiles(indexedData.files);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to load uploaded files.");
-    }
-  }
-
-  useEffect(() => {
-    void loadFiles();
-
-    function handleFocus() {
-      void loadFiles();
-    }
-
-    function handleVisibilityChange() {
-      if (document.visibilityState === "visible") {
-        void loadFiles();
-      }
-    }
-
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
-
-  function formatDistance(value: number) {
-    return value.toFixed(4);
-  }
-
-  const unindexedCount = Math.max(uploadedFiles.length - indexedFiles.length, 0);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!query.trim()) {
-      setMessage("Enter a search query first.");
+      setMessage("질문을 먼저 입력하세요.");
       return;
     }
 
     setIsLoading(true);
-    setMessage("Retrieving context and generating an answer...");
+    setMessage("응답을 불러오는 중입니다.");
 
     try {
       const response = await fetch(`${API_BASE_URL}/chat`, {
@@ -143,69 +96,46 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           query,
-          top_k: topK,
-          stored_name: selectedStoredName || null,
-          rag_endpoint: ragEndpoint.trim() || null,
+          search_api_endpoint: searchApiEndpoint.trim() || null,
+          lookup_api_endpoint: lookupApiEndpoint.trim() || null,
         }),
       });
 
-      const data = (await response.json()) as ChatResponse & { detail?: string };
+      const data = (await response.json()) as ChatResponse;
       if (!response.ok) {
-        throw new Error(data.detail ?? "Retrieval failed.");
+        throw new Error(data.detail ?? "Chat request failed.");
       }
 
       setResult(data);
       setMessage(
-        data.insufficient_context
-          ? `Retrieved ${data.hit_count} chunk(s), but the context was not sufficient for a grounded answer.`
-          : `Generated an answer from ${data.hit_count} retrieved chunk(s) via ${data.rag_endpoint ?? "internal:/retrieve"}.`,
+        data.answer
+          ? "응답을 불러왔습니다."
+          : "응답 본문은 비어 있지만 화면 구조는 유지됩니다.",
       );
     } catch (error) {
       setResult(null);
-      setMessage(error instanceof Error ? error.message : "Answer generation failed.");
+      setMessage(error instanceof Error ? error.message : "Chat request failed.");
     } finally {
       setIsLoading(false);
     }
   }
 
-  async function handleResetIndexedFiles() {
-    setIsResetting(true);
-    setMessage("Clearing indexed chunks...");
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/index/files`, {
-        method: "DELETE",
-      });
-      const data = (await response.json()) as { removed_count?: number; detail?: string };
-      if (!response.ok) {
-        throw new Error(data.detail ?? "Failed to clear indexed files.");
-      }
-
-      setSelectedStoredName("");
-      setResult(null);
-      await loadFiles();
-      setMessage(`Cleared ${data.removed_count ?? 0} indexed chunk(s).`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to clear indexed files.");
-    } finally {
-      setIsResetting(false);
-    }
+  function renderCitationLabel(citation: ChatCitation) {
+    return citation.source ?? citation.original_name ?? "Unknown source";
   }
+
+  function renderHitLabel(hit: RetrievalHit) {
+    return hit.source ?? hit.original_name ?? "Unknown source";
+  }
+
+  const answerState = formatAnswerState(result);
 
   return (
     <section className="page">
       <div className="card">
         <p className="eyebrow">Chat</p>
-        <h2>Grounded answer</h2>
-        <p>질의를 해석하고 RAG 검색 API를 호출한 뒤, 검색 결과와 LLM reasoning을 종합해 답변과 citation을 만듭니다.</p>
-        <div className="chat-toolbar">
-          <button className="upload-button secondary" onClick={() => void loadFiles()} type="button">
-            Refresh indexed files
-          </button>
-          <button className="upload-button secondary danger" disabled={isResetting} onClick={() => void handleResetIndexedFiles()} type="button">
-            {isResetting ? "Resetting..." : "Reset indexed files"}
-          </button>
-        </div>
+        <h2>Chat</h2>
+        <p>외부 RAG 연동 세부 스키마가 정해지기 전까지는 질문, 응답, 근거 표시 구조를 먼저 고정합니다.</p>
         <form className="chat-form" onSubmit={handleSubmit}>
           <label className="upload-label" htmlFor="chat-query">
             Question
@@ -214,141 +144,123 @@ export default function ChatPage() {
             className="chat-textarea"
             id="chat-query"
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="보험금 지급 기준이나 계약자 변경 같은 질문을 입력하세요."
+            placeholder="보험 약관, 서류 안내, 보장 조건처럼 사용자가 실제로 물을 질문을 입력하세요."
             rows={4}
             value={query}
           />
-          <div className="default-file-row">
-            <label className="upload-label" htmlFor="chat-rag-endpoint">
-              RAG API endpoint
-            </label>
-            <input
-              className="default-file-select"
-              id="chat-rag-endpoint"
-              onChange={(event) => setRagEndpoint(event.target.value)}
-              placeholder="비워두면 internal:/retrieve, 예: http://127.0.0.1:8000/retrieve"
-              type="text"
-              value={ragEndpoint}
-            />
-          </div>
-          <div className="chat-controls">
-            <div className="default-file-row">
-              <label className="upload-label" htmlFor="chat-file-select">
-                Target file
-              </label>
-              <select
-                className="default-file-select"
-                id="chat-file-select"
-                onChange={(event) => setSelectedStoredName(event.target.value)}
-                value={selectedStoredName}
-              >
-                <option value="">All indexed files</option>
-                {indexedFiles.map((file) => (
-                  <option key={file.stored_name} value={file.stored_name}>
-                    {file.original_name} ({file.chunk_count})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="default-file-row chat-topk">
-              <label className="upload-label" htmlFor="chat-topk">
-                Top K
-              </label>
-              <select
-                className="default-file-select"
-                id="chat-topk"
-                onChange={(event) => setTopK(Number(event.target.value))}
-                value={String(topK)}
-              >
-                <option value="3">3</option>
-                <option value="5">5</option>
-                <option value="8">8</option>
-              </select>
-            </div>
-          </div>
+          <label className="upload-label" htmlFor="chat-search-api-endpoint">
+            Search API endpoint
+          </label>
+          <input
+            className="default-file-select"
+            id="chat-search-api-endpoint"
+            onChange={(event) => setSearchApiEndpoint(event.target.value)}
+            placeholder="선택 입력"
+            type="text"
+            value={searchApiEndpoint}
+          />
+          <label className="upload-label" htmlFor="chat-lookup-api-endpoint">
+            Lookup API endpoint
+          </label>
+          <input
+            className="default-file-select"
+            id="chat-lookup-api-endpoint"
+            onChange={(event) => setLookupApiEndpoint(event.target.value)}
+            placeholder="선택 입력"
+            type="text"
+            value={lookupApiEndpoint}
+          />
           <button className="upload-button" disabled={isLoading} type="submit">
-            {isLoading ? "Generating..." : "Generate answer"}
+            {isLoading ? "Loading..." : "Get response"}
           </button>
         </form>
-        {unindexedCount > 0 ? (
-          <div className="chat-note">
-            {unindexedCount} uploaded file(s) are not indexed yet, so they do not appear in Target file.
-          </div>
-        ) : null}
+        <div className="chat-note">
+          Search API endpoint를 비우면 내부 RAG를 조회하고, 값을 넣으면 해당 외부 search endpoint를 호출합니다.
+        </div>
         <div className="chat-status">{message}</div>
       </div>
 
       <div className="card">
         <p className="eyebrow">Answer</p>
-        <h2>Generated answer</h2>
-        <p>LLM이 해석된 질의와 retrieved chunk를 종합해서 만든 최종 응답입니다.</p>
+        <h2>Response</h2>
+        <p>최종 연결 시 이 영역에 외부 RAG 응답 또는 후속 answer generation 결과가 표시됩니다.</p>
         {!result ? (
-          <p>No answer yet.</p>
+          <p>아직 표시할 응답이 없습니다.</p>
         ) : (
           <div className="answer-panel">
             <div className="answer-summary">
-              <span>{result.insufficient_context ? "Insufficient context" : "Grounded answer"}</span>
-              <span>Hits: {result.hit_count}</span>
-              {result.interpreted_query ? <span>Interpreted: {result.interpreted_query}</span> : null}
-              {result.rag_endpoint ? <span>RAG API: {result.rag_endpoint}</span> : null}
-              {result.chat_model ? <span>Model: {result.chat_model}</span> : null}
+              <span>{answerState}</span>
+              {result.search_api_endpoint ? <span>Search: {result.search_api_endpoint}</span> : null}
+              {result.lookup_api_endpoint ? <span>Lookup: {result.lookup_api_endpoint}</span> : null}
             </div>
-            <div className={`answer-body${result.insufficient_context ? " warning" : ""}`}>{result.answer}</div>
-            <div className="citation-list">
-              {result.citations.map((citation) => (
-                <article className="citation-card" key={citation.id ?? `${citation.source}-${citation.chunk_index}`}>
-                  <strong>{citation.source ?? citation.original_name ?? "Unknown source"}</strong>
-                  <div className="retrieval-meta">
-                    <span>chunk #{citation.chunk_index ?? "-"}</span>
-                    {citation.page_number ? <span>page {citation.page_number}</span> : null}
-                    {citation.section_header ? <span>{citation.section_header}</span> : null}
-                  </div>
-                  {citation.preview ? <div className="citation-preview">{citation.preview}</div> : null}
-                </article>
-              ))}
+            <div className={`answer-body${result.insufficient_context ? " warning" : ""}`}>
+              {result.answer ?? "아직 연결된 최종 응답 본문은 없습니다."}
             </div>
           </div>
         )}
       </div>
 
       <div className="card">
-        <p className="eyebrow">Results</p>
-        <h2>Retrieved chunks</h2>
-        <p>RAG 검색 API가 먼저 찾은 근거 후보입니다. 최종 답변은 이 chunk들을 바탕으로 별도로 생성됩니다.</p>
-        {!result || result.hit_count === 0 ? (
-          <p>No retrieved chunks yet.</p>
+        <p className="eyebrow">Citations</p>
+        <h2>Evidence</h2>
+        <p>citation 데이터가 오면 이 영역에 출처, 페이지, 미리보기를 함께 표시합니다.</p>
+        {!result?.citations?.length ? (
+          <p>아직 표시할 근거가 없습니다.</p>
+        ) : (
+          <div className="citation-list">
+            {result.citations.map((citation) => {
+              const metaParts = buildEvidenceMetaParts(citation);
+              return (
+                <article className="citation-card" key={citation.id ?? `${citation.source}-${citation.chunk_index}`}>
+                  <strong>{renderCitationLabel(citation)}</strong>
+                  {metaParts.length > 0 ? (
+                    <div className="retrieval-meta">
+                      {metaParts.map((part) => (
+                        <span key={part}>{part}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {citation.preview ? <div className="citation-preview">{citation.preview}</div> : null}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <p className="eyebrow">Context</p>
+        <h2>Reference context</h2>
+        <p>현재 backend가 `hits`를 주는 동안만 참고용 context를 보여줍니다. 외부 RAG 스키마가 정해지면 이 영역도 그 기준으로 다시 맞춥니다.</p>
+        {!result?.hits?.length ? (
+          <p>아직 표시할 context가 없습니다.</p>
         ) : (
           <div className="retrieval-list">
-            <div className="retrieval-summary">
-              <span>Query: {result.query}</span>
-              {result.interpreted_query ? <span>RAG query: {result.interpreted_query}</span> : null}
-              <span>Top K: {result.top_k}</span>
-              <span>Hits: {result.hit_count}</span>
-            </div>
-            {result.hits.map((hit) => (
-              <article className="retrieval-card" key={hit.id}>
-                <div className="retrieval-head">
-                  <div className="retrieval-title">
-                    <strong>{hit.source ?? hit.original_name ?? "Unknown source"}</strong>
-                    <div className="retrieval-meta">
-                      <span>chunk #{hit.chunk_index ?? "-"}</span>
-                      <span>distance {formatDistance(hit.distance)}</span>
+            {result.hits.map((hit) => {
+              const metaParts = buildEvidenceMetaParts(hit);
+              return (
+                <article className="retrieval-card" key={hit.id}>
+                  <div className="retrieval-head">
+                    <div className="retrieval-title">
+                      <strong>{renderHitLabel(hit)}</strong>
+                      <div className="retrieval-meta">
+                        {metaParts.map((part) => (
+                          <span key={part}>{part}</span>
+                        ))}
+                        {typeof hit.distance === "number" ? <span>distance {hit.distance.toFixed(4)}</span> : null}
+                      </div>
                     </div>
                   </div>
-                  <div className="retrieval-tags">
-                    {hit.page_number ? <span>page {hit.page_number}</span> : null}
-                    {hit.section_header ? <span>{hit.section_header}</span> : null}
-                  </div>
-                </div>
-                <div className="retrieval-preview">{hit.preview ?? hit.text}</div>
-                <details className="parse-json retrieval-full">
-                  <summary>View full chunk</summary>
-                  <div className="retrieval-full-body">
-                    <pre>{hit.text}</pre>
-                  </div>
-                </details>
-              </article>
-            ))}
+                  <div className="retrieval-preview">{hit.preview ?? hit.text}</div>
+                  <details className="parse-json retrieval-full">
+                    <summary>전체 context 보기</summary>
+                    <div className="retrieval-full-body">
+                      <pre>{hit.text}</pre>
+                    </div>
+                  </details>
+                </article>
+              );
+            })}
           </div>
         )}
       </div>

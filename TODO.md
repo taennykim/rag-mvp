@@ -225,8 +225,8 @@
 - [x] `/chat` query preprocessing에 `question_type` 추가
 - [x] `document_hint` / `question_type` 규칙을 `backend/app/query_routing.py`로 분리
 - [ ] retrieval 질문 세트 일부 기준 `/chat` answer generation 품질 검증
-- [ ] `document_hint`와 indexed 문서 메타데이터를 연결하는 retrieval soft routing 추가
-- [ ] `/chat` frontend에서 `conversation_context` / `metadata` 입력과 rewrite 결과 표시 연결
+- [ ] 외부 RAG contract 확정 전 기준 `/chat` answer/citation shell 검증
+- [ ] external RAG adapter request/response mapping은 contract 확정 후 진행
 - [ ] 산출방법서 계열 표/수식 보존형 chunk 전략 검토
 - [x] answer 품질 점검표 초안 작성 (`docs/answer-eval.md`)
 
