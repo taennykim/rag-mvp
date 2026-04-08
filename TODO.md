@@ -226,6 +226,7 @@
 - [x] `document_hint` / `question_type` 규칙을 `backend/app/query_routing.py`로 분리
 - [ ] retrieval 질문 세트 일부 기준 `/chat` answer generation 품질 검증
 - [ ] 외부 RAG contract 확정 전 기준 `/chat` answer/citation shell 검증
+- [x] 2026-04-08 RAG 서버 frontend `build + start` / backend `uvicorn` 재기동 및 `3000/8000` 응답 확인
 - [ ] external RAG adapter request/response mapping은 contract 확정 후 진행
 - [ ] 산출방법서 계열 표/수식 보존형 chunk 전략 검토
 - [x] answer 품질 점검표 초안 작성 (`docs/answer-eval.md`)

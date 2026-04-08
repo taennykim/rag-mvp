@@ -92,6 +92,8 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Parser catalog default primary parser is now `Legacy auto`, so PDF uses `PyMuPDF` first in the normal flow
 - Frontend is currently operated more stably with `build + start` than `next dev`
 - Backend now writes request and parser system logs on the RAG server
+- 2026-04-08 기준 RAG 서버 frontend는 `.next` production build를 다시 생성한 뒤 `next start`로 재기동했고 `/upload` 응답 `200`을 확인했다
+- 2026-04-08 기준 RAG 서버 backend는 `.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000`으로 재기동했고 `/health` 응답 `200`을 확인했다
 - Upload 화면 UI를 현재 기준으로 리프레시했고, header / stat strip / card 위계를 정리했다
 - `Docling(md)` parse 성공 시 upload list에서 `markdown_path`를 함께 확인할 수 있다
 - 2026-04-03 기준 현재 서버와 RAG 서버의 핵심 소스/문서 해시가 일치함을 확인했다
@@ -132,7 +134,7 @@ Start from these files first:
 - `docs/status.md`
 - `docs/answer-eval.md`
 - `docs/llm.md`
-- `docs/daily/2026-03-31.md`
+- latest `docs/daily/*`
 
 Recommended restart order:
 1. Review `AGENTS.md` for the working rules and document order.
@@ -141,7 +143,7 @@ Recommended restart order:
 4. Review `TODO.md` for unchecked tasks.
 5. Review `docs/status.md` for the latest completed scope and blockers.
 6. Review related `docs/*.md` such as `docs/answer-eval.md` and `docs/llm.md`.
-7. Review `docs/daily/2026-04-01.md` for the latest session log.
+7. Review the latest `docs/daily/*` for the latest session log.
 8. Start the next task.
 
 ## Daily Start Checklist

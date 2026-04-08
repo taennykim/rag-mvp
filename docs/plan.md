@@ -20,6 +20,7 @@
 ## 3. 현재 진행 상태
 - 현재 단계: external RAG contract 확정 전 `/chat` shell 정리 진행중 / PDF garbled text 감지와 parser 기본 정책 정리는 반영했고 false negative 보정이 남아 있음
 - 현재 단계: backend retrieval/answer 흐름은 유지하되 frontend는 question / answer / citation 중심 shell로 단순화 완료
+- 현재 단계: 2026-04-08 기준 RAG 서버 frontend/backend runtime을 다시 복구했고 UI 확인 가능한 상태로 유지 중
 - 완료:
   - AGENTS.md, TODO.md 확인
   - 기본 계획 및 파트 문서 작성
@@ -65,7 +66,10 @@
   - backend `POST /chat` retrieval 기반 answer generation 경로 추가 완료
   - frontend `/chat` answer panel / citation UI 추가 완료
   - frontend `/chat`을 external RAG-ready shell 기준으로 단순화 완료
-- backend `/chat` query interpretation + external/internal RAG endpoint 분기 반영 완료
+  - 2026-04-08 기준 RAG 서버 frontend `next build + next start` 재기동 및 `/upload` 응답 `200` 재확인 완료
+  - 2026-04-08 기준 RAG 서버 backend `uvicorn` 재기동 및 `/health` 응답 `200` 재확인 완료
+  - frontend `next start` 실패 원인이 `.next` production build 부재였음을 확인했고, 운영 재기동 절차는 `build + start` 기준으로 다시 맞춤
+  - backend `/chat` query interpretation + external/internal RAG endpoint 분기 반영 완료
   - backend `/chat` Input 정규화 + structured rewrite 반영 완료
 - 미완료:
   - `Docling` / `PyMuPDF` / reference-style 비교 기록 보강
@@ -76,6 +80,7 @@
 - 다음 우선 작업:
   - parser 운영 정책은 `Legacy auto` 기본, `Docling` 비교 검증용, `Docling(md)` Markdown 산출물 생성용으로 유지한다
   - `Docling` PDF 변환 장시간 실행 원인을 추가 확인하되, 현재 PDF 기본 parser 정책은 `Legacy auto / PyMuPDF 우선`으로 유지한다
+  - RAG 서버 UI 확인 전에는 먼저 frontend build 유무와 `3000/8000` runtime 상태를 다시 점검한다
   - 외부 RAG contract 확정 전까지 `/chat` answer/citation shell 화면과 문구를 먼저 안정화한다
   - `docs/answer-eval.md` 기준으로 retrieval 질문 세트의 answer/citation 품질을 기록한다
   - 외부 RAG contract가 정해지면 adapter request/response mapping을 별도로 연결한다

@@ -9,7 +9,7 @@
 - 현재는 `upload -> parse -> chunk -> index -> retrieve`와 `/chat` answer/citation UI까지 연결했고, chat deployment `gpt-4o` 실응답까지 확인했다.
 - 현재 `/chat` 우선순위는 외부 RAG contract 미확정 상태에서도 유지 가능한 question / answer / citation shell 정리다.
 - 다음 핵심 작업은 외부 RAG contract 정의 전까지 필요한 UI shell 유지와 answer/citation 품질 기록이다.
-- 오늘 기준 parser 고도화 2단계로 PDF garbled text 감지와 upload 품질 경고 세분화를 반영했다.
+- 2026-04-08 기준 RAG 서버 frontend/backend를 다시 재기동해 UI 확인 가능한 runtime 상태를 복구했다.
 - backend `/chat`은 여전히 Input 정규화 -> structured rewrite -> RAG 검색 API 호출 -> grounded answer 생성 흐름을 유지하지만, frontend는 이에 강하게 결합하지 않도록 단순화했다.
 
 ## 3. 완료된 범위
@@ -22,6 +22,10 @@
   - RAG 서버에 frontend/backend 실행 환경 설치 완료
   - 2026-04-06 기준 RAG EC2 `i-09c547c2adaefff77`의 IMDSv2 `HttpTokens=required` 변경 요청 및 Terraform 반영 완료
   - 2026-04-07 기준 현재 서버와 RAG 서버 최신 소스 동기화 및 stale frontend `3000` 프로세스 교체 완료
+  - 2026-04-08 기준 PEM 키 `p2an2test001.pem`으로 RAG 서버 접속 후 runtime 상태를 재점검했다
+  - 2026-04-08 기준 frontend `next start` 실패 원인이 `.next` production build 부재임을 확인했다
+  - 2026-04-08 기준 RAG 서버 frontend를 `next build + next start`로 다시 올리고 `/upload` 응답 `200`을 확인했다
+  - 2026-04-08 기준 RAG 서버 backend를 `.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000`으로 다시 올리고 `/health` 응답 `200`을 확인했다
 - frontend:
   - `/upload`, `/chat`, `/evaluation` 페이지 구성 완료
   - `/` -> `/upload` redirect 완료
@@ -81,6 +85,8 @@
 - 검증:
   - RAG 서버 backend `127.0.0.1:8000/health` 응답 확인 완료
   - RAG 서버 frontend `127.0.0.1:3000/upload`, `/chat` 응답 확인 완료
+  - 2026-04-08 기준 RAG 서버 frontend `127.0.0.1:3000/upload` 응답 `200` 재확인 완료
+  - 2026-04-08 기준 RAG 서버 backend `127.0.0.1:8000/health` 응답 `200` 재확인 완료
   - `GET /parse/parsers`에서 `Docling`, `DOC parser`, `Excel parser` 사용 가능 상태 확인 완료
   - 2026-04-03 기준 RAG 서버 `GET /parse/parsers`에서 `Docling(md)` 노출 확인 완료
   - 2026-04-03 기준 RAG 서버 `Docling(md)` parse 실행 시 `markdown_path` 반환 확인 완료
@@ -216,6 +222,7 @@
 - 중복 파일명 문서가 여러 건 있을 때 최신 항목과 과거 항목이 섞여 보여 사용자 혼동이 발생할 수 있다.
 - parse 성공/실패 history를 한 행에서 함께 보여주기 위한 backend/frontend 수정은 진행했지만, RAG 서버 화면 기준 최종 검증은 다음 세션에서 다시 확인이 필요하다.
 - frontend 반영이 안 보일 때는 stale `3000` 프로세스나 `.next` 캐시가 원인일 수 있다.
+- frontend `next start` 실패 시 `.next` production build 부재 여부를 먼저 확인하고, 필요하면 `npm run build` 후 재기동한다.
 - 2026-04-03 기준 `backend/app/main.py`, `frontend/app/upload/page.tsx`, `frontend/app/chat/page.tsx`, `frontend/app/globals.css`, `README.md`, `TODO.md`, `docs/*.md` 주요 파일은 현재 서버와 RAG 서버 해시가 일치한다.
 - `DELETE /index/files`는 현재 환경에서 sqlite readonly 오류가 날 수 있어, stale backend PID를 함께 점검해야 한다.
 - 현재 chat deployment는 `gpt-4o`로 확인됐고, answer 품질 검증이 다음 단계다.
@@ -236,6 +243,7 @@
 4. `TODO.md` 확인
 5. `docs/status.md` 확인
 6. 관련 `docs/*.md` 확인
-7. `docs/daily/2026-04-01.md` 확인
-8. garbled detection false negative 기준 추가 검토
-9. 이후 retrieval 질문 세트 기준 retrieval/answer/citation 품질 확인
+7. 최신 `docs/daily/*` 확인
+8. RAG 서버 UI 확인 전 frontend build 유무와 `3000/8000` runtime 상태 확인
+9. garbled detection false negative 기준 추가 검토
+10. 이후 retrieval 질문 세트 기준 retrieval/answer/citation 품질 확인
