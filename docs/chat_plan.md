@@ -79,6 +79,14 @@ Search Result Evaluation
 ### 목적
 원본 상담 대화를 보험 상담지식 검색에 적합한 Standalone Search Query로 변환한다.
 
+### 채택 모델
+- Query Rewrite 전용 LLM은 `GPT-4o` 사용
+
+### 권장 설정
+- model: `gpt-4o`
+- temperature: `0 ~ 0.1`
+- max_tokens: `64 ~ 128`
+
 ### 역할
 - 고객의 마지막 발화를 기준으로 검색문을 만든다.
 - 고객이 설명한 증상, 문제상황, 사고상황, 처리상황을 반영한다.
@@ -92,6 +100,8 @@ Search Result Evaluation
 - 개인정보 제거
 - 이전에 답변 완료된 문의 제외
 - 설명 문구 없이 질문 한 문장만 출력
+- Answer Generation 모델과 분리 운영
+- Validation / Fallback 유지 필수
 
 ### Format 반영 기준
 검색문은 아래 요구사항을 반드시 만족해야 한다.
@@ -384,6 +394,43 @@ LLM 출력값을 실제 상담 화면에 표시 가능한 형태로 정리한다
 ### answer_generator
 - grounding prompt 구성
 - 최종 답변 생성
+
+---
+
+## rag-mvp 기준 추천 파일/디렉터리 매핑
+
+```text
+backend/
+  app/
+    services/
+      chat_service.py
+      conversation_preprocessor.py
+      query_rewriter.py
+      query_validator.py
+      retrieval_client.py
+      retrieval_evaluator.py
+      context_builder.py
+      answer_generator.py
+    prompts/
+      query_rewrite.txt
+      answer_generation.txt
+    tests/
+      test_query_rewriter.py
+      test_query_validator.py
+      test_retrieval_evaluator.py
+      test_context_builder.py
+      test_answer_generator.py
+```
+
+### 파일별 책임
+- `chat_service.py`: 전체 pipeline orchestration
+- `conversation_preprocessor.py`: 대화 normalize / 마지막 고객 발화 추출
+- `query_rewriter.py`: GPT-4o Query Rewrite 호출
+- `query_validator.py`: Query 검증 / fallback
+- `retrieval_client.py`: Search / Lookup API 호출
+- `retrieval_evaluator.py`: Lookup 필요 여부 판단
+- `context_builder.py`: Search/Lookup 병합
+- `answer_generator.py`: grounded answer 생성
 
 ---
 

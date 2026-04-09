@@ -146,6 +146,7 @@
 - [ ] Show rewrite result and route hints on `/chat`
 - [x] Separate compact `Evidence` from full `Reference context` on `/chat`
 - [x] Show `rerank_score` and `matched_queries` on `/chat` for internal retrieval hits
+- [x] Merge `docs/chat_plan_addendum.md` into `docs/chat_plan.md`
 
 ---
 

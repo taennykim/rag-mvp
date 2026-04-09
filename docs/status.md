@@ -12,6 +12,7 @@
 - 2026-04-08 기준 RAG 서버 frontend/backend를 다시 재기동해 UI 확인 가능한 runtime 상태를 복구했다.
 - backend `/chat`은 여전히 Input 정규화 -> structured rewrite -> RAG 검색 API 호출 -> grounded answer 생성 흐름을 유지하지만, frontend는 이에 강하게 결합하지 않도록 단순화했다.
 - 2026-04-09 기준 `/chat` Evidence와 `Reference context`의 역할을 분리했고, internal retrieval hit의 `rerank_score` / `matched_queries`를 UI에서 직접 확인할 수 있게 했다.
+- 2026-04-09 기준 `docs/chat_plan.md`에 GPT-4o query rewrite 설정과 `rag-mvp` 파일/디렉터리 매핑을 흡수했고, 별도 `docs/chat_plan_addendum.md`는 제거했다.
 
 ## 3. 완료된 범위
 - 문서 체계:
