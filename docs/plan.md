@@ -20,6 +20,7 @@
 ## 3. 현재 진행 상태
 - 현재 단계: external RAG contract 확정 전 `/chat` shell 정리 진행중 / PDF garbled text 감지와 parser 기본 정책 정리는 반영했고 false negative 보정이 남아 있음
 - 현재 단계: backend retrieval/answer 흐름은 유지하되 frontend는 question / answer / citation 중심 shell로 단순화 완료
+- 현재 단계: `/chat` Evidence / Reference context 역할을 분리했고 internal retrieval hit의 rerank trace를 UI에서 바로 확인 가능하게 정리함
 - 현재 단계: 2026-04-08 기준 RAG 서버 frontend/backend runtime을 다시 복구했고 UI 확인 가능한 상태로 유지 중
 - 완료:
   - AGENTS.md, TODO.md 확인

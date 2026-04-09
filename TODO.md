@@ -144,6 +144,8 @@
 - [x] Extend `/chat` backend input schema with `conversation_context` and `metadata`
 - [x] Replace simple retrieval rewrite with structured rewrite result on `/chat`
 - [ ] Show rewrite result and route hints on `/chat`
+- [x] Separate compact `Evidence` from full `Reference context` on `/chat`
+- [x] Show `rerank_score` and `matched_queries` on `/chat` for internal retrieval hits
 
 ---
 

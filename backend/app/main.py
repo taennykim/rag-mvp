@@ -2166,17 +2166,17 @@ def retrieve_chunks_for_queries(
 
 def build_chat_citations(hits: list[dict[str, object]]) -> list[dict[str, object]]:
     citations: list[dict[str, object]] = []
-    for hit in hits:
+    for index, hit in enumerate(hits, start=1):
         citations.append(
             {
                 "id": hit.get("id"),
+                "rank": index,
                 "source": hit.get("source") or hit.get("original_name"),
                 "original_name": hit.get("original_name"),
                 "stored_name": hit.get("stored_name"),
                 "chunk_index": hit.get("chunk_index"),
                 "page_number": hit.get("page_number"),
                 "section_header": hit.get("section_header"),
-                "preview": hit.get("preview"),
             }
         )
     return citations

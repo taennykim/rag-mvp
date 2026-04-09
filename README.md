@@ -76,6 +76,8 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Indexed file list API and retrieval API are implemented
 - Chat page is currently organized as an external RAG-ready shell
 - Chat page keeps question input, response area, citation slots, and optional debug context visible
+- `/chat` Evidence card now shows compact citation pointers, while `Reference context` keeps the actual retrieval hit preview/full text
+- `/chat` `Reference context` now shows `rerank_score`, `distance`, and `matched_queries` for internal retrieval hits
 - External RAG API request/response schema is not finalized yet, so `/chat` avoids depending on request tuning controls in the main UI
 - Current backend can still return retrieval-backed answers and citations while the external contract is pending
 - Upload list supports file-level delete of upload + index

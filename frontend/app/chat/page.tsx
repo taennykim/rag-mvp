@@ -6,6 +6,8 @@ type RetrievalHit = {
   id: string;
   text: string;
   distance?: number;
+  rerank_score?: number;
+  matched_queries?: string[];
   source?: string;
   original_name?: string;
   chunk_index?: number;
@@ -16,12 +18,12 @@ type RetrievalHit = {
 
 type ChatCitation = {
   id?: string;
+  rank?: number;
   source?: string;
   original_name?: string;
   chunk_index?: number;
   page_number?: number;
   section_header?: string;
-  preview?: string;
 };
 
 type ChatResponse = {
@@ -65,6 +67,13 @@ function buildEvidenceMetaParts(item: {
     parts.push(item.section_header.trim());
   }
   return parts;
+}
+
+function formatMatchedQueries(matchedQueries?: string[]) {
+  if (!matchedQueries?.length) {
+    return null;
+  }
+  return matchedQueries.join(" | ");
 }
 
 export default function ChatPage() {
@@ -203,7 +212,7 @@ export default function ChatPage() {
       <div className="card">
         <p className="eyebrow">Citations</p>
         <h2>Evidence</h2>
-        <p>citation 데이터가 오면 이 영역에 출처, 페이지, 미리보기를 함께 표시합니다.</p>
+        <p>답변 근거로 사용한 chunk 포인터만 간단히 보여주고, 실제 본문은 아래 Reference context에서 확인합니다.</p>
         {!result?.citations?.length ? (
           <p>아직 표시할 근거가 없습니다.</p>
         ) : (
@@ -212,15 +221,13 @@ export default function ChatPage() {
               const metaParts = buildEvidenceMetaParts(citation);
               return (
                 <article className="citation-card" key={citation.id ?? `${citation.source}-${citation.chunk_index}`}>
-                  <strong>{renderCitationLabel(citation)}</strong>
-                  {metaParts.length > 0 ? (
-                    <div className="retrieval-meta">
-                      {metaParts.map((part) => (
-                        <span key={part}>{part}</span>
-                      ))}
-                    </div>
-                  ) : null}
-                  {citation.preview ? <div className="citation-preview">{citation.preview}</div> : null}
+                  <div className="citation-card-head">
+                    <strong>{renderCitationLabel(citation)}</strong>
+                    {typeof citation.rank === "number" ? <span className="citation-rank">#{citation.rank}</span> : null}
+                  </div>
+                  <div className="retrieval-meta">
+                    {metaParts.length > 0 ? metaParts.map((part) => <span key={part}>{part}</span>) : <span>metadata unavailable</span>}
+                  </div>
                 </article>
               );
             })}
@@ -231,26 +238,39 @@ export default function ChatPage() {
       <div className="card">
         <p className="eyebrow">Context</p>
         <h2>Reference context</h2>
-        <p>현재 backend가 `hits`를 주는 동안만 참고용 context를 보여줍니다. 외부 RAG 스키마가 정해지면 이 영역도 그 기준으로 다시 맞춥니다.</p>
+        <p>answer generation에 실제로 들어간 retrieval hit를 순서대로 보여주며, rerank score와 matched query도 함께 표시합니다.</p>
         {!result?.hits?.length ? (
           <p>아직 표시할 context가 없습니다.</p>
         ) : (
           <div className="retrieval-list">
-            {result.hits.map((hit) => {
+            {result.hits.map((hit, index) => {
               const metaParts = buildEvidenceMetaParts(hit);
+              const matchedQueries = formatMatchedQueries(hit.matched_queries);
               return (
                 <article className="retrieval-card" key={hit.id}>
                   <div className="retrieval-head">
                     <div className="retrieval-title">
-                      <strong>{renderHitLabel(hit)}</strong>
+                      <div className="retrieval-rank-row">
+                        <strong>{renderHitLabel(hit)}</strong>
+                        <span className="retrieval-rank">Context #{index + 1}</span>
+                      </div>
                       <div className="retrieval-meta">
                         {metaParts.map((part) => (
                           <span key={part}>{part}</span>
                         ))}
                         {typeof hit.distance === "number" ? <span>distance {hit.distance.toFixed(4)}</span> : null}
+                        {typeof hit.rerank_score === "number" ? <span>rerank {hit.rerank_score.toFixed(4)}</span> : null}
                       </div>
                     </div>
                   </div>
+                  {matchedQueries ? (
+                    <div className="retrieval-query-block">
+                      <span className="retrieval-query-label">matched queries</span>
+                      <div className="retrieval-tags">
+                        {hit.matched_queries?.map((matchedQuery) => <span key={matchedQuery}>{matchedQuery}</span>)}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="retrieval-preview">{hit.preview ?? hit.text}</div>
                   <details className="parse-json retrieval-full">
                     <summary>전체 context 보기</summary>

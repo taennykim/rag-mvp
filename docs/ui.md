@@ -26,6 +26,7 @@
   - response 표시 영역
   - evidence 표시 영역
   - reference context 표시 영역
+  - internal retrieval 기준 `rerank_score`, `distance`, `matched_queries` 표시
   - `전체 context 보기` 확장 블록 표시
 - `/evaluation`
   - 페이지 skeleton만 존재
@@ -45,6 +46,8 @@
 - `/chat`은 외부 RAG 연동 스키마가 확정되기 전까지 schema-light shell로 유지한다.
 - `/chat` main form은 질문, `Search API endpoint`, `Lookup API endpoint`만 받도록 유지하고 `Target file` 같은 retrieval tuning control은 주 화면에서 제외했다.
 - `/chat` answer card는 최종 응답 영역, citation card는 근거 영역, context card는 참고용 context 확인용으로 나눴다.
+- `/chat` Evidence 카드는 source / chunk / page 같은 citation pointer만 compact하게 보여주고, 중복 preview는 제거했다.
+- `/chat` Reference context 카드는 실제 retrieval hit 순서를 유지하며 preview, full text, `distance`, `rerank_score`, `matched_queries`를 함께 보여준다.
 - `/chat` preview / citation / raw chunk 블록은 긴 텍스트가 잘리지 않도록 overflow를 정리했다.
 - `/evaluation`은 라우트와 기본 페이지만 있고 실제 결과 화면은 아직 없다.
 - 실제 화면 확인 기준은 RAG 서버 frontend `127.0.0.1:3000`이다.
@@ -59,6 +62,7 @@
 - PDF 품질 경고는 현재 heuristic 설명 중심이라, 사용자용 문구 단순화 여부를 추가 검토해야 한다.
 - 현재 `PDF garbled text=정상`이어도 실제 preview 문자열이 깨질 수 있어 false negative 보정이 추가로 필요하다.
 - 외부 RAG request/response 스키마가 아직 확정되지 않아 `/chat`의 adapter 입력 폼과 응답 매핑은 일부러 보류했다.
+- `rerank_score`, `matched_queries`는 현재 internal retrieval 응답에만 안정적으로 존재하므로 외부 RAG endpoint 응답과는 형식을 다시 맞춰야 한다.
 
 ## 5. 다음 작업
 - upload 화면의 parse history / preview / quality 표시를 실제 화면 기준으로 검증하고 필요 시 정리한다.

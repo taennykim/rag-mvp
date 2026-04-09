@@ -11,6 +11,7 @@
 - 다음 핵심 작업은 외부 RAG contract 정의 전까지 필요한 UI shell 유지와 answer/citation 품질 기록이다.
 - 2026-04-08 기준 RAG 서버 frontend/backend를 다시 재기동해 UI 확인 가능한 runtime 상태를 복구했다.
 - backend `/chat`은 여전히 Input 정규화 -> structured rewrite -> RAG 검색 API 호출 -> grounded answer 생성 흐름을 유지하지만, frontend는 이에 강하게 결합하지 않도록 단순화했다.
+- 2026-04-09 기준 `/chat` Evidence와 `Reference context`의 역할을 분리했고, internal retrieval hit의 `rerank_score` / `matched_queries`를 UI에서 직접 확인할 수 있게 했다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -48,6 +49,7 @@
   - header / nav / card / form control / result card 기준 UI refresh 완료
   - upload 화면 상단 stat strip 추가 완료
   - header title은 한 줄 기준으로 보이도록 조정 완료
+  - `/chat` Evidence는 compact citation pointer 중심으로 축소했고 `Reference context`는 preview/full text + `rerank_score` + `matched_queries` 표시로 역할 분리 완료
 - backend:
   - upload API 구현 완료
   - parse API 및 parse quality API 구현 완료
@@ -201,7 +203,8 @@
   - 외부 RAG contract 확정 전까지 `/chat` question / answer / citation shell 유지
   - `Docling` PDF 변환 장시간 실행 원인을 확인
   - garbled detection false negative를 줄이기 위한 문자군 규칙 또는 별도 기준 추가
-  - retrieval 질문 세트 기준 `/chat` answer generation 품질 및 citation 품질 기록
+- retrieval 질문 세트 기준 `/chat` answer generation 품질 및 citation 품질 기록
+- internal retrieval 기준 `rerank_score` / `matched_queries`를 활용한 retrieval trace 점검은 가능해졌고, 다음은 실제 answer/citation 품질 기록 보강이다
   - `Uploaded file list` parse success/failure history UI 최종 화면 검증
 - 2차 우선순위:
   - parser별 품질 비교 기준 정리
