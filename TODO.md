@@ -144,6 +144,7 @@
 - [x] Extend `/chat` backend input schema with `conversation_context` and `metadata`
 - [x] Replace simple retrieval rewrite with structured rewrite result on `/chat`
 - [ ] Show rewrite result and route hints on `/chat`
+- [x] Show `RAG question` (`rewritten_query`) under `Question` on `/chat`
 - [x] Separate compact `Evidence` from full `Reference context` on `/chat`
 - [x] Show `rerank_score` and `matched_queries` on `/chat` for internal retrieval hits
 - [x] Merge `docs/chat_plan_addendum.md` into `docs/chat_plan.md`
@@ -233,6 +234,7 @@
 - [ ] external RAG adapter request/response mapping은 contract 확정 후 진행
 - [ ] 산출방법서 계열 표/수식 보존형 chunk 전략 검토
 - [x] answer 품질 점검표 초안 작성 (`docs/answer-eval.md`)
+- [x] GitHub `main` / 현재 서버 / RAG 서버 핵심 소스·문서 동기화 재확인
 
 ---
 

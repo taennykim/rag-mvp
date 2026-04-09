@@ -533,6 +533,31 @@ a {
   resize: vertical;
 }
 
+.chat-query-preview {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: rgba(245, 250, 255, 0.82);
+}
+
+.chat-query-preview-label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.chat-query-preview-body {
+  color: var(--ink);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .chat-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 140px;

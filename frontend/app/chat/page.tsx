@@ -32,6 +32,9 @@ type ChatResponse = {
   citations?: ChatCitation[];
   hits?: RetrievalHit[];
   detail?: string;
+  interpreted_query?: string;
+  rewritten_query?: string;
+  search_queries?: string[];
   search_api_endpoint?: string | null;
   lookup_api_endpoint?: string | null;
 };
@@ -157,6 +160,14 @@ export default function ChatPage() {
             rows={4}
             value={query}
           />
+          <div className="chat-query-preview">
+            <span className="chat-query-preview-label">RAG question</span>
+            <div className="chat-query-preview-body">
+              {result?.rewritten_query?.trim()
+                ? result.rewritten_query
+                : "응답 후 이 위치에 실제 RAG 검색에 사용된 질문이 표시됩니다."}
+            </div>
+          </div>
           <label className="upload-label" htmlFor="chat-search-api-endpoint">
             Search API endpoint
           </label>

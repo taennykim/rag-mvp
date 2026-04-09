@@ -13,6 +13,8 @@
 - backend `/chat`은 여전히 Input 정규화 -> structured rewrite -> RAG 검색 API 호출 -> grounded answer 생성 흐름을 유지하지만, frontend는 이에 강하게 결합하지 않도록 단순화했다.
 - 2026-04-09 기준 `/chat` Evidence와 `Reference context`의 역할을 분리했고, internal retrieval hit의 `rerank_score` / `matched_queries`를 UI에서 직접 확인할 수 있게 했다.
 - 2026-04-09 기준 `docs/chat_plan.md`에 GPT-4o query rewrite 설정과 `rag-mvp` 파일/디렉터리 매핑을 흡수했고, 별도 `docs/chat_plan_addendum.md`는 제거했다.
+- 2026-04-09 기준 `/chat` Question 바로 아래에 실제 RAG 검색 질의(`rewritten_query`)를 표시하도록 반영했다.
+- 2026-04-09 기준 GitHub `main`, 현재 서버, RAG 서버 핵심 소스/문서 해시를 다시 일치시켰다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -51,6 +53,7 @@
   - upload 화면 상단 stat strip 추가 완료
   - header title은 한 줄 기준으로 보이도록 조정 완료
   - `/chat` Evidence는 compact citation pointer 중심으로 축소했고 `Reference context`는 preview/full text + `rerank_score` + `matched_queries` 표시로 역할 분리 완료
+  - `/chat` Question 바로 아래에 실제 RAG 검색에 사용된 `RAG question` 표시 추가 완료
 - backend:
   - upload API 구현 완료
   - parse API 및 parse quality API 구현 완료
@@ -112,6 +115,7 @@
   - 2026-04-06 기준 RAG 서버 backend `127.0.0.1:8000/health`, frontend `127.0.0.1:3000/upload`, `/chat` 재확인 완료
   - 2026-04-07 기준 RAG 서버 `/chat`에서 `Search API endpoint`, `Lookup API endpoint` 노출 및 `Target file` 비노출 확인 완료
   - 2026-04-07 기준 RAG 서버 `default-files`로 대표 문서 3건을 다시 업로드하고 `chunk_count=103` 상태까지 복구 완료
+  - 2026-04-09 기준 GitHub `main`, 현재 서버, RAG 서버 핵심 소스/문서 해시 재일치 확인 완료
 
 ## 4. 현재 동작 기준
 - frontend 실행 기준:

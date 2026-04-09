@@ -78,6 +78,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Chat page keeps question input, response area, citation slots, and optional debug context visible
 - `/chat` Evidence card now shows compact citation pointers, while `Reference context` keeps the actual retrieval hit preview/full text
 - `/chat` `Reference context` now shows `rerank_score`, `distance`, and `matched_queries` for internal retrieval hits
+- `/chat` Question 바로 아래에서 실제 RAG 검색에 사용된 `RAG question` (`rewritten_query`)을 확인할 수 있다
 - External RAG API request/response schema is not finalized yet, so `/chat` avoids depending on request tuning controls in the main UI
 - Current backend can still return retrieval-backed answers and citations while the external contract is pending
 - Upload list supports file-level delete of upload + index
@@ -99,6 +100,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Upload 화면 UI를 현재 기준으로 리프레시했고, header / stat strip / card 위계를 정리했다
 - `Docling(md)` parse 성공 시 upload list에서 `markdown_path`를 함께 확인할 수 있다
 - 2026-04-03 기준 현재 서버와 RAG 서버의 핵심 소스/문서 해시가 일치함을 확인했다
+- 2026-04-09 기준 GitHub `main`, 현재 서버, RAG 서버 핵심 소스/문서 동기화를 다시 맞췄다
 - Parse success/failure history UI는 구조상 노출되며, duplicate upload와 과거 실패 이력이 함께 보일 수 있다
 - RAG 서버 테스트용 upload/parse/chunk/index 데이터는 2026-03-29 기준 초기화 완료 상태다
 - Retrieval-backed answer generation is connected in the current backend
