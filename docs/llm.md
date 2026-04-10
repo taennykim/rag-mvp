@@ -13,6 +13,9 @@
 - 진행중
 - backend `POST /chat`에 retrieval -> answer generation 흐름을 연결했다.
 - backend `POST /chat`에 Input 정규화 + structured rewrite 단계를 추가했다.
+- backend `POST /chat`은 `conversation_context`가 비어 있어도 `Question` 멀티라인의 `고객:` / `상담사:` prefix를 파싱해 대화 입력으로 재구성할 수 있다.
+- backend `POST /chat`은 rewrite 결과에 대해 Standalone Search Query 검증을 수행하고 `rewrite_source`, `validation_reasons`로 fallback trace를 함께 반환한다.
+- backend `POST /chat`은 retrieval hit 원본과 별도로 `retrieved_chunks` 표준 포맷을 함께 반환해 이후 평가/분기 단계에서 재사용할 수 있게 정리했다.
 - frontend `/chat`에 answer panel, citation slot, optional debug context 표시를 추가했다.
 - `AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o` runtime config를 사용하도록 정리했다.
 - RAG 서버 `/chat` 실응답을 확인했고, grounded answer와 citation 반환이 동작한다.

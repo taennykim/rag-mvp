@@ -22,6 +22,12 @@
 - 현재 단계: backend retrieval/answer 흐름은 유지하되 frontend는 question / answer / citation 중심 shell로 단순화 완료
 - 현재 단계: `/chat` Evidence / Reference context 역할을 분리했고 internal retrieval hit의 rerank trace를 UI에서 바로 확인 가능하게 정리함
 - 현재 단계: `docs/chat_plan.md`에 GPT-4o query rewrite 운영 기준과 `rag-mvp` 파일 매핑을 통합했고 addendum 문서는 제거함
+- 현재 단계: `docs/chat_plan.md` 순서대로 다시 진행하기로 정리했고 `Step 1` 대화 입력 정규화 / 마지막 고객 발화 추출을 backend `/chat` 흐름에 반영함
+- 현재 단계: `/chat` Question 멀티라인 입력의 `고객:` / `상담사:` prefix를 backend에서 `conversation_context`로 파싱하도록 보강함
+- 현재 단계: 멀티턴 상담 예시 기준 Query Rewrite가 마지막 고객 발화 중심으로 질문형 검색문을 생성하는지 1차 검증함
+- 현재 단계: `Step 3` Standalone Search Query 검증을 backend `/chat` 흐름에 연결했고 질문형/길이/핵심 키워드 규칙과 fallback 순서를 반영함
+- 현재 단계: `Step 5` Retrieved Candidate Chunks 표준화를 backend `/retrieve`, `/chat` 응답에 반영함
+- 현재 단계: `Step 2` Query Rewrite 입력 기준, prompt 구성, JSON 파싱, fallback 경로를 backend `/chat` 흐름에서 분리 정리함
 - 현재 단계: 2026-04-08 기준 RAG 서버 frontend/backend runtime을 다시 복구했고 UI 확인 가능한 상태로 유지 중
 - 완료:
   - AGENTS.md, TODO.md 확인
@@ -73,6 +79,11 @@
   - frontend `next start` 실패 원인이 `.next` production build 부재였음을 확인했고, 운영 재기동 절차는 `build + start` 기준으로 다시 맞춤
   - backend `/chat` query interpretation + external/internal RAG endpoint 분기 반영 완료
   - backend `/chat` Input 정규화 + structured rewrite 반영 완료
+  - backend `/chat`이 `conversation_context`에서 빈 발화를 제거하고 role/content를 정규화하며 마지막 고객 발화를 추출하도록 보강 완료
+  - backend `/chat` Query Rewrite를 seed query 결정, prompt 생성, 응답 파싱, fallback 결과 생성 단계로 분리 완료
+  - backend `/chat`이 `conversation_context` 없이도 `Question` 멀티라인의 `고객:` / `상담사:` prefix를 대화 입력으로 파싱하도록 보강 완료
+  - backend `/chat` Standalone Search Query 검증 규칙과 fallback(`last_customer_message` -> `last_customer_message + metadata` -> LLM retry 1회) 반영 완료
+  - backend `/retrieve`, `/chat`이 `retrieved_chunks` 표준 포맷(`document_id`, `chunk_id`, `score`, `section`, `text`, `rank`)을 함께 반환하도록 반영 완료
 - 미완료:
   - `Docling` / `PyMuPDF` / reference-style 비교 기록 보강
   - garbled detection false negative 보정
@@ -80,6 +91,8 @@
   - `PDF` 기준 `Docling` vs `PyMuPDF` 품질 비교
   - evaluation dataset / RAGAS / evaluation UI
 - 다음 우선 작업:
+  - `docs/chat_plan.md` 기준 Step 4 Search API 호출 이후 candidate 표준화와 평가 단계를 분리한다
+  - `docs/chat_plan.md` 기준 Step 6 Search Result Evaluation rule을 `retrieved_chunks` 기준으로 정리한다
   - parser 운영 정책은 `Legacy auto` 기본, `Docling` 비교 검증용, `Docling(md)` Markdown 산출물 생성용으로 유지한다
   - `Docling` PDF 변환 장시간 실행 원인을 추가 확인하되, 현재 PDF 기본 parser 정책은 `Legacy auto / PyMuPDF 우선`으로 유지한다
   - RAG 서버 UI 확인 전에는 먼저 frontend build 유무와 `3000/8000` runtime 상태를 다시 점검한다

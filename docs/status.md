@@ -13,8 +13,15 @@
 - backend `/chat`은 여전히 Input 정규화 -> structured rewrite -> RAG 검색 API 호출 -> grounded answer 생성 흐름을 유지하지만, frontend는 이에 강하게 결합하지 않도록 단순화했다.
 - 2026-04-09 기준 `/chat` Evidence와 `Reference context`의 역할을 분리했고, internal retrieval hit의 `rerank_score` / `matched_queries`를 UI에서 직접 확인할 수 있게 했다.
 - 2026-04-09 기준 `docs/chat_plan.md`에 GPT-4o query rewrite 설정과 `rag-mvp` 파일/디렉터리 매핑을 흡수했고, 별도 `docs/chat_plan_addendum.md`는 제거했다.
-- 2026-04-09 기준 `/chat` Question 바로 아래에 실제 RAG 검색 질의(`rewritten_query`)를 표시하도록 반영했다.
+- 2026-04-09 기준 `/chat` Question 바로 아래에 `LLM Question` (`rewritten_query`)을 표시하도록 반영했다.
 - 2026-04-09 기준 GitHub `main`, 현재 서버, RAG 서버 핵심 소스/문서 해시를 다시 일치시켰다.
+- 2026-04-10 기준 `docs/chat_plan.md` 순서대로 작업을 다시 시작했고, `Step 1`에 해당하는 대화 입력 정규화와 마지막 고객 발화 추출을 backend `/chat` 흐름에 반영했다.
+- 2026-04-10 기준 `Step 2`에 해당하는 Query Rewrite를 seed query 결정, prompt 생성, 응답 파싱, fallback 결과 생성 단계로 정리했다.
+- 2026-04-10 기준 frontend가 별도 `conversation_context` 입력 UI를 갖고 있지 않아도, `Question` 멀티라인의 `고객:` / `상담사:` prefix를 backend에서 상담 대화로 파싱하도록 보강했다.
+- 2026-04-10 기준 멀티턴 상담 예시를 RAG 서버 `/chat`로 검증했고, Query Rewrite가 마지막 고객 발화를 기준으로 질문형 `rewritten_query`를 생성하는 것을 확인했다.
+- 2026-04-10 기준 `Step 3` Standalone Search Query 검증을 backend `/chat`에 연결했고, 길이/질문형/핵심 키워드 규칙과 fallback 순서를 반영했다.
+- 2026-04-10 기준 `Step 5` Retrieved Candidate Chunks 표준화를 backend `/retrieve`, `/chat` 응답에 반영했다.
+- 2026-04-10 기준 변경된 backend 소스와 문서를 RAG 서버에 다시 동기화했고, backend를 재기동한 뒤 `127.0.0.1:8000/health` 응답 `200`을 확인했다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -53,7 +60,7 @@
   - upload 화면 상단 stat strip 추가 완료
   - header title은 한 줄 기준으로 보이도록 조정 완료
   - `/chat` Evidence는 compact citation pointer 중심으로 축소했고 `Reference context`는 preview/full text + `rerank_score` + `matched_queries` 표시로 역할 분리 완료
-  - `/chat` Question 바로 아래에 실제 RAG 검색에 사용된 `RAG question` 표시 추가 완료
+  - `/chat` Question 바로 아래에 `LLM Question` 표시 추가 완료
 - backend:
   - upload API 구현 완료
   - parse API 및 parse quality API 구현 완료
@@ -62,6 +69,12 @@
   - retrieve API 구현 완료
   - `POST /chat` grounded answer API 추가 완료
   - `POST /chat`에서 `conversation_context` / `metadata` 입력을 받아 structured rewrite 후 external/internal RAG endpoint 분기 호출 구현 완료
+  - `POST /chat`에서 `conversation_context`의 빈 발화를 제거하고 role alias를 정규화하며 마지막 고객 발화를 추출하도록 보강 완료
+  - `POST /chat`에서 `conversation_context`가 비어 있으면 `Question` 멀티라인의 `고객:` / `상담사:` prefix를 파싱해 대화 입력으로 재구성하도록 보강 완료
+  - `POST /chat` Query Rewrite는 마지막 고객 발화 우선 seed query, JSON-only prompt, 응답 파싱, fallback 결과 생성 흐름으로 정리 완료
+  - `POST /chat` Standalone Search Query 검증은 최소/최대 길이, 질문형 종결, 핵심 키워드 포함 여부를 검사하고 실패 시 `last_customer_message` -> `last_customer_message + metadata` -> LLM retry 1회 순서로 fallback 하도록 반영 완료
+  - `/chat` 응답에 `rewrite_source`, `validation_reasons`를 포함해 rewrite 검증 trace를 확인할 수 있도록 정리 완료
+  - `/retrieve`, `/chat` 응답에 `retrieved_chunks` 표준 포맷을 추가했고 `document_id`, `chunk_id`, `score`, `section`, `text`, `rank` 기준으로 normalize 하도록 반영 완료
   - upload 직후 자동 indexing 연결 완료
   - parser catalog API `GET /parse/parsers` 추가 완료
   - `Docling(md)` 전용 Docling parse 및 Markdown file output 저장 구현 완료
@@ -205,6 +218,8 @@
 
 ## 7. 남은 핵심 작업
 - 1차 우선순위:
+  - `docs/chat_plan.md` Step 4 Search API 호출 이후 candidate 표준화/평가 단계 추가
+  - `retrieved_chunks` 기준 Step 6 Search Result Evaluation 규칙 추가
   - 외부 RAG contract 확정 전까지 `/chat` question / answer / citation shell 유지
   - `Docling` PDF 변환 장시간 실행 원인을 확인
   - garbled detection false negative를 줄이기 위한 문자군 규칙 또는 별도 기준 추가
@@ -248,10 +263,11 @@
 1. `AGENTS.md` 확인
 2. `README.md` 확인
 3. `docs/plan.md` 확인
-4. `TODO.md` 확인
-5. `docs/status.md` 확인
-6. 관련 `docs/*.md` 확인
-7. 최신 `docs/daily/*` 확인
-8. RAG 서버 UI 확인 전 frontend build 유무와 `3000/8000` runtime 상태 확인
-9. garbled detection false negative 기준 추가 검토
-10. 이후 retrieval 질문 세트 기준 retrieval/answer/citation 품질 확인
+4. `docs/chat_plan.md` 확인
+5. `TODO.md` 확인
+6. `docs/status.md` 확인
+7. 관련 `docs/*.md` 확인
+8. 최신 `docs/daily/*` 확인
+9. RAG 서버 UI 확인 전 frontend build 유무와 `3000/8000` runtime 상태 확인
+10. garbled detection false negative 기준 추가 검토
+11. 이후 retrieval 질문 세트 기준 retrieval/answer/citation 품질 확인

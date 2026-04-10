@@ -127,6 +127,8 @@ CHUNK_PREVIEW_LENGTH = 160
 EMBEDDING_DIMENSION = 256
 RETRIEVAL_CANDIDATE_MULTIPLIER = 5
 RETRIEVAL_MAX_CANDIDATES = 50
+MIN_STANDALONE_QUERY_LENGTH = 15
+MAX_STANDALONE_QUERY_LENGTH = 150
 PRIMARY_PARSER_DOCLING = "docling"
 PRIMARY_PARSER_DOCLING_MARKDOWN = "docling-markdown"
 PRIMARY_PARSER_LEGACY_AUTO = "legacy-auto"
@@ -337,6 +339,215 @@ def validate_uploaded_file_type(filename: str, content: bytes) -> None:
 def normalize_text(text: str) -> str:
     lines = [line.strip() for line in text.splitlines()]
     return "\n".join(line for line in lines if line)
+
+
+def normalize_chat_text(text: str) -> str:
+    return " ".join(text.split())
+
+
+QUERY_VALIDATION_STOPWORDS = {
+    "고객",
+    "고객님",
+    "상담사",
+    "상담원",
+    "보험",
+    "보험금",
+    "관련",
+    "경우",
+    "내용",
+    "문의",
+    "질문",
+    "부분",
+    "그게",
+    "그런",
+    "이런",
+    "저런",
+    "친구",
+    "나라",
+    "사례",
+    "기준",
+    "무엇",
+}
+
+
+QUESTION_CONVERSATION_ROLE_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("customer", "customer:"),
+    ("customer", "customer -"),
+    ("customer", "customer "),
+    ("customer", "고객:"),
+    ("customer", "고객 -"),
+    ("customer", "고객 "),
+    ("customer", "고객님:"),
+    ("customer", "고객님 -"),
+    ("customer", "고객님 "),
+    ("agent", "agent:"),
+    ("agent", "agent -"),
+    ("agent", "agent "),
+    ("agent", "assistant:"),
+    ("agent", "assistant -"),
+    ("agent", "assistant "),
+    ("agent", "상담사:"),
+    ("agent", "상담사 -"),
+    ("agent", "상담사 "),
+    ("agent", "상담원:"),
+    ("agent", "상담원 -"),
+    ("agent", "상담원 "),
+)
+
+
+def normalize_conversation_role(role: str) -> str:
+    normalized_role = normalize_chat_text(role).lower()
+    if normalized_role in {"customer", "user", "client", "insured"}:
+        return "customer"
+    if normalized_role in {"agent", "assistant", "advisor", "counselor", "operator"}:
+        return "agent"
+    return normalized_role or "unknown"
+
+
+def get_conversation_turn_text(turn: "ConversationTurn") -> str:
+    if turn.content and turn.content.strip():
+        return turn.content
+    if turn.text and turn.text.strip():
+        return turn.text
+    return ""
+
+
+def normalize_conversation_context(conversation_context: list["ConversationTurn"]) -> list[dict[str, str]]:
+    normalized_turns: list[dict[str, str]] = []
+    for turn in conversation_context:
+        normalized_content = normalize_chat_text(get_conversation_turn_text(turn))
+        if not normalized_content:
+            continue
+        normalized_turns.append(
+            {
+                "role": normalize_conversation_role(turn.role),
+                "content": normalized_content,
+            }
+        )
+    return normalized_turns
+
+
+def parse_conversation_context_from_query_text(query_text: str) -> list[dict[str, str]]:
+    parsed_turns: list[dict[str, str]] = []
+    current_role: str | None = None
+    current_content_lines: list[str] = []
+
+    def flush_current_turn() -> None:
+        nonlocal current_role, current_content_lines
+        if not current_role:
+            current_content_lines = []
+            return
+
+        normalized_content = normalize_chat_text(" ".join(current_content_lines))
+        if normalized_content:
+            parsed_turns.append({"role": current_role, "content": normalized_content})
+        current_role = None
+        current_content_lines = []
+
+    for raw_line in query_text.splitlines():
+        stripped_line = raw_line.strip()
+        if not stripped_line:
+            continue
+
+        lowered_line = stripped_line.lower()
+        matched_prefix: tuple[str, str] | None = None
+        for role, prefix in QUESTION_CONVERSATION_ROLE_PREFIXES:
+            if lowered_line.startswith(prefix):
+                matched_prefix = (role, prefix)
+                break
+
+        if matched_prefix:
+            flush_current_turn()
+            role, prefix = matched_prefix
+            current_role = role
+            current_content_lines = [stripped_line[len(prefix) :].strip()]
+            continue
+
+        if current_role:
+            current_content_lines.append(stripped_line)
+
+    flush_current_turn()
+    return parsed_turns
+
+
+def extract_last_customer_message(normalized_turns: list[dict[str, str]]) -> str | None:
+    for turn in reversed(normalized_turns):
+        if turn.get("role") == "customer" and turn.get("content"):
+            return turn["content"]
+    return None
+
+
+def ensure_question_sentence(text: str) -> str:
+    normalized = normalize_chat_text(text).strip()
+    if not normalized:
+        return ""
+    if normalized.endswith("?"):
+        return normalized
+    normalized = normalized.rstrip(".! ")
+    return f"{normalized}?"
+
+
+def extract_query_keywords(*texts: str) -> list[str]:
+    keywords: list[str] = []
+    seen: set[str] = set()
+    for text in texts:
+        for candidate in re.findall(r"[0-9A-Za-z가-힣]+", text):
+            normalized = candidate.strip().lower()
+            if len(normalized) < 2 or normalized in QUERY_VALIDATION_STOPWORDS:
+                continue
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            keywords.append(candidate.strip())
+    return keywords
+
+
+def validate_standalone_search_query(
+    query: str,
+    *,
+    source_texts: list[str],
+) -> tuple[str, list[str]]:
+    normalized_query = ensure_question_sentence(query)
+    failure_reasons: list[str] = []
+
+    if not normalized_query:
+        failure_reasons.append("empty")
+        return normalized_query, failure_reasons
+
+    query_length = len(normalized_query)
+    if query_length < MIN_STANDALONE_QUERY_LENGTH:
+        failure_reasons.append("too_short")
+    if query_length > MAX_STANDALONE_QUERY_LENGTH:
+        failure_reasons.append("too_long")
+    if not normalized_query.endswith("?"):
+        failure_reasons.append("not_question")
+
+    source_keywords = extract_query_keywords(*source_texts)
+    if source_keywords:
+        query_lower = normalized_query.lower()
+        if not any(keyword.lower() in query_lower for keyword in source_keywords[:8]):
+            failure_reasons.append("missing_core_keyword")
+
+    return normalized_query, failure_reasons
+
+
+def build_metadata_augmented_query(last_customer_message: str | None, metadata: object | None) -> str:
+    base_text = normalize_chat_text(last_customer_message or "")
+    if not base_text:
+        return ""
+
+    augment_parts = [
+        value.strip()
+        for value in [
+            getattr(metadata, "product", "") if metadata else "",
+            getattr(metadata, "document_type", "") if metadata else "",
+        ]
+        if value and value.strip()
+    ]
+    if not augment_parts:
+        return ensure_question_sentence(base_text)
+
+    return ensure_question_sentence(f"{' '.join(augment_parts)} 관련해서 {base_text}")
 
 
 def tokenize_text(text: str) -> list[str]:
@@ -1460,7 +1671,8 @@ class RetrieveRequest(BaseModel):
 
 class ConversationTurn(BaseModel):
     role: str
-    content: str
+    content: str | None = None
+    text: str | None = None
 
 
 class ChatMetadata(BaseModel):
@@ -1487,6 +1699,10 @@ class RewriteResult(BaseModel):
     question_type: str | None = None
     entities: dict[str, str] = Field(default_factory=dict)
     routing_hints: dict[str, str] = Field(default_factory=dict)
+    normalized_conversation: list[dict[str, str]] = Field(default_factory=list)
+    last_customer_message: str | None = None
+    validation_reasons: list[str] = Field(default_factory=list)
+    rewrite_source: str | None = None
 
 
 class RebuildIndexRequest(BaseModel):
@@ -1864,6 +2080,69 @@ def build_retrieval_hits(result: dict[str, object]) -> list[dict[str, object]]:
     return hits
 
 
+def normalize_retrieval_score(hit: dict[str, object]) -> float | None:
+    rerank_score = hit.get("rerank_score")
+    if isinstance(rerank_score, (int, float)):
+        return float(rerank_score)
+
+    raw_score = hit.get("score")
+    if isinstance(raw_score, (int, float)):
+        return float(raw_score)
+
+    distance = hit.get("distance")
+    if isinstance(distance, (int, float)):
+        return 1.0 / (1.0 + max(float(distance), 0.0))
+
+    return None
+
+
+def build_standardized_retrieved_chunks(hits: list[dict[str, object]]) -> list[dict[str, object]]:
+    standardized_chunks: list[dict[str, object]] = []
+    seen_chunk_ids: set[str] = set()
+
+    for rank, hit in enumerate(hits, start=1):
+        chunk_id = str(hit.get("id") or "").strip()
+        if not chunk_id or chunk_id in seen_chunk_ids:
+            continue
+        seen_chunk_ids.add(chunk_id)
+
+        text = normalize_chat_text(str(hit.get("text") or ""))
+        if not text:
+            continue
+
+        section = str(hit.get("section_header") or "").strip() or None
+        document_id = (
+            str(hit.get("stored_name") or "").strip()
+            or str(hit.get("source") or "").strip()
+            or str(hit.get("original_name") or "").strip()
+            or None
+        )
+        score = normalize_retrieval_score(hit)
+
+        standardized_chunk: dict[str, object] = {
+            "document_id": document_id,
+            "chunk_id": chunk_id,
+            "score": score,
+            "section": section,
+            "text": text,
+            "rank": rank,
+        }
+
+        for source_key in ("source", "original_name", "stored_name", "matched_queries"):
+            value = hit.get(source_key)
+            if value:
+                standardized_chunk[source_key] = value
+
+        for numeric_key in ("distance", "rerank_score", "chunk_index", "page_number", "start_char", "end_char"):
+            value = hit.get(numeric_key)
+            if isinstance(value, (int, float)):
+                standardized_chunk[numeric_key] = value
+
+        standardized_chunks.append(standardized_chunk)
+
+    return standardized_chunks
+
+
 def score_hit(query_tokens: list[str], hit: dict[str, object]) -> float:
     if not query_tokens:
         return 0.0
@@ -2005,6 +2284,7 @@ def build_lexical_fallback_hits(
         "executed_queries": filtered_queries,
         "top_k": top_k,
         "hit_count": len(hits),
+        "retrieved_chunks": build_standardized_retrieved_chunks(hits),
         "collection_name": "local-lexical-fallback",
         "embedding_provider": "local-lexical-fallback",
         "embedding_model": "none",
@@ -2047,12 +2327,14 @@ def retrieve_chunks(payload: RetrieveRequest) -> dict[str, object]:
         include=["documents", "metadatas", "distances"],
     )
     hits = rerank_hits(query, build_retrieval_hits(result), top_k)
+    retrieved_chunks = build_standardized_retrieved_chunks(hits)
 
     return {
         "status": "retrieved",
         "query": query,
         "top_k": top_k,
         "hit_count": len(hits),
+        "retrieved_chunks": retrieved_chunks,
         "collection_name": embedding_config["collection_name"],
         "embedding_provider": embedding_config["provider"],
         "embedding_model": embedding_config["model"],
@@ -2157,6 +2439,7 @@ def retrieve_chunks_for_queries(
         "executed_queries": executed_queries,
         "top_k": top_k,
         "hit_count": len(hits),
+        "retrieved_chunks": build_standardized_retrieved_chunks(hits),
         "collection_name": embedding_config["collection_name"],
         "embedding_provider": embedding_config["provider"],
         "embedding_model": embedding_config["model"],
@@ -2269,6 +2552,223 @@ def infer_document_hint(
     return infer_document_hint_from_rules(combined_text)
 
 
+def build_query_rewrite_seed_query(trimmed_query: str, last_customer_message: str | None) -> str:
+    if last_customer_message and last_customer_message.strip():
+        return last_customer_message.strip()
+    return trimmed_query
+
+
+def build_query_rewrite_messages(
+    *,
+    seed_query: str,
+    original_query: str,
+    last_customer_message: str | None,
+    normalized_conversation: list[dict[str, str]],
+    metadata: dict[str, object],
+) -> list[dict[str, str]]:
+    context_lines = [f"{turn['role']}: {turn['content']}" for turn in normalized_conversation]
+    system_prompt = (
+        "You are a query rewriter for a Hybrid RAG system.\n"
+        "Return JSON only.\n"
+        "Preserve the original meaning.\n"
+        "Respond in Korean when the user question is Korean.\n"
+        "Base the rewrite on the latest customer utterance when conversation context is provided.\n"
+        "Use conversation context and metadata only to resolve omitted subjects such as product or document names.\n"
+        "Do not include personal information.\n"
+        "Output one complete standalone question sentence for rewritten_query.\n"
+        "The rewritten_query must remain a question.\n"
+        "The JSON schema is:\n"
+        "{\n"
+        '  "rewritten_query": string,\n'
+        '  "search_queries": string[],\n'
+        '  "intent": string,\n'
+        '  "question_type": string,\n'
+        '  "entities": object,\n'
+        '  "routing_hints": object\n'
+        "}"
+    )
+    user_prompt = (
+        "Rewrite the customer question into retrieval-friendly search queries.\n"
+        "Use the latest customer message as the primary rewrite target.\n"
+        "Preserve important entities, insurance document terms, conditions, and scenario details.\n"
+        "Infer the most likely product or document name from the context when omitted.\n"
+        "Exclude topics that the agent has already answered.\n"
+        "question_type should be one of documents, period, numeric, definition, conditions, comparison, or general when possible.\n"
+        "routing_hints should include likely category such as terms, pricing_method, change_process, or general when possible.\n\n"
+        f"Input:\n{json.dumps({'seed_query': seed_query, 'original_query': original_query, 'last_customer_message': last_customer_message, 'conversation_context': context_lines, 'metadata': metadata}, ensure_ascii=False)}"
+    )
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+
+def parse_query_rewrite_response(response_payload: dict[str, object], fallback_query: str) -> tuple[str, list[str], str | None, str | None, dict[str, str], dict[str, str]]:
+    rewritten_query = ensure_question_sentence(str(response_payload.get("rewritten_query") or "").strip() or fallback_query)
+    raw_search_queries = response_payload.get("search_queries")
+    search_queries: list[str] = []
+    if isinstance(raw_search_queries, list):
+        for item in raw_search_queries:
+            if isinstance(item, str) and item.strip():
+                search_queries.append(item.strip())
+    if rewritten_query not in search_queries:
+        search_queries.insert(0, rewritten_query)
+
+    raw_entities = response_payload.get("entities")
+    entities = {str(key): str(value) for key, value in raw_entities.items()} if isinstance(raw_entities, dict) else {}
+    raw_routing_hints = response_payload.get("routing_hints")
+    routing_hints = (
+        {str(key): str(value) for key, value in raw_routing_hints.items()}
+        if isinstance(raw_routing_hints, dict)
+        else {}
+    )
+    intent = response_payload.get("intent")
+    if intent is not None:
+        intent = str(intent).strip() or None
+    question_type = response_payload.get("question_type")
+    if question_type is not None:
+        question_type = str(question_type).strip() or None
+
+    return rewritten_query, search_queries or [fallback_query], intent, question_type, entities, routing_hints
+
+
+def build_query_rewrite_fallback_result(
+    payload: ChatRequest,
+    *,
+    trimmed_query: str,
+    normalized_conversation: list[dict[str, str]],
+    last_customer_message: str | None,
+) -> RewriteResult:
+    fallback_query = build_query_rewrite_seed_query(trimmed_query, last_customer_message)
+    return enrich_rewrite_result(
+        payload,
+        RewriteResult(
+            original_query=trimmed_query,
+            rewritten_query=ensure_question_sentence(fallback_query),
+            search_queries=[fallback_query, trimmed_query],
+            normalized_conversation=normalized_conversation,
+            last_customer_message=last_customer_message,
+            rewrite_source="fallback:last_customer_message",
+        ),
+    )
+
+
+def retry_query_rewrite_once(
+    *,
+    seed_query: str,
+    trimmed_query: str,
+    last_customer_message: str | None,
+    normalized_conversation: list[dict[str, str]],
+    metadata: dict[str, object],
+    validation_reasons: list[str],
+) -> tuple[str, list[str], str | None, str | None, dict[str, str], dict[str, str]]:
+    messages = build_query_rewrite_messages(
+        seed_query=seed_query,
+        original_query=trimmed_query,
+        last_customer_message=last_customer_message,
+        normalized_conversation=normalized_conversation,
+        metadata=metadata,
+    )
+    retry_note = (
+        "The previous rewritten_query failed validation.\n"
+        f"Validation failures: {', '.join(validation_reasons)}.\n"
+        "Return one Korean standalone question sentence between 15 and 150 characters.\n"
+        "Keep the core insurance keywords from the customer message.\n"
+        "Return JSON only."
+    )
+    messages.append({"role": "user", "content": retry_note})
+    response_text = build_azure_openai_chat_completion(messages)
+    response_payload = extract_json_object(response_text)
+    return parse_query_rewrite_response(response_payload, seed_query)
+
+
+def apply_standalone_query_validation(
+    payload: ChatRequest,
+    rewrite_result: RewriteResult,
+) -> RewriteResult:
+    source_texts = [
+        rewrite_result.last_customer_message or "",
+        payload.query,
+        payload.metadata.product if payload.metadata and payload.metadata.product else "",
+        payload.metadata.document_type if payload.metadata and payload.metadata.document_type else "",
+    ]
+
+    validated_query, validation_reasons = validate_standalone_search_query(
+        rewrite_result.rewritten_query,
+        source_texts=source_texts,
+    )
+    if not validation_reasons:
+        rewrite_result.rewritten_query = validated_query
+        rewrite_result.validation_reasons = []
+        rewrite_result.rewrite_source = rewrite_result.rewrite_source or "llm"
+        return rewrite_result
+
+    fallback_query = build_query_rewrite_seed_query(rewrite_result.original_query, rewrite_result.last_customer_message)
+    validated_fallback_query, fallback_reasons = validate_standalone_search_query(
+        fallback_query,
+        source_texts=source_texts,
+    )
+    if not fallback_reasons:
+        rewrite_result.rewritten_query = validated_fallback_query
+        rewrite_result.search_queries = [validated_fallback_query, *rewrite_result.search_queries]
+        rewrite_result.validation_reasons = validation_reasons
+        rewrite_result.rewrite_source = "fallback:last_customer_message"
+        return rewrite_result
+
+    metadata_augmented_query = build_metadata_augmented_query(rewrite_result.last_customer_message, payload.metadata)
+    if metadata_augmented_query:
+        validated_augmented_query, augmented_reasons = validate_standalone_search_query(
+            metadata_augmented_query,
+            source_texts=source_texts,
+        )
+        if not augmented_reasons:
+            rewrite_result.rewritten_query = validated_augmented_query
+            rewrite_result.search_queries = [validated_augmented_query, *rewrite_result.search_queries]
+            rewrite_result.validation_reasons = validation_reasons + fallback_reasons
+            rewrite_result.rewrite_source = "fallback:last_customer_message+metadata"
+            return rewrite_result
+
+    metadata = serialize_chat_metadata(payload.metadata)
+    try:
+        (
+            retried_query,
+            retried_search_queries,
+            retried_intent,
+            retried_question_type,
+            retried_entities,
+            retried_routing_hints,
+        ) = retry_query_rewrite_once(
+            seed_query=fallback_query,
+            trimmed_query=rewrite_result.original_query,
+            last_customer_message=rewrite_result.last_customer_message,
+            normalized_conversation=rewrite_result.normalized_conversation,
+            metadata=metadata,
+            validation_reasons=validation_reasons + fallback_reasons,
+        )
+        validated_retry_query, retry_reasons = validate_standalone_search_query(
+            retried_query,
+            source_texts=source_texts,
+        )
+        if not retry_reasons:
+            rewrite_result.rewritten_query = validated_retry_query
+            rewrite_result.search_queries = [validated_retry_query, *retried_search_queries, *rewrite_result.search_queries]
+            rewrite_result.intent = retried_intent or rewrite_result.intent
+            rewrite_result.question_type = retried_question_type or rewrite_result.question_type
+            rewrite_result.entities = retried_entities or rewrite_result.entities
+            rewrite_result.routing_hints = retried_routing_hints or rewrite_result.routing_hints
+            rewrite_result.validation_reasons = validation_reasons + fallback_reasons
+            rewrite_result.rewrite_source = "retry:llm"
+            return rewrite_result
+    except (HTTPException, ValueError, json.JSONDecodeError) as exc:
+        logger.warning("query_rewrite_retry_failed original_query=%s error=%s", rewrite_result.original_query, exc)
+
+    rewrite_result.rewritten_query = validated_fallback_query or ensure_question_sentence(fallback_query)
+    rewrite_result.search_queries = [rewrite_result.rewritten_query, *rewrite_result.search_queries]
+    rewrite_result.validation_reasons = validation_reasons + fallback_reasons
+    rewrite_result.rewrite_source = "fallback:last_customer_message"
+    return rewrite_result
+
+
 def enrich_rewrite_result(payload: ChatRequest, rewrite_result: RewriteResult) -> RewriteResult:
     entities = dict(rewrite_result.entities)
     routing_hints = dict(rewrite_result.routing_hints)
@@ -2301,6 +2801,10 @@ def enrich_rewrite_result(payload: ChatRequest, rewrite_result: RewriteResult) -
         question_type=question_type,
         entities=entities,
         routing_hints=routing_hints,
+        normalized_conversation=rewrite_result.normalized_conversation,
+        last_customer_message=rewrite_result.last_customer_message,
+        validation_reasons=rewrite_result.validation_reasons,
+        rewrite_source=rewrite_result.rewrite_source,
     )
 
 
@@ -2310,92 +2814,52 @@ def rewrite_chat_query(payload: ChatRequest) -> RewriteResult:
     if not trimmed_query:
         raise HTTPException(status_code=400, detail="Query text is required.")
 
-    context_lines = [
-        f"{turn.role}: {turn.content.strip()}"
-        for turn in payload.conversation_context
-        if turn.content.strip()
-    ]
+    normalized_conversation = normalize_conversation_context(payload.conversation_context)
+    if not normalized_conversation:
+        normalized_conversation = parse_conversation_context_from_query_text(trimmed_query)
+    last_customer_message = extract_last_customer_message(normalized_conversation)
     metadata = serialize_chat_metadata(payload.metadata)
-
-    system_prompt = (
-        "You are a query rewriter for a Hybrid RAG system.\n"
-        "Return JSON only.\n"
-        "Preserve the original meaning.\n"
-        "Respond in Korean when the user question is Korean.\n"
-        "Use conversation context and metadata to resolve omitted subjects such as product or document names.\n"
-        "The JSON schema is:\n"
-        "{\n"
-        '  "rewritten_query": string,\n'
-        '  "search_queries": string[],\n'
-        '  "intent": string,\n'
-        '  "question_type": string,\n'
-        '  "entities": object,\n'
-        '  "routing_hints": object\n'
-        "}"
-    )
-    user_prompt = (
-        "Rewrite the user question into retrieval-friendly search queries.\n"
-        "Keep important entities, document terms, and conditions.\n"
-        "Infer the most likely product or document name from the context when omitted.\n"
-        "question_type should be one of documents, period, numeric, definition, conditions, comparison, or general when possible.\n"
-        "routing_hints should include likely category such as terms, pricing_method, change_process, or general when possible.\n\n"
-        f"Input:\n{json.dumps({'query': trimmed_query, 'conversation_context': context_lines, 'metadata': metadata}, ensure_ascii=False)}"
+    seed_query = build_query_rewrite_seed_query(trimmed_query, last_customer_message)
+    messages = build_query_rewrite_messages(
+        seed_query=seed_query,
+        original_query=trimmed_query,
+        last_customer_message=last_customer_message,
+        normalized_conversation=normalized_conversation,
+        metadata=metadata,
     )
 
     try:
-        response_text = build_azure_openai_chat_completion(
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ]
-        )
+        response_text = build_azure_openai_chat_completion(messages)
         response_payload = extract_json_object(response_text)
-        rewritten_query = str(response_payload.get("rewritten_query") or "").strip() or trimmed_query
-        raw_search_queries = response_payload.get("search_queries")
-        search_queries: list[str] = []
-        if isinstance(raw_search_queries, list):
-            for item in raw_search_queries:
-                if isinstance(item, str) and item.strip():
-                    search_queries.append(item.strip())
-        if rewritten_query not in search_queries:
-            search_queries.insert(0, rewritten_query)
-
-        raw_entities = response_payload.get("entities")
-        entities = {str(key): str(value) for key, value in raw_entities.items()} if isinstance(raw_entities, dict) else {}
-        raw_routing_hints = response_payload.get("routing_hints")
-        routing_hints = (
-            {str(key): str(value) for key, value in raw_routing_hints.items()}
-            if isinstance(raw_routing_hints, dict)
-            else {}
+        rewritten_query, search_queries, intent, question_type, entities, routing_hints = parse_query_rewrite_response(
+            response_payload,
+            seed_query,
         )
-        intent = response_payload.get("intent")
-        if intent is not None:
-            intent = str(intent).strip() or None
-        question_type = response_payload.get("question_type")
-        if question_type is not None:
-            question_type = str(question_type).strip() or None
 
+        rewrite_result = RewriteResult(
+            original_query=trimmed_query,
+            rewritten_query=rewritten_query or seed_query,
+            search_queries=search_queries,
+            intent=intent,
+            question_type=question_type,
+            entities=entities,
+            routing_hints=routing_hints,
+            normalized_conversation=normalized_conversation,
+            last_customer_message=last_customer_message,
+            rewrite_source="llm",
+        )
+        rewrite_result = apply_standalone_query_validation(payload, rewrite_result)
         return enrich_rewrite_result(
             payload,
-            RewriteResult(
-                original_query=trimmed_query,
-                rewritten_query=rewritten_query,
-                search_queries=search_queries or [trimmed_query],
-                intent=intent,
-                question_type=question_type,
-                entities=entities,
-                routing_hints=routing_hints,
-            ),
+            rewrite_result,
         )
     except (HTTPException, ValueError, json.JSONDecodeError) as exc:
         logger.warning("query_rewrite_failed original_query=%s error=%s", trimmed_query, exc)
-        return enrich_rewrite_result(
+        return build_query_rewrite_fallback_result(
             payload,
-            RewriteResult(
-                original_query=trimmed_query,
-                rewritten_query=trimmed_query,
-                search_queries=[trimmed_query],
-            ),
+            trimmed_query=trimmed_query,
+            normalized_conversation=normalized_conversation,
+            last_customer_message=last_customer_message,
         )
 
 
@@ -2407,11 +2871,13 @@ def validate_retrieval_response(payload: object) -> dict[str, object]:
     if not isinstance(hits, list):
         raise HTTPException(status_code=502, detail="RAG retrieval response is missing hits.")
 
+    standardized_hits = [item for item in hits if isinstance(item, dict)]
     return {
         "status": str(payload.get("status") or "retrieved"),
         "query": str(payload.get("query") or ""),
         "top_k": int(payload.get("top_k") or 0),
         "hit_count": int(payload.get("hit_count") or len(hits)),
+        "retrieved_chunks": build_standardized_retrieved_chunks(standardized_hits),
         "collection_name": str(payload.get("collection_name") or ""),
         "embedding_provider": payload.get("embedding_provider"),
         "embedding_model": payload.get("embedding_model"),
@@ -2495,6 +2961,9 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
     hits = retrieval["hits"]
     if not isinstance(hits, list):
         hits = []
+    retrieved_chunks = retrieval.get("retrieved_chunks")
+    if not isinstance(retrieved_chunks, list):
+        retrieved_chunks = build_standardized_retrieved_chunks([hit for hit in hits if isinstance(hit, dict)])
 
     if not hits:
         return {
@@ -2503,6 +2972,11 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
             "interpreted_query": rewrite_result.rewritten_query,
             "rewritten_query": rewrite_result.rewritten_query,
             "search_queries": rewrite_result.search_queries,
+            "retrieved_chunks": retrieved_chunks,
+            "normalized_conversation": rewrite_result.normalized_conversation,
+            "last_customer_message": rewrite_result.last_customer_message,
+            "validation_reasons": rewrite_result.validation_reasons,
+            "rewrite_source": rewrite_result.rewrite_source,
             "intent": rewrite_result.intent,
             "question_type": rewrite_result.question_type,
             "entities": rewrite_result.entities,
@@ -2560,6 +3034,11 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         "interpreted_query": rewrite_result.rewritten_query,
         "rewritten_query": rewrite_result.rewritten_query,
         "search_queries": rewrite_result.search_queries,
+        "retrieved_chunks": retrieved_chunks,
+        "normalized_conversation": rewrite_result.normalized_conversation,
+        "last_customer_message": rewrite_result.last_customer_message,
+        "validation_reasons": rewrite_result.validation_reasons,
+        "rewrite_source": rewrite_result.rewrite_source,
         "intent": rewrite_result.intent,
         "question_type": rewrite_result.question_type,
         "entities": rewrite_result.entities,

@@ -21,7 +21,9 @@
   - pipeline 실패 단계와 backend log 경로 표시
 - `/chat`
   - 질문 입력
-  - `RAG question` 표시
+  - `Question` 멀티라인에 `고객:` / `상담사:` prefix를 넣으면 backend에서 상담 대화로 해석
+  - `LLM Question` 표시
+  - `rewrite source`, `validation reasons` 표시
   - `Search API endpoint` 입력
   - `Lookup API endpoint` 입력
   - response 표시 영역
@@ -46,7 +48,9 @@
 - 하단 `Parsing test result` 패널은 preview 중심으로 단순화했다.
 - `/chat`은 외부 RAG 연동 스키마가 확정되기 전까지 schema-light shell로 유지한다.
 - `/chat` main form은 질문, `Search API endpoint`, `Lookup API endpoint`만 받도록 유지하고 `Target file` 같은 retrieval tuning control은 주 화면에서 제외했다.
-- `/chat` Question 바로 아래에 실제 검색에 사용된 `RAG question` (`rewritten_query`)을 표시한다.
+- `/chat` Question은 단일 질문뿐 아니라 `고객:` / `상담사:` 멀티라인 입력도 허용하고, backend가 이를 `conversation_context`로 정규화한다.
+- `/chat` Question 바로 아래에 `LLM Question` (`rewritten_query`)을 표시한다.
+- `/chat` Question preview 아래에서 `rewrite_source`, `validation_reasons`로 Step 3 검증/fallback trace를 확인할 수 있다.
 - `/chat` answer card는 최종 응답 영역, citation card는 근거 영역, context card는 참고용 context 확인용으로 나눴다.
 - `/chat` Evidence 카드는 source / chunk / page 같은 citation pointer만 compact하게 보여주고, 중복 preview는 제거했다.
 - `/chat` Reference context 카드는 실제 retrieval hit 순서를 유지하며 preview, full text, `distance`, `rerank_score`, `matched_queries`를 함께 보여준다.

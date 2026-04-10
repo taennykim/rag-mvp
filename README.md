@@ -78,7 +78,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Chat page keeps question input, response area, citation slots, and optional debug context visible
 - `/chat` Evidence card now shows compact citation pointers, while `Reference context` keeps the actual retrieval hit preview/full text
 - `/chat` `Reference context` now shows `rerank_score`, `distance`, and `matched_queries` for internal retrieval hits
-- `/chat` Question 바로 아래에서 실제 RAG 검색에 사용된 `RAG question` (`rewritten_query`)을 확인할 수 있다
+- `/chat` Question 바로 아래에서 `LLM Question` (`rewritten_query`)을 확인할 수 있다
 - External RAG API request/response schema is not finalized yet, so `/chat` avoids depending on request tuning controls in the main UI
 - Current backend can still return retrieval-backed answers and citations while the external contract is pending
 - Upload list supports file-level delete of upload + index
@@ -134,6 +134,7 @@ Start from these files first:
 - `AGENTS.md`
 - `README.md`
 - `docs/plan.md`
+- `docs/chat_plan.md`
 - `TODO.md`
 - `docs/status.md`
 - `docs/answer-eval.md`
@@ -144,16 +145,18 @@ Recommended restart order:
 1. Review `AGENTS.md` for the working rules and document order.
 2. Review `README.md` for the current runtime and screen-test rules.
 3. Review `docs/plan.md` for the current phase and next priority.
-4. Review `TODO.md` for unchecked tasks.
-5. Review `docs/status.md` for the latest completed scope and blockers.
-6. Review related `docs/*.md` such as `docs/answer-eval.md` and `docs/llm.md`.
-7. Review the latest `docs/daily/*` for the latest session log.
-8. Start the next task.
+4. Review `docs/chat_plan.md` for the current chat flow and rewrite/retrieval direction.
+5. Review `TODO.md` for unchecked tasks.
+6. Review `docs/status.md` for the latest completed scope and blockers.
+7. Review related `docs/*.md` such as `docs/answer-eval.md` and `docs/llm.md`.
+8. Review the latest `docs/daily/*` for the latest session log.
+9. Start the next task.
 
 ## Daily Start Checklist
 1. Review `AGENTS.md` for working rules and project operating constraints.
 2. Review `README.md` for runtime, deployment, and screen-test rules.
 3. Review `docs/plan.md` for the current phase and next work.
-4. Review `TODO.md` for unchecked tasks.
-5. Review `docs/status.md` for the latest actual progress and blockers.
-6. Review related `docs/*.md` and the latest `docs/daily/` file before starting.
+4. Review `docs/chat_plan.md` for the current chat flow and rewrite/retrieval direction.
+5. Review `TODO.md` for unchecked tasks.
+6. Review `docs/status.md` for the latest actual progress and blockers.
+7. Review related `docs/*.md` and the latest `docs/daily/` file before starting.

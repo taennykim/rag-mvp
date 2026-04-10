@@ -35,6 +35,8 @@ type ChatResponse = {
   interpreted_query?: string;
   rewritten_query?: string;
   search_queries?: string[];
+  validation_reasons?: string[];
+  rewrite_source?: string | null;
   search_api_endpoint?: string | null;
   lookup_api_endpoint?: string | null;
 };
@@ -156,17 +158,28 @@ export default function ChatPage() {
             className="chat-textarea"
             id="chat-query"
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="보험 약관, 서류 안내, 보장 조건처럼 사용자가 실제로 물을 질문을 입력하세요."
-            rows={4}
+            placeholder={"단일 질문 또는 멀티라인 상담 대화를 입력하세요.\n예:\n고객: 실손보험 청구하려고 하는데요.\n상담사: 어떤 부분이 궁금하신가요?\n고객: 통원 치료도 청구 가능한가요?"}
+            rows={6}
             value={query}
           />
+          <div className="chat-note">
+            `고객:` / `상담사:` 라벨이 있는 멀티라인 입력은 backend에서 `conversation_context`로 해석합니다.
+          </div>
           <div className="chat-query-preview">
-            <span className="chat-query-preview-label">RAG question</span>
+            <span className="chat-query-preview-label">LLM Question</span>
             <div className="chat-query-preview-body">
               {result?.rewritten_query?.trim()
                 ? result.rewritten_query
-                : "응답 후 이 위치에 실제 RAG 검색에 사용된 질문이 표시됩니다."}
+                : "응답 후 이 위치에 LLM이 정리한 질문이 표시됩니다."}
             </div>
+            {result?.rewrite_source ? (
+              <div className="chat-note">
+                rewrite source: {result.rewrite_source}
+                {result.validation_reasons?.length
+                  ? ` / validation: ${result.validation_reasons.join(", ")}`
+                  : ""}
+              </div>
+            ) : null}
           </div>
           <label className="upload-label" htmlFor="chat-search-api-endpoint">
             Search API endpoint

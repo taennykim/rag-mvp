@@ -151,6 +151,23 @@
 
 ---
 
+## Phase 9.1 Chat Plan Steps
+
+- [x] Step 1. 원본 상담 대화 입력 구성
+- [x] `Question` 멀티라인의 `고객:` / `상담사:` prefix를 `conversation_context`로 파싱
+- [x] Step 2. LLM Query Rewrite
+- [x] Step 3. Standalone Search Query 검증
+- [ ] Step 4. Search API 호출
+- [x] Step 5. Retrieved Candidate Chunks 표준화
+- [ ] Step 6. Search Result Evaluation
+- [ ] Step 7. Need More Context 분기
+- [ ] Step 8. Lookup API 호출
+- [ ] Step 9. Expanded Context 병합
+- [ ] Step 10. Answer Generation LLM
+- [ ] Step 11. 최종 상담 답변 후처리
+
+---
+
 ## Phase 9.5 Upload UX / Operations
 
 - [x] Refresh uploaded file list immediately after upload failure
@@ -200,7 +217,7 @@
 ## Next Session Start Point
 
 - [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-31.md`, `TODO.md`에 반영
-- [ ] 다음 시작 시 `AGENTS.md` -> `README.md` -> `docs/plan.md` -> `TODO.md` -> `docs/status.md` -> 관련 `docs/*.md` -> 최신 `docs/daily/*` 순서로 확인
+- [ ] 다음 시작 시 `AGENTS.md` -> `README.md` -> `docs/plan.md` -> `docs/chat_plan.md` -> `TODO.md` -> `docs/status.md` -> 관련 `docs/*.md` -> 최신 `docs/daily/*` 순서로 확인
 - [x] frontend 의존성 설치
 - [x] backend 의존성 설치
 - [x] frontend 실행 확인
