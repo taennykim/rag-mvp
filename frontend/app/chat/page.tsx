@@ -32,11 +32,7 @@ type ChatResponse = {
   citations?: ChatCitation[];
   hits?: RetrievalHit[];
   detail?: string;
-  interpreted_query?: string;
   rewritten_query?: string;
-  search_queries?: string[];
-  validation_reasons?: string[];
-  rewrite_source?: string | null;
   search_api_endpoint?: string | null;
   lookup_api_endpoint?: string | null;
 };
@@ -86,6 +82,7 @@ export default function ChatPage() {
   const [searchApiEndpoint, setSearchApiEndpoint] = useState("");
   const [lookupApiEndpoint, setLookupApiEndpoint] = useState("");
   const [result, setResult] = useState<ChatResponse | null>(null);
+  const [responseTimeMs, setResponseTimeMs] = useState<number | null>(null);
   const [message, setMessage] = useState(
     "질문 입력과 응답 확인에 집중할 수 있도록 채팅 화면을 단순하게 유지합니다.",
   );
@@ -100,9 +97,11 @@ export default function ChatPage() {
     }
 
     setIsLoading(true);
+    setResponseTimeMs(null);
     setMessage("응답을 불러오는 중입니다.");
 
     try {
+      const startedAt = performance.now();
       const response = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
         headers: {
@@ -120,6 +119,7 @@ export default function ChatPage() {
         throw new Error(data.detail ?? "Chat request failed.");
       }
 
+      setResponseTimeMs(Math.round(performance.now() - startedAt));
       setResult(data);
       setMessage(
         data.answer
@@ -127,6 +127,7 @@ export default function ChatPage() {
           : "응답 본문은 비어 있지만 화면 구조는 유지됩니다.",
       );
     } catch (error) {
+      setResponseTimeMs(null);
       setResult(null);
       setMessage(error instanceof Error ? error.message : "Chat request failed.");
     } finally {
@@ -172,14 +173,6 @@ export default function ChatPage() {
                 ? result.rewritten_query
                 : "응답 후 이 위치에 LLM이 정리한 질문이 표시됩니다."}
             </div>
-            {result?.rewrite_source ? (
-              <div className="chat-note">
-                rewrite source: {result.rewrite_source}
-                {result.validation_reasons?.length
-                  ? ` / validation: ${result.validation_reasons.join(", ")}`
-                  : ""}
-              </div>
-            ) : null}
           </div>
           <label className="upload-label" htmlFor="chat-search-api-endpoint">
             Search API endpoint
@@ -221,6 +214,9 @@ export default function ChatPage() {
           <p>아직 표시할 응답이 없습니다.</p>
         ) : (
           <div className="answer-panel">
+            {typeof responseTimeMs === "number" ? (
+              <div className="answer-latency">Response time: {responseTimeMs} ms</div>
+            ) : null}
             <div className="answer-summary">
               <span>{answerState}</span>
               {result.search_api_endpoint ? <span>Search: {result.search_api_endpoint}</span> : null}

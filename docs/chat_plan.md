@@ -103,6 +103,7 @@ Search Result Evaluation
 - 설명 문구 없이 질문 한 문장만 출력
 - Answer Generation 모델과 분리 운영
 - Validation / Fallback 유지 필수
+- 세부 운영 스펙은 `docs/query-rewrite-spec.md`를 기준으로 관리한다.
 
 ### Format 반영 기준
 검색문은 아래 요구사항을 반드시 만족해야 한다.

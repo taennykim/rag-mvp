@@ -134,10 +134,14 @@
   - ranking 보정용 lexical rerank가 추가되어 있다.
 - chat:
   - `/chat`은 사용자 질의를 Input 정규화 후 structured rewrite로 변환한 뒤 RAG 검색을 수행한다.
+  - query rewrite prompt는 `docs/query-rewrite-spec.md` 운영 문서를 읽어 `rewritten_query` 생성 기준에 반영한다.
   - chat request는 `query`, `top_k`, `stored_name`, `rag_endpoint` 외에 `conversation_context`, `metadata`를 받을 수 있다.
   - `rag_endpoint`가 입력되면 해당 endpoint로 retrieval request를 보내고, 비어 있으면 내부 `POST /retrieve`를 사용한다.
+  - Search API 호출 계층은 `execute_search_for_chat`으로 분리해 내부/외부 검색 결과를 공통 trace로 정리한다.
+  - 내부 검색 후보와 rerank 기준은 원문 `query`보다 `rewritten_query`를 우선 사용한다.
+  - Search 결과 평가는 `retrieved_chunks` 기준 rule-based evaluator로 수행한다.
   - retrieval 결과와 citation 후보를 기반으로 grounded answer를 생성한다.
-  - 응답에는 `interpreted_query`, `rewritten_query`, `search_queries`, `intent`, `entities`, `routing_hints`, 실제 사용한 `rag_endpoint`를 포함한다.
+  - 응답에는 `interpreted_query`, `rewritten_query`, `search_queries`, `search_query`, `executed_search_queries`, `intent`, `entities`, `routing_hints`, `need_more_context`, `search_evaluation`, 실제 사용한 `rag_endpoint`를 포함한다.
 
 ## 3. 현재 상태
 - 진행중
@@ -156,6 +160,9 @@
 - Azure OpenAI embedding 연결 및 재인덱싱 완료
 - `/chat` external/internal RAG endpoint 분기와 internal fallback 검증 완료
 - `/chat` Input + Rewrite 구조화와 rewrite metadata 응답 필드 반영 완료
+- `/chat` Search API 호출 계층 분리 완료
+- `/chat` Search Result Evaluation rule-based 1차 구현 완료
+- query rewrite 운영 스펙을 `docs/query-rewrite-spec.md`로 분리 완료
 
 ## 4. 이슈 및 문제
 - parsing 결과는 아직 메모리 기준 단건 응답만 제공한다.
@@ -172,6 +179,7 @@
 - `PDF`에 대해서는 `Docling`과 `PyMuPDF` 품질/속도 비교가 아직 더 필요하다.
 - 현재 실제 실행 확인 기준은 RAG 서버 frontend `3000`, backend `8000`이다.
 - 현재 PDF 품질 경고는 heuristic 기반이므로, 실제 샘플 문서 기준 과탐/미탐 점검이 필요하다.
+- 현재 `need_more_context`는 Step 6 평가 trace만 반영되어 있고, Step 8 Lookup API 호출과는 아직 연결되지 않았다.
 - 2026-04-01 비교 기준:
   - `PyMuPDF`는 샘플 약관 PDF, 산출방법서 PDF 모두 즉시 추출 완료
   - RAG 서버에서 `Docling` PDF 변환은 두 샘플 모두 `timeout 30` 내 완료되지 않음
@@ -184,4 +192,4 @@
 - 현재는 운영상 `PyMuPDF` 우선으로 정리했고, `Docling`은 비교 검증용으로 유지한다.
 - parser 변경이 chunking/retrieval에 주는 영향 범위를 확인한다.
 - retrieval 질문 세트 기준으로 Azure embedding 적용 후 개선 여부를 다시 검증한다.
-- `/chat` frontend에서 rewrite 결과와 route hint를 확인할 수 있도록 UI를 보강한다.
+- `/chat` Step 7 Need More Context 분기와 Step 8 Lookup API 호출 연결을 정리한다.

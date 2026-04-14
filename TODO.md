@@ -157,9 +157,9 @@
 - [x] `Question` 멀티라인의 `고객:` / `상담사:` prefix를 `conversation_context`로 파싱
 - [x] Step 2. LLM Query Rewrite
 - [x] Step 3. Standalone Search Query 검증
-- [ ] Step 4. Search API 호출
+- [x] Step 4. Search API 호출
 - [x] Step 5. Retrieved Candidate Chunks 표준화
-- [ ] Step 6. Search Result Evaluation
+- [x] Step 6. Search Result Evaluation
 - [ ] Step 7. Need More Context 분기
 - [ ] Step 8. Lookup API 호출
 - [ ] Step 9. Expanded Context 병합

@@ -145,6 +145,18 @@ DEFAULT_AZURE_OPENAI_API_VERSION = "2024-02-01"
 AZURE_OPENAI_EMBEDDING_BATCH_SIZE = 32
 DEFAULT_CHAT_TOP_K = 5
 RUNTIME_ENV_FILE = BASE_DIR / ".env.runtime"
+QUERY_REWRITE_SPEC_PATH = BASE_DIR.parent / "docs" / "query-rewrite-spec.md"
+SEARCH_EVAL_MIN_TOP_CHUNK_TEXT_LENGTH = 180
+SEARCH_EVAL_MULTI_HIT_SAME_DOCUMENT_THRESHOLD = 2
+SEARCH_EVAL_CONTEXT_KEYWORDS: tuple[str, ...] = (
+    "단,",
+    "예외",
+    "유의",
+    "조건",
+    "면책",
+    "제외",
+    "제출서류",
+)
 
 
 def load_runtime_env_file() -> None:
@@ -164,6 +176,13 @@ def load_runtime_env_file() -> None:
 
 
 load_runtime_env_file()
+
+
+@lru_cache(maxsize=1)
+def load_query_rewrite_spec() -> str:
+    if not QUERY_REWRITE_SPEC_PATH.is_file():
+        return ""
+    return QUERY_REWRITE_SPEC_PATH.read_text(encoding="utf-8").strip()
 
 
 def configure_logging() -> logging.Logger:
@@ -394,6 +413,21 @@ QUESTION_CONVERSATION_ROLE_PREFIXES: tuple[tuple[str, str], ...] = (
     ("agent", "상담원 "),
 )
 
+CONVERSATIONAL_FILLER_PATTERNS: tuple[str, ...] = (
+    "그러니까요",
+    "예를 들면",
+    "네",
+    "음",
+    "어",
+    "어...",
+    "음...",
+    "저기",
+    "그",
+    "그게",
+    "약간",
+    "혹시",
+)
+
 
 def normalize_conversation_role(role: str) -> str:
     normalized_role = normalize_chat_text(role).lower()
@@ -475,6 +509,76 @@ def extract_last_customer_message(normalized_turns: list[dict[str, str]]) -> str
         if turn.get("role") == "customer" and turn.get("content"):
             return turn["content"]
     return None
+
+
+def strip_conversational_fillers(text: str) -> str:
+    normalized = normalize_chat_text(text)
+    if not normalized:
+        return ""
+
+    cleaned = normalized
+    for pattern in CONVERSATIONAL_FILLER_PATTERNS:
+        cleaned = re.sub(rf"(^|[\s,.\u2026]){re.escape(pattern)}(?=$|[\s,.\u2026])", " ", cleaned)
+    cleaned = re.sub(r"[.,]{2,}", " ", cleaned)
+    cleaned = cleaned.replace("…", " ")
+    return normalize_chat_text(cleaned)
+
+
+def is_vague_customer_message(text: str) -> bool:
+    normalized = strip_conversational_fillers(text)
+    if not normalized:
+        return True
+
+    if len(normalized) < 20:
+        return True
+
+    vague_markers = ("그런 게", "그런건", "그런 거", "이런 게", "이런 거", "그게", "그거", "있는 건지")
+    if any(marker in normalized for marker in vague_markers):
+        return True
+
+    keyword_count = len(extract_query_keywords(normalized))
+    return keyword_count < 2
+
+
+def build_customer_rewrite_focus_text(normalized_turns: list[dict[str, str]], last_customer_message: str | None) -> str:
+    cleaned_last = strip_conversational_fillers(last_customer_message or "")
+    if not normalized_turns:
+        return cleaned_last
+
+    customer_turns = [
+        strip_conversational_fillers(turn.get("content", ""))
+        for turn in normalized_turns
+        if turn.get("role") == "customer" and turn.get("content")
+    ]
+    customer_turns = [turn for turn in customer_turns if turn]
+    if not customer_turns:
+        return cleaned_last
+
+    if cleaned_last and not is_vague_customer_message(cleaned_last):
+        return cleaned_last
+
+    trailing_customer_turns: list[str] = []
+    for turn in reversed(normalized_turns):
+        role = turn.get("role")
+        content = strip_conversational_fillers(turn.get("content", ""))
+        if role == "customer" and content:
+            trailing_customer_turns.append(content)
+            continue
+        if trailing_customer_turns:
+            break
+    trailing_customer_turns.reverse()
+
+    candidate_turns = trailing_customer_turns or customer_turns[-2:]
+    if len(candidate_turns) == 1 and len(customer_turns) >= 2 and customer_turns[-2] not in candidate_turns:
+        candidate_turns = [customer_turns[-2], candidate_turns[0]]
+
+    unique_turns: list[str] = []
+    seen: set[str] = set()
+    for turn in candidate_turns[-2:]:
+        if turn not in seen:
+            seen.add(turn)
+            unique_turns.append(turn)
+    return normalize_chat_text(" ".join(unique_turns))
 
 
 def ensure_question_sentence(text: str) -> str:
@@ -1705,6 +1809,22 @@ class RewriteResult(BaseModel):
     rewrite_source: str | None = None
 
 
+class SearchEvaluationResult(BaseModel):
+    need_more_context: bool = False
+    reason_codes: list[str] = Field(default_factory=list)
+    evaluation_reasons: list[str] = Field(default_factory=list)
+    top_document_id: str | None = None
+    top_chunk_id: str | None = None
+    top_chunk_text_length: int = 0
+    same_document_hit_count: int = 0
+
+
+def serialize_search_evaluation(result: SearchEvaluationResult) -> dict[str, object]:
+    if hasattr(result, "model_dump"):
+        return result.model_dump()
+    return result.dict()
+
+
 class RebuildIndexRequest(BaseModel):
     primary_parser: str = PRIMARY_PARSER_DOCLING
     fallback_parser: str = FALLBACK_PARSER_EXTENSION_DEFAULT
@@ -2351,7 +2471,6 @@ def build_query_candidates_for_chat(payload: ChatRequest, rewrite_result: Rewrit
     )
 
     candidates = [
-        payload.query.strip(),
         rewrite_result.rewritten_query.strip(),
         *[query.strip() for query in rewrite_result.search_queries],
         *routing_candidates,
@@ -2552,9 +2671,13 @@ def infer_document_hint(
     return infer_document_hint_from_rules(combined_text)
 
 
-def build_query_rewrite_seed_query(trimmed_query: str, last_customer_message: str | None) -> str:
+def build_query_rewrite_seed_query(trimmed_query: str, last_customer_message: str | None, normalized_conversation: list[dict[str, str]] | None = None) -> str:
+    if normalized_conversation:
+        focused_customer_text = build_customer_rewrite_focus_text(normalized_conversation, last_customer_message)
+        if focused_customer_text:
+            return focused_customer_text
     if last_customer_message and last_customer_message.strip():
-        return last_customer_message.strip()
+        return strip_conversational_fillers(last_customer_message.strip()) or last_customer_message.strip()
     return trimmed_query
 
 
@@ -2567,6 +2690,7 @@ def build_query_rewrite_messages(
     metadata: dict[str, object],
 ) -> list[dict[str, str]]:
     context_lines = [f"{turn['role']}: {turn['content']}" for turn in normalized_conversation]
+    rewrite_spec = load_query_rewrite_spec()
     system_prompt = (
         "You are a query rewriter for a Hybrid RAG system.\n"
         "Return JSON only.\n"
@@ -2575,6 +2699,7 @@ def build_query_rewrite_messages(
         "Base the rewrite on the latest customer utterance when conversation context is provided.\n"
         "Use conversation context and metadata only to resolve omitted subjects such as product or document names.\n"
         "Do not include personal information.\n"
+        "The final rewritten_query field must follow the query rewrite spec.\n"
         "Output one complete standalone question sentence for rewritten_query.\n"
         "The rewritten_query must remain a question.\n"
         "The JSON schema is:\n"
@@ -2589,12 +2714,18 @@ def build_query_rewrite_messages(
     )
     user_prompt = (
         "Rewrite the customer question into retrieval-friendly search queries.\n"
-        "Use the latest customer message as the primary rewrite target.\n"
-        "Preserve important entities, insurance document terms, conditions, and scenario details.\n"
-        "Infer the most likely product or document name from the context when omitted.\n"
-        "Exclude topics that the agent has already answered.\n"
-        "question_type should be one of documents, period, numeric, definition, conditions, comparison, or general when possible.\n"
-        "routing_hints should include likely category such as terms, pricing_method, change_process, or general when possible.\n\n"
+        "Apply the following spec to the rewritten_query field.\n"
+        "The spec governs the final question sentence only. The outer response format must still be JSON.\n\n"
+        f"{rewrite_spec}\n\n"
+        "Additional routing requirements:\n"
+        "- Use the latest customer message as the primary rewrite target.\n"
+        "- If the latest customer message is vague, referential, or full of conversational fillers, use the earlier customer turns to restore the full question.\n"
+        "- Do not copy conversational fillers such as '그러니까요', '예를 들면', '네', or unfinished spoken fragments into rewritten_query.\n"
+        "- Preserve important entities, insurance document terms, conditions, and scenario details.\n"
+        "- Infer the most likely product or document name from the context when omitted.\n"
+        "- Exclude topics that the agent has already answered.\n"
+        "- question_type should be one of documents, period, numeric, definition, conditions, comparison, or general when possible.\n"
+        "- routing_hints should include likely category such as terms, pricing_method, change_process, or general when possible.\n\n"
         f"Input:\n{json.dumps({'seed_query': seed_query, 'original_query': original_query, 'last_customer_message': last_customer_message, 'conversation_context': context_lines, 'metadata': metadata}, ensure_ascii=False)}"
     )
     return [
@@ -2639,7 +2770,7 @@ def build_query_rewrite_fallback_result(
     normalized_conversation: list[dict[str, str]],
     last_customer_message: str | None,
 ) -> RewriteResult:
-    fallback_query = build_query_rewrite_seed_query(trimmed_query, last_customer_message)
+    fallback_query = build_query_rewrite_seed_query(trimmed_query, last_customer_message, normalized_conversation)
     return enrich_rewrite_result(
         payload,
         RewriteResult(
@@ -2703,7 +2834,11 @@ def apply_standalone_query_validation(
         rewrite_result.rewrite_source = rewrite_result.rewrite_source or "llm"
         return rewrite_result
 
-    fallback_query = build_query_rewrite_seed_query(rewrite_result.original_query, rewrite_result.last_customer_message)
+    fallback_query = build_query_rewrite_seed_query(
+        rewrite_result.original_query,
+        rewrite_result.last_customer_message,
+        rewrite_result.normalized_conversation,
+    )
     validated_fallback_query, fallback_reasons = validate_standalone_search_query(
         fallback_query,
         source_texts=source_texts,
@@ -2819,7 +2954,7 @@ def rewrite_chat_query(payload: ChatRequest) -> RewriteResult:
         normalized_conversation = parse_conversation_context_from_query_text(trimmed_query)
     last_customer_message = extract_last_customer_message(normalized_conversation)
     metadata = serialize_chat_metadata(payload.metadata)
-    seed_query = build_query_rewrite_seed_query(trimmed_query, last_customer_message)
+    seed_query = build_query_rewrite_seed_query(trimmed_query, last_customer_message, normalized_conversation)
     messages = build_query_rewrite_messages(
         seed_query=seed_query,
         original_query=trimmed_query,
@@ -2949,21 +3084,95 @@ def resolve_retrieval_for_chat(payload: ChatRequest, rewrite_result: RewriteResu
         queries=build_query_candidates_for_chat(payload, rewrite_result),
         top_k=payload.top_k,
         stored_name=payload.stored_name,
-        rerank_query=payload.query.strip() or retrieval_query,
+        rerank_query=retrieval_query,
     )
     return retrieval, "internal:/retrieve"
+
+
+def execute_search_for_chat(payload: ChatRequest, rewrite_result: RewriteResult) -> dict[str, object]:
+    retrieval, rag_endpoint = resolve_retrieval_for_chat(payload, rewrite_result)
+    hits = retrieval.get("hits")
+    if not isinstance(hits, list):
+        hits = []
+
+    retrieved_chunks = retrieval.get("retrieved_chunks")
+    if not isinstance(retrieved_chunks, list):
+        retrieved_chunks = build_standardized_retrieved_chunks([hit for hit in hits if isinstance(hit, dict)])
+
+    return {
+        "query": str(retrieval.get("query") or rewrite_result.rewritten_query),
+        "executed_queries": retrieval.get("executed_queries") if isinstance(retrieval.get("executed_queries"), list) else [],
+        "top_k": int(retrieval.get("top_k") or payload.top_k),
+        "hit_count": int(retrieval.get("hit_count") or len(hits)),
+        "collection_name": retrieval.get("collection_name"),
+        "embedding_provider": retrieval.get("embedding_provider"),
+        "embedding_model": retrieval.get("embedding_model"),
+        "rag_endpoint": rag_endpoint,
+        "hits": hits,
+        "retrieved_chunks": retrieved_chunks,
+    }
+
+
+def evaluate_retrieved_chunks(retrieved_chunks: list[dict[str, object]]) -> SearchEvaluationResult:
+    if not retrieved_chunks:
+        return SearchEvaluationResult(
+            need_more_context=True,
+            reason_codes=["no_hits"],
+            evaluation_reasons=["검색 결과가 없어 추가 문맥 확보가 필요합니다."],
+        )
+
+    top_chunk = retrieved_chunks[0]
+    top_text = normalize_chat_text(str(top_chunk.get("text") or ""))
+    top_document_id = str(top_chunk.get("document_id") or "").strip() or None
+    top_chunk_id = str(top_chunk.get("chunk_id") or "").strip() or None
+    same_document_hit_count = 0
+    if top_document_id:
+        same_document_hit_count = sum(
+            1
+            for chunk in retrieved_chunks
+            if str(chunk.get("document_id") or "").strip() == top_document_id
+        )
+
+    reason_codes: list[str] = []
+    evaluation_reasons: list[str] = []
+    keyword_hits: list[str] = []
+
+    if len(top_text) < SEARCH_EVAL_MIN_TOP_CHUNK_TEXT_LENGTH:
+        reason_codes.append("top_chunk_short")
+        evaluation_reasons.append("상위 chunk 길이가 짧아 앞뒤 문맥이 더 필요할 수 있습니다.")
+
+    for keyword in SEARCH_EVAL_CONTEXT_KEYWORDS:
+        if keyword in top_text:
+            keyword_hits.append(keyword)
+
+    if keyword_hits:
+        reason_codes.append("top_chunk_contains_condition_keywords")
+        evaluation_reasons.append(
+            f"상위 chunk에 조건/예외 신호({', '.join(keyword_hits)})가 있어 추가 문맥이 필요할 수 있습니다."
+        )
+
+    if top_document_id and same_document_hit_count >= SEARCH_EVAL_MULTI_HIT_SAME_DOCUMENT_THRESHOLD:
+        reason_codes.append("same_document_cluster")
+        evaluation_reasons.append("상위 결과가 같은 문서에 몰려 있어 주변 문맥 조회가 유리할 수 있습니다.")
+
+    return SearchEvaluationResult(
+        need_more_context=bool(reason_codes),
+        reason_codes=reason_codes,
+        evaluation_reasons=evaluation_reasons,
+        top_document_id=top_document_id,
+        top_chunk_id=top_chunk_id,
+        top_chunk_text_length=len(top_text),
+        same_document_hit_count=same_document_hit_count,
+    )
 
 
 def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
     original_query = payload.query.strip()
     rewrite_result = rewrite_chat_query(payload)
-    retrieval, rag_endpoint = resolve_retrieval_for_chat(payload, rewrite_result)
-    hits = retrieval["hits"]
-    if not isinstance(hits, list):
-        hits = []
-    retrieved_chunks = retrieval.get("retrieved_chunks")
-    if not isinstance(retrieved_chunks, list):
-        retrieved_chunks = build_standardized_retrieved_chunks([hit for hit in hits if isinstance(hit, dict)])
+    search_result = execute_search_for_chat(payload, rewrite_result)
+    hits = search_result["hits"]
+    retrieved_chunks = search_result["retrieved_chunks"]
+    search_evaluation = evaluate_retrieved_chunks(retrieved_chunks)
 
     if not hits:
         return {
@@ -2981,14 +3190,18 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
             "question_type": rewrite_result.question_type,
             "entities": rewrite_result.entities,
             "routing_hints": rewrite_result.routing_hints,
-            "top_k": retrieval["top_k"],
+            "search_query": search_result["query"],
+            "executed_search_queries": search_result["executed_queries"],
+            "top_k": search_result["top_k"],
             "hit_count": 0,
-            "collection_name": retrieval["collection_name"],
-            "embedding_provider": retrieval["embedding_provider"],
-            "embedding_model": retrieval["embedding_model"],
-            "rag_endpoint": rag_endpoint,
+            "collection_name": search_result["collection_name"],
+            "embedding_provider": search_result["embedding_provider"],
+            "embedding_model": search_result["embedding_model"],
+            "rag_endpoint": search_result["rag_endpoint"],
             "search_api_endpoint": payload.search_api_endpoint.strip() if payload.search_api_endpoint else None,
             "lookup_api_endpoint": payload.lookup_api_endpoint.strip() if payload.lookup_api_endpoint else None,
+            "need_more_context": search_evaluation.need_more_context,
+            "search_evaluation": serialize_search_evaluation(search_evaluation),
             "answer": "문서에서 충분한 근거를 찾지 못했습니다.",
             "insufficient_context": True,
             "citations": [],
@@ -3043,14 +3256,18 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         "question_type": rewrite_result.question_type,
         "entities": rewrite_result.entities,
         "routing_hints": rewrite_result.routing_hints,
-        "top_k": retrieval["top_k"],
-        "hit_count": retrieval["hit_count"],
-        "collection_name": retrieval["collection_name"],
-        "embedding_provider": retrieval["embedding_provider"],
-        "embedding_model": retrieval["embedding_model"],
-        "rag_endpoint": rag_endpoint,
+        "search_query": search_result["query"],
+        "executed_search_queries": search_result["executed_queries"],
+        "top_k": search_result["top_k"],
+        "hit_count": search_result["hit_count"],
+        "collection_name": search_result["collection_name"],
+        "embedding_provider": search_result["embedding_provider"],
+        "embedding_model": search_result["embedding_model"],
+        "rag_endpoint": search_result["rag_endpoint"],
         "search_api_endpoint": payload.search_api_endpoint.strip() if payload.search_api_endpoint else None,
         "lookup_api_endpoint": payload.lookup_api_endpoint.strip() if payload.lookup_api_endpoint else None,
+        "need_more_context": search_evaluation.need_more_context,
+        "search_evaluation": serialize_search_evaluation(search_evaluation),
         "answer": answer,
         "insufficient_context": insufficient_context,
         "citations": build_chat_citations(hits),

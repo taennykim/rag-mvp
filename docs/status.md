@@ -22,6 +22,10 @@
 - 2026-04-10 기준 `Step 3` Standalone Search Query 검증을 backend `/chat`에 연결했고, 길이/질문형/핵심 키워드 규칙과 fallback 순서를 반영했다.
 - 2026-04-10 기준 `Step 5` Retrieved Candidate Chunks 표준화를 backend `/retrieve`, `/chat` 응답에 반영했다.
 - 2026-04-10 기준 변경된 backend 소스와 문서를 RAG 서버에 다시 동기화했고, backend를 재기동한 뒤 `127.0.0.1:8000/health` 응답 `200`을 확인했다.
+- 2026-04-14 기준 `Step 4` Search API 호출 계층을 backend `/chat`에서 분리했고, 내부/외부 검색 경로 공통 trace를 `search_query`, `executed_search_queries` 기준으로 정리했다.
+- 2026-04-14 기준 `Step 6` Search Result Evaluation rule-based 1차 구현을 추가했고, `/chat` 응답에 `need_more_context`와 `search_evaluation`을 포함하도록 반영했다.
+- 2026-04-14 기준 query rewrite 운영 스펙을 `docs/query-rewrite-spec.md`로 분리했고, backend prompt가 이 문서를 읽어 `rewritten_query` 기준에 반영하도록 연결했다.
+- 2026-04-14 기준 `/chat` main UI는 `rewritten_query`만 노출하도록 단순화했고, 내부 Search 후보와 rerank 기준도 `rewritten_query` 우선으로 정리했다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -61,6 +65,7 @@
   - header title은 한 줄 기준으로 보이도록 조정 완료
   - `/chat` Evidence는 compact citation pointer 중심으로 축소했고 `Reference context`는 preview/full text + `rerank_score` + `matched_queries` 표시로 역할 분리 완료
   - `/chat` Question 바로 아래에 `LLM Question` 표시 추가 완료
+  - `/chat` Question preview에는 `rewritten_query`만 표시하도록 정리 완료
 - backend:
   - upload API 구현 완료
   - parse API 및 parse quality API 구현 완료
@@ -75,6 +80,10 @@
   - `POST /chat` Standalone Search Query 검증은 최소/최대 길이, 질문형 종결, 핵심 키워드 포함 여부를 검사하고 실패 시 `last_customer_message` -> `last_customer_message + metadata` -> LLM retry 1회 순서로 fallback 하도록 반영 완료
   - `/chat` 응답에 `rewrite_source`, `validation_reasons`를 포함해 rewrite 검증 trace를 확인할 수 있도록 정리 완료
   - `/retrieve`, `/chat` 응답에 `retrieved_chunks` 표준 포맷을 추가했고 `document_id`, `chunk_id`, `score`, `section`, `text`, `rank` 기준으로 normalize 하도록 반영 완료
+  - `POST /chat` Search API 호출 계층을 `execute_search_for_chat`으로 분리 완료
+  - `POST /chat` Search Result Evaluation rule-based 1차 구현 완료
+  - `POST /chat` 응답에 `search_query`, `executed_search_queries`, `need_more_context`, `search_evaluation` trace 추가 완료
+  - `POST /chat` 내부 검색 후보와 rerank 기준을 `rewritten_query` 우선으로 정리 완료
   - upload 직후 자동 indexing 연결 완료
   - parser catalog API `GET /parse/parsers` 추가 완료
   - `Docling(md)` 전용 Docling parse 및 Markdown file output 저장 구현 완료
