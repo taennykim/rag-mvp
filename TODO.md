@@ -145,6 +145,8 @@
 - [x] Replace simple retrieval rewrite with structured rewrite result on `/chat`
 - [ ] Show rewrite result and route hints on `/chat`
 - [x] Show `RAG question` (`rewritten_query`) under `Question` on `/chat`
+- [x] Add Query Rewrite LLM selector between Question and LLM Question on `/chat`
+- [x] Show detailed response timing on `/chat` answer panel
 - [x] Separate compact `Evidence` from full `Reference context` on `/chat`
 - [x] Show `rerank_score` and `matched_queries` on `/chat` for internal retrieval hits
 - [x] Merge `docs/chat_plan_addendum.md` into `docs/chat_plan.md`
@@ -158,6 +160,7 @@
 - [x] Step 2. LLM Query Rewrite
 - [x] Step 3. Standalone Search Query 검증
 - [x] Step 4. Search API 호출
+- [x] 임시 외부 Search API `/api/search` payload와 `results` 응답 normalization 연결
 - [x] Step 5. Retrieved Candidate Chunks 표준화
 - [x] Step 6. Search Result Evaluation
 - [ ] Step 7. Need More Context 분기
@@ -218,6 +221,13 @@
 
 - [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-31.md`, `TODO.md`에 반영
 - [ ] 다음 시작 시 `AGENTS.md` -> `README.md` -> `docs/plan.md` -> `docs/chat_plan.md` -> `TODO.md` -> `docs/status.md` -> 관련 `docs/*.md` -> 최신 `docs/daily/*` 순서로 확인
+- [ ] 2026-04-16 시작 시 RAG 서버 backend `8000` / frontend `3000` runtime 상태 확인
+- [ ] 치조골 이식/수술특약/판결 케이스 query rewrite 규칙 보강
+- [ ] 치조골 이식 케이스 기대 rewrite 기준 반영: `치조골 이식 수술이 보험 수술특약에서 수술비 지급 대상 수술로 인정되는지와 관련 판결 기준은 무엇인가요?`
+- [ ] RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI 위치와 선택 모델 표시 확인
+- [ ] RAG 서버 브라우저에서 Answer 상단 단계별 응답시간 표시 확인
+- [ ] RAG 서버 브라우저에서 외부 Search API 결과가 Evidence / Reference context에 표시되는지 확인
+- [ ] `gpt-4o-mini` Azure OpenAI deployment 존재 여부 확인 및 UI 선택지 운영 방식 결정
 - [x] frontend 의존성 설치
 - [x] backend 의존성 설치
 - [x] frontend 실행 확인

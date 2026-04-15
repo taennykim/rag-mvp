@@ -33,11 +33,19 @@ type ChatResponse = {
   hits?: RetrievalHit[];
   detail?: string;
   rewritten_query?: string;
+  query_rewrite_model?: string | null;
   search_api_endpoint?: string | null;
   lookup_api_endpoint?: string | null;
+  query_rewrite_time_ms?: number;
+  search_api_response_time_ms?: number;
 };
 
 const API_BASE_URL = "/api";
+const QUERY_REWRITE_MODEL_OPTIONS = [
+  { label: "Default (gpt-4o)", value: "" },
+  { label: "GPT-4o", value: "gpt-4o" },
+  { label: "GPT-4o mini", value: "gpt-4o-mini" },
+];
 
 function formatAnswerState(result: ChatResponse | null) {
   if (!result) {
@@ -77,8 +85,24 @@ function formatMatchedQueries(matchedQueries?: string[]) {
   return matchedQueries.join(" | ");
 }
 
+function formatResponseTiming(totalMs: number, result: ChatResponse) {
+  const detailParts: string[] = [];
+  if (typeof result.query_rewrite_time_ms === "number") {
+    detailParts.push(`Query rewrite time: ${result.query_rewrite_time_ms} ms`);
+  }
+  if (typeof result.search_api_response_time_ms === "number") {
+    detailParts.push(`API response time: ${result.search_api_response_time_ms} ms`);
+  }
+
+  if (!detailParts.length) {
+    return `Response time: ${totalMs} ms`;
+  }
+  return `Response time: ${totalMs} ms, (${detailParts.join(", ")})`;
+}
+
 export default function ChatPage() {
   const [query, setQuery] = useState("");
+  const [queryRewriteModel, setQueryRewriteModel] = useState("");
   const [searchApiEndpoint, setSearchApiEndpoint] = useState("");
   const [lookupApiEndpoint, setLookupApiEndpoint] = useState("");
   const [result, setResult] = useState<ChatResponse | null>(null);
@@ -109,6 +133,7 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           query,
+          query_rewrite_model: queryRewriteModel || null,
           search_api_endpoint: searchApiEndpoint.trim() || null,
           lookup_api_endpoint: lookupApiEndpoint.trim() || null,
         }),
@@ -166,6 +191,21 @@ export default function ChatPage() {
           <div className="chat-note">
             `고객:` / `상담사:` 라벨이 있는 멀티라인 입력은 backend에서 `conversation_context`로 해석합니다.
           </div>
+          <label className="upload-label" htmlFor="chat-query-rewrite-model">
+            Query rewrite LLM
+          </label>
+          <select
+            className="default-file-select"
+            id="chat-query-rewrite-model"
+            onChange={(event) => setQueryRewriteModel(event.target.value)}
+            value={queryRewriteModel}
+          >
+            {QUERY_REWRITE_MODEL_OPTIONS.map((option) => (
+              <option key={option.label} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
           <div className="chat-query-preview">
             <span className="chat-query-preview-label">LLM Question</span>
             <div className="chat-query-preview-body">
@@ -215,10 +255,11 @@ export default function ChatPage() {
         ) : (
           <div className="answer-panel">
             {typeof responseTimeMs === "number" ? (
-              <div className="answer-latency">Response time: {responseTimeMs} ms</div>
+              <div className="answer-latency">{formatResponseTiming(responseTimeMs, result)}</div>
             ) : null}
             <div className="answer-summary">
               <span>{answerState}</span>
+              {result.query_rewrite_model ? <span>Rewrite LLM: {result.query_rewrite_model}</span> : null}
               {result.search_api_endpoint ? <span>Search: {result.search_api_endpoint}</span> : null}
               {result.lookup_api_endpoint ? <span>Lookup: {result.lookup_api_endpoint}</span> : null}
             </div>

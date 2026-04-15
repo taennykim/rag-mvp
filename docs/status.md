@@ -26,6 +26,11 @@
 - 2026-04-14 기준 `Step 6` Search Result Evaluation rule-based 1차 구현을 추가했고, `/chat` 응답에 `need_more_context`와 `search_evaluation`을 포함하도록 반영했다.
 - 2026-04-14 기준 query rewrite 운영 스펙을 `docs/query-rewrite-spec.md`로 분리했고, backend prompt가 이 문서를 읽어 `rewritten_query` 기준에 반영하도록 연결했다.
 - 2026-04-14 기준 `/chat` main UI는 `rewritten_query`만 노출하도록 단순화했고, 내부 Search 후보와 rerank 기준도 `rewritten_query` 우선으로 정리했다.
+- 2026-04-15 기준 query rewrite에서 모호한 마지막 고객 발화를 최근 고객 발화 묶음으로 보강하고, `종신보험` 계열 문의의 보장 축 복원 규칙을 추가했다.
+- 2026-04-15 기준 개발자 제공 임시 Search API `http://10.160.98.123:8000/api/search`를 `/chat` 외부 검색 endpoint로 사용할 수 있도록 `/api/search` payload와 `results` 응답 normalization을 반영했다.
+- 2026-04-15 기준 RAG 서버 `/chat`에서 임시 외부 Search API 호출, `retrieved_chunks` 표준화, Answer 생성까지 end-to-end로 확인했다.
+- 2026-04-15 기준 `/chat` 화면의 응답시간을 전체 Response time, Query rewrite time, API response time으로 세분화했다.
+- 2026-04-15 기준 `/chat` Question과 LLM Question 사이에 Query Rewrite LLM 선택 UI를 추가했고, backend가 `query_rewrite_model`을 rewrite 호출에 적용하도록 반영했다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -81,9 +86,15 @@
   - `/chat` 응답에 `rewrite_source`, `validation_reasons`를 포함해 rewrite 검증 trace를 확인할 수 있도록 정리 완료
   - `/retrieve`, `/chat` 응답에 `retrieved_chunks` 표준 포맷을 추가했고 `document_id`, `chunk_id`, `score`, `section`, `text`, `rank` 기준으로 normalize 하도록 반영 완료
   - `POST /chat` Search API 호출 계층을 `execute_search_for_chat`으로 분리 완료
+  - `POST /chat` 임시 외부 Search API `/api/search` 호출 시 `rewritten_query`를 `query`로 보내고 개발자 제공 curl 파라미터를 적용하도록 반영 완료
+  - `POST /chat` 외부 Search API의 `results[].content` 응답을 내부 `hits` / `retrieved_chunks` 표준 포맷으로 변환하도록 반영 완료
   - `POST /chat` Search Result Evaluation rule-based 1차 구현 완료
+  - `POST /chat` 응답에 `query_rewrite_time_ms`, `search_api_response_time_ms` 추가 완료
+  - `POST /chat` 요청/응답에 query rewrite LLM 선택 trace 추가 완료
   - `POST /chat` 응답에 `search_query`, `executed_search_queries`, `need_more_context`, `search_evaluation` trace 추가 완료
   - `POST /chat` 내부 검색 후보와 rerank 기준을 `rewritten_query` 우선으로 정리 완료
+  - `POST /chat` query rewrite seed를 최근 고객 발화 묶음 기준으로 보강 완료
+  - `POST /chat` query rewrite prompt에 보험 도메인 보장 축 복원 규칙과 최소 few-shot 예시 반영 완료
   - upload 직후 자동 indexing 연결 완료
   - parser catalog API `GET /parse/parsers` 추가 완료
   - `Docling(md)` 전용 Docling parse 및 Markdown file output 저장 구현 완료
@@ -227,13 +238,17 @@
 
 ## 7. 남은 핵심 작업
 - 1차 우선순위:
-  - `docs/chat_plan.md` Step 4 Search API 호출 이후 candidate 표준화/평가 단계 추가
-  - `retrieved_chunks` 기준 Step 6 Search Result Evaluation 규칙 추가
+  - 치조골 이식/수술특약/판결 케이스의 query rewrite 규칙 보강
+  - RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI, `LLM Question`, 단계별 응답시간, 외부 Search API 결과 표시 육안 확인
+  - `gpt-4o-mini` Azure OpenAI deployment 존재 여부 확인 및 UI 선택지 운영 방식 결정
+  - `docs/chat_plan.md` Step 7 Need More Context 분기와 Step 8 Lookup API 호출 연결 방식 정리
   - 외부 RAG contract 확정 전까지 `/chat` question / answer / citation shell 유지
-  - `Docling` PDF 변환 장시간 실행 원인을 확인
-  - garbled detection false negative를 줄이기 위한 문자군 규칙 또는 별도 기준 추가
+  - 정식 외부 Search API contract 확정 시 `/api/search` 임시 adapter request/response mapping 재정리
 - retrieval 질문 세트 기준 `/chat` answer generation 품질 및 citation 품질 기록
 - internal retrieval 기준 `rerank_score` / `matched_queries`를 활용한 retrieval trace 점검은 가능해졌고, 다음은 실제 answer/citation 품질 기록 보강이다
+- parser 후속 우선순위:
+  - `Docling` PDF 변환 장시간 실행 원인을 확인
+  - garbled detection false negative를 줄이기 위한 문자군 규칙 또는 별도 기준 추가
   - `Uploaded file list` parse success/failure history UI 최종 화면 검증
 - 2차 우선순위:
   - parser별 품질 비교 기준 정리
@@ -278,5 +293,7 @@
 7. 관련 `docs/*.md` 확인
 8. 최신 `docs/daily/*` 확인
 9. RAG 서버 UI 확인 전 frontend build 유무와 `3000/8000` runtime 상태 확인
-10. garbled detection false negative 기준 추가 검토
-11. 이후 retrieval 질문 세트 기준 retrieval/answer/citation 품질 확인
+10. 치조골 이식/수술특약/판결 테스트 대화로 현재 `rewritten_query`와 검색 결과를 재현
+11. `docs/query-rewrite-spec.md`와 backend rewrite prompt/validation 규칙 보강
+12. RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI, 단계별 응답시간, 외부 Search API 결과 표시 확인
+13. 이후 retrieval 질문 세트 기준 retrieval/answer/citation 품질 확인

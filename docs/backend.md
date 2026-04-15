@@ -135,13 +135,17 @@
 - chat:
   - `/chat`은 사용자 질의를 Input 정규화 후 structured rewrite로 변환한 뒤 RAG 검색을 수행한다.
   - query rewrite prompt는 `docs/query-rewrite-spec.md` 운영 문서를 읽어 `rewritten_query` 생성 기준에 반영한다.
-  - chat request는 `query`, `top_k`, `stored_name`, `rag_endpoint` 외에 `conversation_context`, `metadata`를 받을 수 있다.
+  - chat request는 `query`, `top_k`, `stored_name`, `rag_endpoint` 외에 `query_rewrite_model`, `conversation_context`, `metadata`를 받을 수 있다.
+  - `query_rewrite_model`이 지정되면 Query Rewrite LLM 호출에 해당 Azure OpenAI deployment를 사용하고, answer generation은 기존 chat deployment를 유지한다.
   - `rag_endpoint`가 입력되면 해당 endpoint로 retrieval request를 보내고, 비어 있으면 내부 `POST /retrieve`를 사용한다.
   - Search API 호출 계층은 `execute_search_for_chat`으로 분리해 내부/외부 검색 결과를 공통 trace로 정리한다.
+  - 임시 외부 Search API `/api/search` endpoint는 `rewritten_query`를 `query`에 넣고 `top_k=20`, `final_k=payload.top_k`, `use_rerank=false`, `include_source_metadata=true`, `include_scores=true`, `keyword_vector_weight=0.5`로 호출한다.
+  - 임시 외부 Search API의 `results[].content`, `document_name`, `metadata.header_path`, `scores` 응답은 내부 `hits` / `retrieved_chunks` 표준 포맷으로 normalize한다.
   - 내부 검색 후보와 rerank 기준은 원문 `query`보다 `rewritten_query`를 우선 사용한다.
   - Search 결과 평가는 `retrieved_chunks` 기준 rule-based evaluator로 수행한다.
+  - `/chat` 응답에는 화면 표시용 `query_rewrite_time_ms`, `search_api_response_time_ms`를 포함한다.
   - retrieval 결과와 citation 후보를 기반으로 grounded answer를 생성한다.
-  - 응답에는 `interpreted_query`, `rewritten_query`, `search_queries`, `search_query`, `executed_search_queries`, `intent`, `entities`, `routing_hints`, `need_more_context`, `search_evaluation`, 실제 사용한 `rag_endpoint`를 포함한다.
+  - 응답에는 `interpreted_query`, `rewritten_query`, `search_queries`, `search_query`, `executed_search_queries`, `intent`, `entities`, `routing_hints`, `need_more_context`, `search_evaluation`, 단계별 소요시간, 실제 사용한 `rag_endpoint`를 포함한다.
 
 ## 3. 현재 상태
 - 진행중
@@ -161,8 +165,12 @@
 - `/chat` external/internal RAG endpoint 분기와 internal fallback 검증 완료
 - `/chat` Input + Rewrite 구조화와 rewrite metadata 응답 필드 반영 완료
 - `/chat` Search API 호출 계층 분리 완료
+- `/chat` 임시 외부 Search API `/api/search` payload 및 `results` 응답 normalization 반영 완료
 - `/chat` Search Result Evaluation rule-based 1차 구현 완료
+- `/chat` query rewrite 시간과 Search API 응답시간을 응답 필드로 분리 제공 완료
 - query rewrite 운영 스펙을 `docs/query-rewrite-spec.md`로 분리 완료
+- query rewrite의 모호한 마지막 발화 판별, 최근 고객 발화 묶음 seed, 보험 도메인 보장 축 복원 규칙 보강 완료
+- query rewrite LLM 선택 요청 필드 및 응답 trace 반영 완료
 
 ## 4. 이슈 및 문제
 - parsing 결과는 아직 메모리 기준 단건 응답만 제공한다.
