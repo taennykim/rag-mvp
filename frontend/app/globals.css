@@ -258,6 +258,12 @@ a {
   align-items: center;
 }
 
+.button-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .default-file-row {
   display: grid;
   gap: 8px;

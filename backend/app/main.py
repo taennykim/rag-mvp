@@ -118,6 +118,8 @@ PREVIEW_LENGTH = 300
 QUALITY_WARNING_THRESHOLD = 0.8
 PDF_GARBLED_SUSPICIOUS_CHAR_RATIO_THRESHOLD = 0.35
 PDF_GARBLED_SUSPICIOUS_CHAR_RATIO_DELTA_THRESHOLD = 0.15
+DEFAULT_EXTERNAL_SEARCH_API_ENDPOINT = "http://10.160.98.123:8000/api/search"
+DEFAULT_EXTERNAL_LOOKUP_API_ENDPOINT = "http://10.160.98.123:8000/api/lookup"
 PDF_GARBLED_CONTROL_CHAR_RATIO_THRESHOLD = 0.005
 PDF_GARBLED_LENGTH_RATIO_THRESHOLD = 0.6
 WORD_NAMESPACE = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
@@ -1880,9 +1882,13 @@ class ChatMetadata(BaseModel):
 class ChatRequest(BaseModel):
     query: str
     top_k: int = DEFAULT_CHAT_TOP_K
+    final_k: int = DEFAULT_CHAT_TOP_K
     stored_name: str | None = None
+    document_id: str | None = None
+    section_hint: str | None = None
     search_api_endpoint: str | None = None
     lookup_api_endpoint: str | None = None
+    action: str | None = "search"
     query_rewrite_model: str | None = None
     conversation_context: list[ConversationTurn] = Field(default_factory=list)
     metadata: ChatMetadata | None = None
@@ -3200,12 +3206,85 @@ def normalize_external_search_hit(hit: dict[str, object]) -> dict[str, object]:
     return normalized_hit
 
 
+def normalize_external_lookup_match(match: dict[str, object]) -> list[dict[str, object]]:
+    metadata = match.get("metadata") if isinstance(match.get("metadata"), dict) else {}
+    context = match.get("context") if isinstance(match.get("context"), dict) else {}
+    source = str(match.get("document_name") or match.get("document_id") or "").strip()
+    stored_name = str(match.get("document_id") or "").strip()
+    section_header = str(
+        metadata.get("section_title")
+        or metadata.get("header_path")
+        or " / ".join(metadata.get("section_path") or [])
+        or ""
+    ).strip()
+
+    normalized_hits: list[dict[str, object]] = []
+
+    def append_lookup_hit(item: dict[str, object], *, role: str) -> None:
+        text = normalize_chat_text(str(item.get("content") or item.get("text") or ""))
+        chunk_id = str(item.get("chunk_id") or "").strip()
+        if not text or not chunk_id:
+            return
+
+        normalized_hit: dict[str, object] = {
+            "id": chunk_id,
+            "text": text,
+            "source": source,
+            "stored_name": stored_name,
+            "original_name": source,
+            "section_header": section_header,
+            "lookup_role": role,
+        }
+        if isinstance(metadata.get("page_start"), int):
+            normalized_hit["page_number"] = metadata["page_start"]
+        normalized_hits.append(normalized_hit)
+
+    previous_chunks = context.get("previous_chunks")
+    if isinstance(previous_chunks, list):
+        for item in previous_chunks:
+            if isinstance(item, dict):
+                append_lookup_hit(item, role="previous")
+
+    append_lookup_hit(match, role="match")
+
+    next_chunks = context.get("next_chunks")
+    if isinstance(next_chunks, list):
+        for item in next_chunks:
+            if isinstance(item, dict):
+                append_lookup_hit(item, role="next")
+
+    return normalized_hits
+
+
+def validate_lookup_response(payload: object) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=502, detail="Lookup response must be a JSON object.")
+
+    matches = payload.get("matches")
+    if not isinstance(matches, list):
+        raise HTTPException(status_code=502, detail="Lookup response is missing matches.")
+
+    normalized_hits: list[dict[str, object]] = []
+    for item in matches:
+        if isinstance(item, dict):
+            normalized_hits.extend(normalize_external_lookup_match(item))
+
+    return {
+        "status": str(payload.get("status") or "lookup"),
+        "query": str(payload.get("query") or ""),
+        "hits": normalized_hits,
+        "retrieved_chunks": build_standardized_retrieved_chunks(normalized_hits),
+        "match_count": len(matches),
+    }
+
+
 def build_external_search_payload(
     endpoint: str,
     *,
     question: str,
     query: str,
     top_k: int,
+    final_k: int,
     stored_name: str | None,
     lookup_api_endpoint: str | None,
 ) -> dict[str, object]:
@@ -3213,7 +3292,7 @@ def build_external_search_payload(
         return {
             "query": query,
             "top_k": max(20, top_k),
-            "final_k": top_k,
+            "final_k": max(1, min(final_k, top_k)),
             "use_rerank": False,
             "include_source_metadata": True,
             "include_scores": True,
@@ -3236,6 +3315,7 @@ def call_rag_retrieval_endpoint(
     question: str,
     query: str,
     top_k: int,
+    final_k: int,
     stored_name: str | None,
     lookup_api_endpoint: str | None,
 ) -> dict[str, object]:
@@ -3250,6 +3330,7 @@ def call_rag_retrieval_endpoint(
         question=question,
         query=query,
         top_k=top_k,
+        final_k=final_k,
         stored_name=stored_name,
         lookup_api_endpoint=lookup_api_endpoint,
     )
@@ -3277,18 +3358,88 @@ def call_rag_retrieval_endpoint(
     return validate_retrieval_response(response_payload)
 
 
+def call_lookup_endpoint(
+    endpoint: str,
+    *,
+    query: str,
+    document_id: str | None = None,
+    section_hint: str | None,
+    top_k: int,
+) -> dict[str, object]:
+    normalized_endpoint = endpoint.strip()
+    if not normalized_endpoint:
+        raise HTTPException(status_code=400, detail="Lookup endpoint is required.")
+    if not normalized_endpoint.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Lookup endpoint must start with http:// or https://.")
+
+    payload: dict[str, object] = {
+        "query": query,
+        "top_k": max(1, min(top_k, 5)),
+        "return_context_window": True,
+        "context_window_size": 1,
+        "include_source_metadata": True,
+        "return_format": "json",
+    }
+    if document_id and document_id.strip():
+        payload["document_id"] = document_id.strip()
+    if section_hint and section_hint.strip():
+        payload["section_hint"] = section_hint.strip()
+    request = urllib_request.Request(
+        normalized_endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+
+    try:
+        with urllib_request.urlopen(request, timeout=120) as response:
+            raw_body = response.read()
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise HTTPException(status_code=502, detail=f"Lookup request failed: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"Lookup request failed: {exc.reason}") from exc
+
+    try:
+        response_payload = json.loads(raw_body.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail="Lookup response was not valid JSON.") from exc
+
+    return validate_lookup_response(response_payload)
+
+
+def merge_retrieval_hits(
+    search_hits: list[dict[str, object]],
+    lookup_hits: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    merged_hits: list[dict[str, object]] = []
+    seen_ids: set[str] = set()
+
+    for hit in [*search_hits, *lookup_hits]:
+        hit_id = str(hit.get("id") or "").strip()
+        text = normalize_chat_text(str(hit.get("text") or ""))
+        if not hit_id or not text or hit_id in seen_ids:
+            continue
+        seen_ids.add(hit_id)
+        merged_hits.append(hit)
+
+    return merged_hits
+
+
 def resolve_retrieval_for_chat(payload: ChatRequest, rewrite_result: RewriteResult) -> tuple[dict[str, object], str]:
     retrieval_query = rewrite_result.rewritten_query
-    if payload.search_api_endpoint and payload.search_api_endpoint.strip():
+    search_api_endpoint = (payload.search_api_endpoint or DEFAULT_EXTERNAL_SEARCH_API_ENDPOINT).strip()
+    if search_api_endpoint:
         retrieval = call_rag_retrieval_endpoint(
-            payload.search_api_endpoint,
+            search_api_endpoint,
             question=payload.query.strip(),
             query=retrieval_query,
             top_k=payload.top_k,
+            final_k=payload.final_k,
             stored_name=payload.stored_name,
             lookup_api_endpoint=payload.lookup_api_endpoint,
         )
-        return retrieval, payload.search_api_endpoint.strip()
+        return retrieval, search_api_endpoint
 
     retrieval = retrieve_chunks_for_queries(
         queries=build_query_candidates_for_chat(payload, rewrite_result),
@@ -3312,7 +3463,7 @@ def execute_search_for_chat(payload: ChatRequest, rewrite_result: RewriteResult)
     return {
         "query": str(retrieval.get("query") or rewrite_result.rewritten_query),
         "executed_queries": retrieval.get("executed_queries") if isinstance(retrieval.get("executed_queries"), list) else [],
-        "top_k": int(retrieval.get("top_k") or payload.top_k),
+        "top_k": int(retrieval.get("top_k") or payload.final_k),
         "hit_count": int(retrieval.get("hit_count") or len(hits)),
         "collection_name": retrieval.get("collection_name"),
         "embedding_provider": retrieval.get("embedding_provider"),
@@ -3320,6 +3471,42 @@ def execute_search_for_chat(payload: ChatRequest, rewrite_result: RewriteResult)
         "rag_endpoint": rag_endpoint,
         "hits": hits,
         "retrieved_chunks": retrieved_chunks,
+    }
+
+
+def execute_lookup_for_chat(
+    payload: ChatRequest,
+    rewrite_result: RewriteResult,
+) -> dict[str, object]:
+    lookup_endpoint = (payload.lookup_api_endpoint or DEFAULT_EXTERNAL_LOOKUP_API_ENDPOINT).strip()
+    document_id = payload.document_id.strip() if payload.document_id else ""
+    if not document_id:
+        raise HTTPException(status_code=400, detail="Lookup requires document_id from the latest search result.")
+    lookup_result = call_lookup_endpoint(
+        lookup_endpoint,
+        query=rewrite_result.rewritten_query,
+        document_id=document_id,
+        section_hint=payload.section_hint,
+        top_k=min(payload.top_k, 3),
+    )
+    lookup_hits = lookup_result.get("hits")
+    if not isinstance(lookup_hits, list):
+        lookup_hits = []
+
+    return {
+        "query": str(lookup_result.get("query") or rewrite_result.rewritten_query),
+        "executed_queries": [rewrite_result.rewritten_query],
+        "top_k": min(payload.top_k, 3),
+        "hit_count": len(lookup_hits),
+        "collection_name": None,
+        "embedding_provider": None,
+        "embedding_model": None,
+        "rag_endpoint": lookup_endpoint,
+        "lookup_endpoint": lookup_endpoint,
+        "hits": lookup_hits,
+        "retrieved_chunks": build_standardized_retrieved_chunks(lookup_hits),
+        "lookup_hit_count": len(lookup_hits),
+        "lookup_match_count": int(lookup_result.get("match_count") or 0),
     }
 
 
@@ -3382,12 +3569,21 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
     rewrite_result = rewrite_chat_query(payload)
     query_rewrite_time_ms = round((time.perf_counter() - rewrite_started_at) * 1000)
     search_started_at = time.perf_counter()
+    search_api_endpoint = (payload.search_api_endpoint or DEFAULT_EXTERNAL_SEARCH_API_ENDPOINT).strip()
+    lookup_api_endpoint = (payload.lookup_api_endpoint or DEFAULT_EXTERNAL_LOOKUP_API_ENDPOINT).strip()
+    action = (payload.action or "search").strip().lower()
     try:
-        search_result = execute_search_for_chat(payload, rewrite_result)
+        if action == "lookup":
+            search_result = execute_lookup_for_chat(payload, rewrite_result)
+        else:
+            search_result = execute_search_for_chat(payload, rewrite_result)
     except HTTPException as exc:
         search_api_response_time_ms = round((time.perf_counter() - search_started_at) * 1000)
+        error_reason = "Lookup API 연결에 실패해 검색 결과를 가져오지 못했습니다." if action == "lookup" else "검색 API 연결에 실패해 검색 결과를 가져오지 못했습니다."
+        error_answer = "Lookup API 연결에 실패했습니다." if action == "lookup" else "검색 API 연결에 실패했습니다."
         logger.warning(
-            "chat_search_failed query=%s rewrite_query=%s detail=%s",
+            "chat_%s_failed query=%s rewrite_query=%s detail=%s",
+            action,
             original_query,
             rewrite_result.rewritten_query,
             exc.detail,
@@ -3410,23 +3606,24 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
             "routing_hints": rewrite_result.routing_hints,
             "search_query": rewrite_result.rewritten_query,
             "executed_search_queries": [],
-            "top_k": payload.top_k,
+            "top_k": payload.final_k if action == "search" else payload.top_k,
             "hit_count": 0,
             "collection_name": None,
             "embedding_provider": None,
             "embedding_model": None,
-            "rag_endpoint": payload.search_api_endpoint.strip() if payload.search_api_endpoint else "internal:/retrieve",
-            "search_api_endpoint": payload.search_api_endpoint.strip() if payload.search_api_endpoint else None,
-            "lookup_api_endpoint": payload.lookup_api_endpoint.strip() if payload.lookup_api_endpoint else None,
+            "rag_endpoint": (lookup_api_endpoint if action == "lookup" else search_api_endpoint) or "internal:/retrieve",
+            "search_api_endpoint": search_api_endpoint or None,
+            "lookup_api_endpoint": lookup_api_endpoint or None,
+            "action": action,
             "query_rewrite_time_ms": query_rewrite_time_ms,
             "search_api_response_time_ms": search_api_response_time_ms,
             "need_more_context": True,
             "search_evaluation": {
                 "need_more_context": True,
-                "reason_codes": ["search_request_failed"],
-                "evaluation_reasons": ["검색 API 연결에 실패해 검색 결과를 가져오지 못했습니다."],
+                "reason_codes": [f"{action}_request_failed"],
+                "evaluation_reasons": [error_reason],
             },
-            "answer": "검색 API 연결에 실패했습니다.",
+            "answer": error_answer,
             "insufficient_context": True,
             "citations": [],
             "hits": [],
@@ -3436,6 +3633,8 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
     search_api_response_time_ms = round((time.perf_counter() - search_started_at) * 1000)
     hits = search_result["hits"]
     retrieved_chunks = search_result["retrieved_chunks"]
+    lookup_error_detail: str | None = None
+
     search_evaluation = evaluate_retrieved_chunks(retrieved_chunks)
 
     if not hits:
@@ -3463,8 +3662,9 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
             "embedding_provider": search_result["embedding_provider"],
             "embedding_model": search_result["embedding_model"],
             "rag_endpoint": search_result["rag_endpoint"],
-            "search_api_endpoint": payload.search_api_endpoint.strip() if payload.search_api_endpoint else None,
-            "lookup_api_endpoint": payload.lookup_api_endpoint.strip() if payload.lookup_api_endpoint else None,
+            "search_api_endpoint": search_api_endpoint or None,
+            "lookup_api_endpoint": lookup_api_endpoint or None,
+            "action": action,
             "query_rewrite_time_ms": query_rewrite_time_ms,
             "search_api_response_time_ms": search_api_response_time_ms,
             "need_more_context": search_evaluation.need_more_context,
@@ -3474,6 +3674,7 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
             "citations": [],
             "hits": [],
             "chat_model": None,
+            "detail": lookup_error_detail,
         }
 
     system_prompt = (
@@ -3532,8 +3733,9 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         "embedding_provider": search_result["embedding_provider"],
         "embedding_model": search_result["embedding_model"],
         "rag_endpoint": search_result["rag_endpoint"],
-        "search_api_endpoint": payload.search_api_endpoint.strip() if payload.search_api_endpoint else None,
-        "lookup_api_endpoint": payload.lookup_api_endpoint.strip() if payload.lookup_api_endpoint else None,
+        "search_api_endpoint": search_api_endpoint or None,
+        "lookup_api_endpoint": lookup_api_endpoint or None,
+        "action": action,
         "query_rewrite_time_ms": query_rewrite_time_ms,
         "search_api_response_time_ms": search_api_response_time_ms,
         "need_more_context": search_evaluation.need_more_context,
@@ -3543,6 +3745,7 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         "citations": build_chat_citations(hits),
         "hits": hits,
         "chat_model": get_chat_model_id(),
+        "detail": lookup_error_detail,
     }
 
 

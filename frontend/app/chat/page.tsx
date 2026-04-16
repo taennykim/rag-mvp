@@ -1,12 +1,14 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 
 type RetrievalHit = {
   id: string;
   text: string;
   distance?: number;
   rerank_score?: number;
+  document_id?: string;
+  stored_name?: string;
   matched_queries?: string[];
   source?: string;
   original_name?: string;
@@ -36,12 +38,12 @@ type ChatResponse = {
   query_rewrite_model?: string | null;
   search_api_endpoint?: string | null;
   lookup_api_endpoint?: string | null;
+  action?: string | null;
   query_rewrite_time_ms?: number;
   search_api_response_time_ms?: number;
 };
 
 const API_BASE_URL = "/api";
-const DEFAULT_SEARCH_API_ENDPOINT = "http://10.160.98.123:8000/api/search";
 const QUERY_REWRITE_MODEL_OPTIONS = [
   { label: "Default (gpt-4o-mini)", value: "" },
   { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
@@ -96,20 +98,39 @@ function formatResponseTiming(totalMs: number, result: ChatResponse) {
     detailParts.push(`Query rewrite time: ${formatSeconds(result.query_rewrite_time_ms)}`);
   }
   if (typeof result.search_api_response_time_ms === "number") {
-    detailParts.push(`API response time: ${result.search_api_response_time_ms} ms`);
+    detailParts.push(`API response time: ${formatSeconds(result.search_api_response_time_ms)}`);
   }
 
   if (!detailParts.length) {
-    return `Response time: ${totalMs} ms`;
+    return `Response time: ${formatSeconds(totalMs)}`;
   }
-  return `Response time: ${totalMs} ms, (${detailParts.join(", ")})`;
+  return `Response time: ${formatSeconds(totalMs)}, (${detailParts.join(", ")})`;
+}
+
+function pickLookupTarget(result: ChatResponse | null): { documentId: string; sectionHint: string | null } | null {
+  if (result?.action !== "search" || !result.hits?.length) {
+    return null;
+  }
+
+  const rankedHits = result.hits.filter((hit) => (hit.document_id || hit.stored_name) && typeof hit.rerank_score === "number");
+  const targetHit =
+    rankedHits.sort((left, right) => (right.rerank_score ?? Number.NEGATIVE_INFINITY) - (left.rerank_score ?? Number.NEGATIVE_INFINITY))[0]
+    ?? result.hits.find((hit) => hit.document_id || hit.stored_name);
+
+  if (!targetHit) {
+    return null;
+  }
+
+  return {
+    documentId: targetHit.document_id ?? targetHit.stored_name ?? "",
+    sectionHint: targetHit.section_header?.trim() || null,
+  };
 }
 
 export default function ChatPage() {
   const [query, setQuery] = useState("");
   const [queryRewriteModel, setQueryRewriteModel] = useState("");
-  const [searchApiEndpoint, setSearchApiEndpoint] = useState(DEFAULT_SEARCH_API_ENDPOINT);
-  const [lookupApiEndpoint, setLookupApiEndpoint] = useState("");
+  const [finalK, setFinalK] = useState("5");
   const [result, setResult] = useState<ChatResponse | null>(null);
   const [responseTimeMs, setResponseTimeMs] = useState<number | null>(null);
   const [message, setMessage] = useState(
@@ -117,17 +138,21 @@ export default function ChatPage() {
   );
   const [isLoading, setIsLoading] = useState(false);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
+  async function requestChatResponse(action: "search" | "lookup") {
     if (!query.trim()) {
       setMessage("질문을 먼저 입력하세요.");
       return;
     }
 
+    const lookupTarget = action === "lookup" ? pickLookupTarget(result) : null;
+    if (action === "lookup" && !lookupTarget?.documentId) {
+      setMessage("먼저 Get response로 Search 결과를 조회한 뒤 Lookup을 실행하세요.");
+      return;
+    }
+
     setIsLoading(true);
     setResponseTimeMs(null);
-    setMessage("응답을 불러오는 중입니다.");
+    setMessage(action === "lookup" ? "Lookup 응답을 불러오는 중입니다." : "Search 응답을 불러오는 중입니다.");
 
     try {
       const startedAt = performance.now();
@@ -138,9 +163,11 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           query,
+          action,
+          final_k: Number.parseInt(finalK, 10) || 5,
+          document_id: lookupTarget?.documentId ?? null,
+          section_hint: lookupTarget?.sectionHint ?? null,
           query_rewrite_model: queryRewriteModel || null,
-          search_api_endpoint: searchApiEndpoint.trim() || null,
-          lookup_api_endpoint: lookupApiEndpoint.trim() || null,
         }),
       });
 
@@ -185,7 +212,7 @@ export default function ChatPage() {
         <p className="eyebrow">Chat</p>
         <h2>Chat</h2>
         <p>외부 RAG 연동 세부 스키마가 정해지기 전까지는 질문, 응답, 근거 표시 구조를 먼저 고정합니다.</p>
-        <form className="chat-form" onSubmit={handleSubmit}>
+        <div className="chat-form">
           <label className="upload-label" htmlFor="chat-query">
             Question
           </label>
@@ -223,35 +250,30 @@ export default function ChatPage() {
                 : "응답 후 이 위치에 LLM이 정리한 질문이 표시됩니다."}
             </div>
           </div>
-          <label className="upload-label" htmlFor="chat-search-api-endpoint">
-            Search API endpoint
+          <label className="upload-label" htmlFor="chat-final-k">
+            Search final_k
           </label>
           <input
             className="default-file-select"
-            id="chat-search-api-endpoint"
-            onChange={(event) => setSearchApiEndpoint(event.target.value)}
-            placeholder="선택 입력"
-            type="text"
-            value={searchApiEndpoint}
+            id="chat-final-k"
+            inputMode="numeric"
+            min="1"
+            onChange={(event) => setFinalK(event.target.value)}
+            placeholder="5"
+            type="number"
+            value={finalK}
           />
-          <label className="upload-label" htmlFor="chat-lookup-api-endpoint">
-            Lookup API endpoint(Later)
-          </label>
-          <input
-            className="default-file-select"
-            disabled
-            id="chat-lookup-api-endpoint"
-            onChange={(event) => setLookupApiEndpoint(event.target.value)}
-            placeholder="선택 입력"
-            type="text"
-            value={lookupApiEndpoint}
-          />
-          <button className="upload-button" disabled={isLoading} type="submit">
-            {isLoading ? "Loading..." : "Get response"}
-          </button>
-        </form>
+          <div className="button-row">
+            <button className="upload-button" disabled={isLoading} onClick={() => void requestChatResponse("search")} type="button">
+              {isLoading ? "Loading..." : "Get response"}
+            </button>
+            <button className="upload-button secondary" disabled={isLoading} onClick={() => void requestChatResponse("lookup")} type="button">
+              {isLoading ? "Loading..." : "Get lookup response"}
+            </button>
+          </div>
+        </div>
         <div className="chat-note">
-          Search API endpoint를 비우면 내부 RAG를 조회하고, 값을 넣으면 해당 외부 search endpoint를 호출합니다.
+          `Get response`는 Search API만 호출하고, `Get lookup response`는 Lookup API만 호출합니다.
         </div>
         <div className="chat-status">{message}</div>
       </div>
@@ -269,6 +291,7 @@ export default function ChatPage() {
             ) : null}
             <div className="answer-summary">
               <span>{answerState}</span>
+              {result.action ? <span>Mode: {result.action}</span> : null}
               {result.query_rewrite_model ? <span>Rewrite LLM: {result.query_rewrite_model}</span> : null}
               {result.search_api_endpoint ? <span>Search: {result.search_api_endpoint}</span> : null}
               {result.lookup_api_endpoint ? <span>Lookup: {result.lookup_api_endpoint}</span> : null}
