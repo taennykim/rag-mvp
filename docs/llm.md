@@ -16,9 +16,12 @@
 - backend `POST /chat`은 `conversation_context`가 비어 있어도 `Question` 멀티라인의 `고객:` / `상담사:` prefix를 파싱해 대화 입력으로 재구성할 수 있다.
 - backend `POST /chat`은 rewrite 결과에 대해 Standalone Search Query 검증을 수행하고 `rewrite_source`, `validation_reasons`로 fallback trace를 함께 반환한다.
 - frontend `/chat`은 `Question`과 `LLM Question` 사이에서 Query Rewrite LLM을 선택할 수 있고, backend는 선택된 `query_rewrite_model`을 rewrite 호출에만 적용한다.
+- Query Rewrite LLM에서 `Custom`을 선택하면 `Base URL`, `Model Name`, optional `API Key`를 입력할 수 있고, custom rewrite는 OpenAI-compatible API만 지원한다.
 - frontend `/chat`은 `Answer LLM`도 선택할 수 있고, backend는 선택된 `answer_model`을 grounded answer 생성 호출에 적용한다.
+- Answer LLM에서도 `Custom`을 선택하면 `Base URL`, `Model Name`, optional `API Key`를 입력할 수 있고, custom answer는 OpenAI-compatible API만 지원한다.
 - Query Rewrite LLM UI의 기본 선택값 라벨은 `Default (gpt-4o-mini)`이며, backend 기본 모델은 `gpt-4o-mini`다.
 - UI에서 `gpt-4.1-mini`, `gpt-4o`를 명시적으로 선택할 수 있다.
+- UI에서 `Custom`을 선택하면 `Base URL`, `Model Name`, `API Key` 입력창이 조건부로 노출된다.
 - Answer LLM UI 기본 선택값 라벨은 `Default (gpt-4o)`이며, backend 기본 모델은 `AZURE_OPENAI_ANSWER_DEPLOYMENT`가 없으면 기존 chat deployment를 따른다.
 - RAG 서버에서 `gpt-4.1-mini` Azure OpenAI deployment 직접 호출이 성공했음을 확인했다.
 - `/chat` Search API endpoint는 backend 고정값 `http://10.160.98.123:8000/api/search`를 사용하고 화면에서는 입력받지 않는다.

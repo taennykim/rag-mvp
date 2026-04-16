@@ -38,6 +38,8 @@
 - 2026-04-16 기준 Lookup은 직전 Search 결과 중 최고 `rrf_score` hit의 `document_id`를 사용하도록 연결했다.
 - 2026-04-16 기준 Search API 연결 실패 시에도 `/chat`이 `rewritten_query`, 오류 메시지, insufficient-context 상태를 함께 반환하도록 보강했다.
 - 2026-04-16 기준 `/chat`은 Query Rewrite LLM과 별도로 Answer LLM도 선택할 수 있고, backend가 `answer_model`을 grounded answer 생성 deployment에 적용하도록 반영했다.
+- 2026-04-16 기준 Query Rewrite LLM에 `Custom` 옵션을 추가했고, `Base URL`, `Model Name`, optional `API Key`를 받아 OpenAI-compatible custom endpoint로 rewrite를 호출할 수 있게 했다.
+- 2026-04-16 기준 Answer LLM에도 `Custom` 옵션을 추가했고, `Base URL`, `Model Name`, optional `API Key`를 받아 OpenAI-compatible custom endpoint로 answer generation을 호출할 수 있게 했다.
 
 ## 3. 완료된 범위
 - 문서 체계:

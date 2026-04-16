@@ -39,6 +39,7 @@
 - 현재 단계: Query Rewrite LLM 기본값을 `gpt-4o-mini`로 변경함
 - 현재 단계: RAG 서버에서 호출 검증을 통과한 `gpt-4.1-mini`를 Query Rewrite LLM 선택지에 추가함
 - 현재 단계: Query Rewrite LLM UI 기본 선택값 라벨은 `Default (gpt-4o-mini)`로 두고, 중복되는 `gpt-4o-mini` 단독 선택 옵션은 제거함
+- 현재 단계: Query Rewrite LLM과 Answer LLM 모두 `Custom` 옵션을 지원하고, `Base URL`, `Model Name`, optional `API Key`를 받아 OpenAI-compatible endpoint로 호출할 수 있게 정리함
 - 현재 단계: `/chat` Search/Lookup endpoint는 backend 고정값으로 사용하고, UI는 Search `final_k` 입력과 `Get response`만 노출하며 Lookup 버튼은 hidden 처리함
 - 현재 단계: 2026-04-08 기준 RAG 서버 frontend/backend runtime을 다시 복구했고 UI 확인 가능한 상태로 유지 중
 - 완료:
@@ -101,6 +102,8 @@
   - backend/frontend `/chat` Query Rewrite LLM 선택 UI 및 요청 필드 반영 완료
   - backend/frontend `/chat` Query Rewrite LLM 기본값 `gpt-4o-mini` 반영 완료
   - backend/frontend `/chat` Query Rewrite LLM 선택지 `gpt-4.1-mini` 추가 완료
+  - backend/frontend `/chat` Query Rewrite LLM `Custom` 옵션과 OpenAI-compatible custom rewrite 호출 분기 반영 완료
+  - backend/frontend `/chat` Answer LLM `Custom` 옵션과 OpenAI-compatible custom answer 호출 분기 반영 완료
   - backend/frontend `/chat` Search/Lookup 고정 endpoint와 Search `final_k` 반영, Lookup 버튼 hidden UI 반영 완료
   - backend `/retrieve`, `/chat`이 `retrieved_chunks` 표준 포맷(`document_id`, `chunk_id`, `score`, `section`, `text`, `rank`)을 함께 반환하도록 반영 완료
   - backend `/chat` Step 6 Search Result Evaluation rule-based 1차 구현 완료
@@ -113,7 +116,9 @@
   - evaluation dataset / RAGAS / evaluation UI
 - 다음 우선 작업:
   - 치조골 이식/수술특약/판결 케이스의 query rewrite 규칙을 보강한다
+  - 고객사 custom Query Rewrite / Answer endpoint가 준비되면 실제 `Base URL` / `Model Name` / `API Key` 조합으로 호출 검증을 진행한다
   - RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI, 단계별 응답시간, 외부 Search API 결과 표시를 확인한다
+  - RAG 서버 브라우저에서 Query Rewrite LLM / Answer LLM의 `Custom` 선택 시 조건부 입력창 노출과 validation 메시지를 확인한다
   - Query Rewrite LLM 기본값 `gpt-4o-mini` 기준 브라우저 동작을 확인한다
   - `docs/chat_plan.md` 기준 Step 7 Need More Context 분기와 Step 8 Lookup API 호출 연결 방식을 정리한다
   - parser 운영 정책은 `Legacy auto` 기본, `Docling` 비교 검증용, `Docling(md)` Markdown 산출물 생성용으로 유지한다

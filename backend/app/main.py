@@ -145,6 +145,7 @@ EMBEDDING_PROVIDER_AZURE_OPENAI = "azure_openai"
 DEFAULT_AZURE_OPENAI_EMBEDDING_DEPLOYMENT = "text-embedding-3-small"
 DEFAULT_AZURE_OPENAI_API_VERSION = "2024-02-01"
 DEFAULT_QUERY_REWRITE_MODEL = "gpt-4o-mini"
+CUSTOM_QUERY_REWRITE_MODEL = "custom"
 AZURE_OPENAI_EMBEDDING_BATCH_SIZE = 32
 DEFAULT_CHAT_TOP_K = 5
 RUNTIME_ENV_FILE = BASE_DIR / ".env.runtime"
@@ -1890,7 +1891,13 @@ class ChatRequest(BaseModel):
     lookup_api_endpoint: str | None = None
     action: str | None = "search"
     query_rewrite_model: str | None = None
+    query_rewrite_base_url: str | None = None
+    query_rewrite_custom_model: str | None = None
+    query_rewrite_api_key: str | None = None
     answer_model: str | None = None
+    answer_base_url: str | None = None
+    answer_custom_model: str | None = None
+    answer_api_key: str | None = None
     conversation_context: list[ConversationTurn] = Field(default_factory=list)
     metadata: ChatMetadata | None = None
 
@@ -2073,10 +2080,16 @@ def get_chat_model_id() -> str:
     raise HTTPException(status_code=500, detail="AZURE_OPENAI_CHAT_DEPLOYMENT is not configured.")
 
 
+def is_custom_query_rewrite_model(requested_model: str | None = None) -> bool:
+    return (requested_model or "").strip().lower() == CUSTOM_QUERY_REWRITE_MODEL
+
+
 def get_query_rewrite_model_id(requested_model: str | None = None) -> str:
     requested = (requested_model or "").strip()
     if not requested:
         return os.getenv("AZURE_OPENAI_QUERY_REWRITE_DEPLOYMENT", DEFAULT_QUERY_REWRITE_MODEL).strip() or DEFAULT_QUERY_REWRITE_MODEL
+    if is_custom_query_rewrite_model(requested):
+        return CUSTOM_QUERY_REWRITE_MODEL
 
     configured_models = {
         get_chat_model_id(),
@@ -2093,11 +2106,37 @@ def get_query_rewrite_model_id(requested_model: str | None = None) -> str:
     return requested
 
 
+def get_query_rewrite_display_model(payload: ChatRequest) -> str:
+    if is_custom_query_rewrite_model(payload.query_rewrite_model):
+        custom_model = (payload.query_rewrite_custom_model or "").strip()
+        return f"{CUSTOM_QUERY_REWRITE_MODEL}:{custom_model}" if custom_model else CUSTOM_QUERY_REWRITE_MODEL
+    return get_query_rewrite_model_id(payload.query_rewrite_model)
+
+
+def get_query_rewrite_custom_config(payload: ChatRequest) -> tuple[str, str, str | None]:
+    base_url = (payload.query_rewrite_base_url or "").strip()
+    model_name = (payload.query_rewrite_custom_model or "").strip()
+    api_key = (payload.query_rewrite_api_key or "").strip() or None
+
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Custom query rewrite Base URL is required.")
+    if not model_name:
+        raise HTTPException(status_code=400, detail="Custom query rewrite Model Name is required.")
+
+    return base_url, model_name, api_key
+
+
+def is_custom_answer_model(requested_model: str | None = None) -> bool:
+    return (requested_model or "").strip().lower() == CUSTOM_QUERY_REWRITE_MODEL
+
+
 def get_answer_model_id(requested_model: str | None = None) -> str:
     requested = (requested_model or "").strip()
     if not requested:
         configured_default = os.getenv("AZURE_OPENAI_ANSWER_DEPLOYMENT", "").strip()
         return configured_default or get_chat_model_id()
+    if is_custom_answer_model(requested):
+        return CUSTOM_QUERY_REWRITE_MODEL
 
     configured_models = {
         get_chat_model_id(),
@@ -2112,6 +2151,26 @@ def get_answer_model_id(requested_model: str | None = None) -> str:
     if requested not in configured_models:
         raise HTTPException(status_code=400, detail=f"Unsupported answer model: {requested}")
     return requested
+
+
+def get_answer_display_model(payload: ChatRequest) -> str:
+    if is_custom_answer_model(payload.answer_model):
+        custom_model = (payload.answer_custom_model or "").strip()
+        return f"{CUSTOM_QUERY_REWRITE_MODEL}:{custom_model}" if custom_model else CUSTOM_QUERY_REWRITE_MODEL
+    return get_answer_model_id(payload.answer_model)
+
+
+def get_answer_custom_config(payload: ChatRequest) -> tuple[str, str, str | None]:
+    base_url = (payload.answer_base_url or "").strip()
+    model_name = (payload.answer_custom_model or "").strip()
+    api_key = (payload.answer_api_key or "").strip() or None
+
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Custom answer Base URL is required.")
+    if not model_name:
+        raise HTTPException(status_code=400, detail="Custom answer Model Name is required.")
+
+    return base_url, model_name, api_key
 
 
 def build_azure_openai_chat_completion(
@@ -2181,6 +2240,108 @@ def build_azure_openai_chat_completion(
         raise HTTPException(status_code=502, detail="Azure OpenAI chat response was empty.")
 
     return content.strip()
+
+
+def build_openai_compatible_chat_completion(
+    messages: list[dict[str, str]],
+    *,
+    base_url: str,
+    model_name: str,
+    api_key: str | None = None,
+) -> str:
+    normalized_base_url = base_url.strip().rstrip("/")
+    if not normalized_base_url:
+        raise HTTPException(status_code=400, detail="Custom query rewrite Base URL is required.")
+
+    if normalized_base_url.endswith("/chat/completions"):
+        request_url = normalized_base_url
+    else:
+        request_url = f"{normalized_base_url}/chat/completions"
+
+    headers = {
+        "Content-Type": "application/json",
+    }
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    payload = json.dumps(
+        {
+            "model": model_name,
+            "messages": messages,
+            "temperature": 0.0,
+            "max_tokens": 700,
+        }
+    ).encode("utf-8")
+    request = urllib_request.Request(
+        request_url,
+        data=payload,
+        method="POST",
+        headers=headers,
+    )
+
+    try:
+        with urllib_request.urlopen(request, timeout=120) as response:
+            raw_body = response.read()
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise HTTPException(status_code=502, detail=f"Custom query rewrite request failed: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"Custom query rewrite request failed: {exc.reason}") from exc
+
+    try:
+        response_payload = json.loads(raw_body.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail="Custom query rewrite response was not valid JSON.") from exc
+
+    choices = response_payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise HTTPException(status_code=502, detail="Custom query rewrite response shape was invalid.")
+
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        raise HTTPException(status_code=502, detail="Custom query rewrite response shape was invalid.")
+
+    message = first_choice.get("message")
+    if not isinstance(message, dict):
+        raise HTTPException(status_code=502, detail="Custom query rewrite response was missing message data.")
+
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise HTTPException(status_code=502, detail="Custom query rewrite response was empty.")
+
+    return content.strip()
+
+
+def build_query_rewrite_chat_completion(payload: ChatRequest, messages: list[dict[str, str]]) -> tuple[str, str]:
+    model_id = get_query_rewrite_model_id(payload.query_rewrite_model)
+    if model_id == CUSTOM_QUERY_REWRITE_MODEL:
+        base_url, custom_model, api_key = get_query_rewrite_custom_config(payload)
+        return (
+            build_openai_compatible_chat_completion(
+                messages,
+                base_url=base_url,
+                model_name=custom_model,
+                api_key=api_key,
+            ),
+            get_query_rewrite_display_model(payload),
+        )
+    return build_azure_openai_chat_completion(messages, deployment=model_id), model_id
+
+
+def build_answer_chat_completion(payload: ChatRequest, messages: list[dict[str, str]]) -> tuple[str, str]:
+    model_id = get_answer_model_id(payload.answer_model)
+    if model_id == CUSTOM_QUERY_REWRITE_MODEL:
+        base_url, custom_model, api_key = get_answer_custom_config(payload)
+        return (
+            build_openai_compatible_chat_completion(
+                messages,
+                base_url=base_url,
+                model_name=custom_model,
+                api_key=api_key,
+            ),
+            get_answer_display_model(payload),
+        )
+    return build_azure_openai_chat_completion(messages, deployment=model_id), model_id
 
 
 def build_embeddings(texts: list[str]) -> list[list[float]]:
@@ -2926,7 +3087,7 @@ def build_query_rewrite_fallback_result(
             original_query=trimmed_query,
             rewritten_query=ensure_question_sentence(fallback_query),
             search_queries=[fallback_query, trimmed_query],
-            query_rewrite_model=get_query_rewrite_model_id(payload.query_rewrite_model),
+            query_rewrite_model=get_query_rewrite_display_model(payload),
             normalized_conversation=normalized_conversation,
             last_customer_message=last_customer_message,
             rewrite_source="fallback:last_customer_message",
@@ -2935,6 +3096,7 @@ def build_query_rewrite_fallback_result(
 
 
 def retry_query_rewrite_once(
+    payload: ChatRequest,
     *,
     seed_query: str,
     trimmed_query: str,
@@ -2942,7 +3104,6 @@ def retry_query_rewrite_once(
     normalized_conversation: list[dict[str, str]],
     metadata: dict[str, object],
     validation_reasons: list[str],
-    query_rewrite_model: str,
 ) -> tuple[str, list[str], str | None, str | None, dict[str, str], dict[str, str]]:
     messages = build_query_rewrite_messages(
         seed_query=seed_query,
@@ -2959,7 +3120,7 @@ def retry_query_rewrite_once(
         "Return JSON only."
     )
     messages.append({"role": "user", "content": retry_note})
-    response_text = build_azure_openai_chat_completion(messages, deployment=query_rewrite_model)
+    response_text, _ = build_query_rewrite_chat_completion(payload, messages)
     response_payload = extract_json_object(response_text)
     return parse_query_rewrite_response(response_payload, seed_query)
 
@@ -3035,13 +3196,13 @@ def apply_standalone_query_validation(
             retried_entities,
             retried_routing_hints,
         ) = retry_query_rewrite_once(
+            payload,
             seed_query=fallback_query,
             trimmed_query=rewrite_result.original_query,
             last_customer_message=rewrite_result.last_customer_message,
             normalized_conversation=rewrite_result.normalized_conversation,
             metadata=metadata,
             validation_reasons=validation_reasons + fallback_reasons,
-            query_rewrite_model=rewrite_result.query_rewrite_model or get_query_rewrite_model_id(payload.query_rewrite_model),
         )
         validated_retry_query, retry_reasons = validate_standalone_search_query(
             retried_query,
@@ -3118,7 +3279,6 @@ def rewrite_chat_query(payload: ChatRequest) -> RewriteResult:
         normalized_conversation = parse_conversation_context_from_query_text(trimmed_query)
     last_customer_message = extract_last_customer_message(normalized_conversation)
     metadata = serialize_chat_metadata(payload.metadata)
-    query_rewrite_model = get_query_rewrite_model_id(payload.query_rewrite_model)
     seed_query = build_query_rewrite_seed_query(trimmed_query, last_customer_message, normalized_conversation)
     messages = build_query_rewrite_messages(
         seed_query=seed_query,
@@ -3129,7 +3289,7 @@ def rewrite_chat_query(payload: ChatRequest) -> RewriteResult:
     )
 
     try:
-        response_text = build_azure_openai_chat_completion(messages, deployment=query_rewrite_model)
+        response_text, query_rewrite_model = build_query_rewrite_chat_completion(payload, messages)
         response_payload = extract_json_object(response_text)
         rewritten_query, search_queries, intent, question_type, entities, routing_hints = parse_query_rewrite_response(
             response_payload,
@@ -3154,7 +3314,17 @@ def rewrite_chat_query(payload: ChatRequest) -> RewriteResult:
             payload,
             rewrite_result,
         )
-    except (HTTPException, ValueError, json.JSONDecodeError) as exc:
+    except HTTPException as exc:
+        if exc.status_code == 400:
+            raise
+        logger.warning("query_rewrite_failed original_query=%s error=%s", trimmed_query, exc)
+        return build_query_rewrite_fallback_result(
+            payload,
+            trimmed_query=trimmed_query,
+            normalized_conversation=normalized_conversation,
+            last_customer_message=last_customer_message,
+        )
+    except (ValueError, json.JSONDecodeError) as exc:
         logger.warning("query_rewrite_failed original_query=%s error=%s", trimmed_query, exc)
         return build_query_rewrite_fallback_result(
             payload,
@@ -3589,7 +3759,7 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
     original_query = payload.query.strip()
     rewrite_started_at = time.perf_counter()
     rewrite_result = rewrite_chat_query(payload)
-    answer_model_id = get_answer_model_id(payload.answer_model)
+    answer_model_id = get_answer_display_model(payload)
     query_rewrite_time_ms = round((time.perf_counter() - rewrite_started_at) * 1000)
     search_started_at = time.perf_counter()
     search_api_endpoint = (payload.search_api_endpoint or DEFAULT_EXTERNAL_SEARCH_API_ENDPOINT).strip()
@@ -3726,12 +3896,12 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         "- If the user's question is broad and the required documents vary by condition, explicitly say that additional documents depend on case.\n"
         "- Do not merge multiple scenario-specific document lists into one unconditional checklist."
     )
-    response_text = build_azure_openai_chat_completion(
+    response_text, answer_model_id = build_answer_chat_completion(
+        payload,
         [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        deployment=answer_model_id,
     )
     insufficient_context, answer = parse_chat_completion(response_text)
 

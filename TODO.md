@@ -150,6 +150,8 @@
 - [x] Test and add `gpt-4.1-mini` to Query Rewrite LLM selector
 - [x] Keep Query Rewrite LLM UI default as blank `Default` and expose `gpt-4o-mini` as a selectable option
 - [x] Rename default Query Rewrite LLM label to `Default (gpt-4o-mini)` and remove duplicate `gpt-4o-mini` option
+- [x] Add `Custom` Query Rewrite LLM option with `Base URL`, `Model Name`, and optional `API Key` inputs for OpenAI-compatible endpoints
+- [x] Add `Custom` Answer LLM option with `Base URL`, `Model Name`, and optional `API Key` inputs for OpenAI-compatible endpoints
 - [x] Set `/chat` Search API endpoint default to temporary external Search API
 - [x] Mark Lookup API endpoint as Later and disable its input
 - [x] Replace Search/Lookup endpoint inputs with fixed backend endpoints and split `/chat` buttons into Search / Lookup actions

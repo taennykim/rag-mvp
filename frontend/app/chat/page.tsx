@@ -45,15 +45,19 @@ type ChatResponse = {
 };
 
 const API_BASE_URL = "/api";
+const CUSTOM_QUERY_REWRITE_MODEL = "custom";
 const QUERY_REWRITE_MODEL_OPTIONS = [
   { label: "Default (gpt-4o-mini)", value: "" },
   { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
   { label: "GPT-4o", value: "gpt-4o" },
+  { label: "Custom", value: CUSTOM_QUERY_REWRITE_MODEL },
 ];
+const CUSTOM_ANSWER_MODEL = "custom";
 const ANSWER_MODEL_OPTIONS = [
   { label: "Default (gpt-4o)", value: "" },
   { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
   { label: "GPT-4o", value: "gpt-4o" },
+  { label: "Custom", value: CUSTOM_ANSWER_MODEL },
 ];
 
 function formatAnswerState(result: ChatResponse | null) {
@@ -136,7 +140,13 @@ function pickLookupTarget(result: ChatResponse | null): { documentId: string; se
 export default function ChatPage() {
   const [query, setQuery] = useState("");
   const [queryRewriteModel, setQueryRewriteModel] = useState("");
+  const [queryRewriteBaseUrl, setQueryRewriteBaseUrl] = useState("");
+  const [queryRewriteCustomModel, setQueryRewriteCustomModel] = useState("");
+  const [queryRewriteApiKey, setQueryRewriteApiKey] = useState("");
   const [answerModel, setAnswerModel] = useState("");
+  const [answerBaseUrl, setAnswerBaseUrl] = useState("");
+  const [answerCustomModel, setAnswerCustomModel] = useState("");
+  const [answerApiKey, setAnswerApiKey] = useState("");
   const [finalK, setFinalK] = useState("5");
   const [result, setResult] = useState<ChatResponse | null>(null);
   const [responseTimeMs, setResponseTimeMs] = useState<number | null>(null);
@@ -144,10 +154,28 @@ export default function ChatPage() {
     "질문 입력과 응답 확인에 집중할 수 있도록 채팅 화면을 단순하게 유지합니다.",
   );
   const [isLoading, setIsLoading] = useState(false);
+  const isCustomQueryRewriteModel = queryRewriteModel === CUSTOM_QUERY_REWRITE_MODEL;
+  const isCustomAnswerModel = answerModel === CUSTOM_ANSWER_MODEL;
 
   async function requestChatResponse(action: "search" | "lookup") {
     if (!query.trim()) {
       setMessage("질문을 먼저 입력하세요.");
+      return;
+    }
+    if (isCustomQueryRewriteModel && !queryRewriteBaseUrl.trim()) {
+      setMessage("Custom Query Rewrite LLM의 Base URL을 입력하세요.");
+      return;
+    }
+    if (isCustomQueryRewriteModel && !queryRewriteCustomModel.trim()) {
+      setMessage("Custom Query Rewrite LLM의 Model Name을 입력하세요.");
+      return;
+    }
+    if (isCustomAnswerModel && !answerBaseUrl.trim()) {
+      setMessage("Custom Answer LLM의 Base URL을 입력하세요.");
+      return;
+    }
+    if (isCustomAnswerModel && !answerCustomModel.trim()) {
+      setMessage("Custom Answer LLM의 Model Name을 입력하세요.");
       return;
     }
 
@@ -175,7 +203,13 @@ export default function ChatPage() {
           document_id: lookupTarget?.documentId ?? null,
           section_hint: lookupTarget?.sectionHint ?? null,
           query_rewrite_model: queryRewriteModel || null,
+          query_rewrite_base_url: isCustomQueryRewriteModel ? queryRewriteBaseUrl.trim() : null,
+          query_rewrite_custom_model: isCustomQueryRewriteModel ? queryRewriteCustomModel.trim() : null,
+          query_rewrite_api_key: isCustomQueryRewriteModel ? queryRewriteApiKey : null,
           answer_model: answerModel || null,
+          answer_base_url: isCustomAnswerModel ? answerBaseUrl.trim() : null,
+          answer_custom_model: isCustomAnswerModel ? answerCustomModel.trim() : null,
+          answer_api_key: isCustomAnswerModel ? answerApiKey : null,
         }),
       });
 
@@ -250,6 +284,47 @@ export default function ChatPage() {
               </option>
             ))}
           </select>
+          {isCustomQueryRewriteModel ? (
+            <>
+              <label className="upload-label" htmlFor="chat-query-rewrite-base-url">
+                Custom Base URL
+              </label>
+              <input
+                className="default-file-select"
+                id="chat-query-rewrite-base-url"
+                onChange={(event) => setQueryRewriteBaseUrl(event.target.value)}
+                placeholder="http://10.x.x.x:8000/v1"
+                type="text"
+                value={queryRewriteBaseUrl}
+              />
+              <label className="upload-label" htmlFor="chat-query-rewrite-custom-model">
+                Custom Model Name
+              </label>
+              <input
+                className="default-file-select"
+                id="chat-query-rewrite-custom-model"
+                onChange={(event) => setQueryRewriteCustomModel(event.target.value)}
+                placeholder="Llama-3-Korean-8B"
+                type="text"
+                value={queryRewriteCustomModel}
+              />
+              <label className="upload-label" htmlFor="chat-query-rewrite-api-key">
+                Custom API Key
+              </label>
+              <input
+                autoComplete="off"
+                className="default-file-select"
+                id="chat-query-rewrite-api-key"
+                onChange={(event) => setQueryRewriteApiKey(event.target.value)}
+                placeholder="필요한 경우만 입력"
+                type="password"
+                value={queryRewriteApiKey}
+              />
+              <div className="chat-note">
+                Custom LLM은 OpenAI-compatible API만 지원합니다.
+              </div>
+            </>
+          ) : null}
           <label className="upload-label" htmlFor="chat-answer-model">
             Answer LLM
           </label>
@@ -265,6 +340,47 @@ export default function ChatPage() {
               </option>
             ))}
           </select>
+          {isCustomAnswerModel ? (
+            <>
+              <label className="upload-label" htmlFor="chat-answer-base-url">
+                Custom Answer Base URL
+              </label>
+              <input
+                className="default-file-select"
+                id="chat-answer-base-url"
+                onChange={(event) => setAnswerBaseUrl(event.target.value)}
+                placeholder="http://10.x.x.x:8000/v1"
+                type="text"
+                value={answerBaseUrl}
+              />
+              <label className="upload-label" htmlFor="chat-answer-custom-model">
+                Custom Answer Model Name
+              </label>
+              <input
+                className="default-file-select"
+                id="chat-answer-custom-model"
+                onChange={(event) => setAnswerCustomModel(event.target.value)}
+                placeholder="Llama-3-Korean-8B"
+                type="text"
+                value={answerCustomModel}
+              />
+              <label className="upload-label" htmlFor="chat-answer-api-key">
+                Custom Answer API Key
+              </label>
+              <input
+                autoComplete="off"
+                className="default-file-select"
+                id="chat-answer-api-key"
+                onChange={(event) => setAnswerApiKey(event.target.value)}
+                placeholder="필요한 경우만 입력"
+                type="password"
+                value={answerApiKey}
+              />
+              <div className="chat-note">
+                Custom Answer LLM은 OpenAI-compatible API만 지원합니다.
+              </div>
+            </>
+          ) : null}
           <div className="chat-query-preview">
             <span className="chat-query-preview-label">LLM Question</span>
             <div className="chat-query-preview-body">
