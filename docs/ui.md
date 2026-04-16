@@ -26,7 +26,7 @@
   - `LLM Question` 표시
   - `Search final_k` 입력
   - `Get response` 버튼으로 Search API 호출
-  - `Get lookup response` 버튼으로 직전 Search 결과 중 최고 `rrf_score` 문서 기준 Lookup API 호출
+  - Lookup 버튼 기능은 유지하되 현재 UI에서는 hidden 처리
   - response 표시 영역
   - evidence 표시 영역
   - reference context 표시 영역
@@ -50,6 +50,7 @@
 - `/chat`은 외부 RAG 연동 스키마가 확정되기 전까지 schema-light shell로 유지한다.
 - `/chat` main form은 질문, Query Rewrite LLM 선택, Search `final_k`, Search/Lookup 실행 버튼만 노출하고 endpoint 값은 backend 고정값을 사용한다.
 - Lookup은 직전 Search 결과가 있어야 하며, 가장 높은 `rrf_score` hit의 `document_id`와 `section_hint`를 사용한다.
+- 다만 현재 브라우저 UI에서는 Lookup 버튼을 잠시 숨겨 두고 backend 기능만 유지한다.
 - `/chat` Question은 단일 질문뿐 아니라 `고객:` / `상담사:` 멀티라인 입력도 허용하고, backend가 이를 `conversation_context`로 정규화한다.
 - `/chat` Question 바로 아래에는 최종 `rewritten_query`만 `LLM Question`으로 표시한다.
 - `/chat` answer card는 최종 응답 영역, citation card는 근거 영역, context card는 참고용 context 확인용으로 나눴다.

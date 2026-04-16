@@ -154,6 +154,7 @@
 - [x] Mark Lookup API endpoint as Later and disable its input
 - [x] Replace Search/Lookup endpoint inputs with fixed backend endpoints and split `/chat` buttons into Search / Lookup actions
 - [x] Add Search `final_k` input and make Search / Lookup call their own APIs only
+- [x] Hide Lookup button in `/chat` UI while keeping backend lookup flow
 - [x] Show detailed response timing on `/chat` answer panel
 - [x] Separate compact `Evidence` from full `Reference context` on `/chat`
 - [x] Show `rerank_score` and `matched_queries` on `/chat` for internal retrieval hits

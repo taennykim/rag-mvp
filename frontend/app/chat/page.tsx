@@ -267,13 +267,10 @@ export default function ChatPage() {
             <button className="upload-button" disabled={isLoading} onClick={() => void requestChatResponse("search")} type="button">
               {isLoading ? "Loading..." : "Get response"}
             </button>
-            <button className="upload-button secondary" disabled={isLoading} onClick={() => void requestChatResponse("lookup")} type="button">
-              {isLoading ? "Loading..." : "Get lookup response"}
-            </button>
           </div>
         </div>
         <div className="chat-note">
-          `Get response`는 Search API만 호출하고, `Get lookup response`는 Lookup API만 호출합니다.
+          `Get response`는 Search API만 호출합니다.
         </div>
         <div className="chat-status">{message}</div>
       </div>
@@ -294,7 +291,7 @@ export default function ChatPage() {
               {result.action ? <span>Mode: {result.action}</span> : null}
               {result.query_rewrite_model ? <span>Rewrite LLM: {result.query_rewrite_model}</span> : null}
               {result.search_api_endpoint ? <span>Search: {result.search_api_endpoint}</span> : null}
-              {result.lookup_api_endpoint ? <span>Lookup: {result.lookup_api_endpoint}</span> : null}
+              {result.action === "lookup" && result.lookup_api_endpoint ? <span>Lookup: {result.lookup_api_endpoint}</span> : null}
             </div>
             <div className={`answer-body${result.insufficient_context ? " warning" : ""}`}>
               {result.answer ?? "아직 연결된 최종 응답 본문은 없습니다."}

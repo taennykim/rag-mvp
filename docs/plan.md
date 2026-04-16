@@ -39,7 +39,7 @@
 - 현재 단계: Query Rewrite LLM 기본값을 `gpt-4o-mini`로 변경함
 - 현재 단계: RAG 서버에서 호출 검증을 통과한 `gpt-4.1-mini`를 Query Rewrite LLM 선택지에 추가함
 - 현재 단계: Query Rewrite LLM UI 기본 선택값 라벨은 `Default (gpt-4o-mini)`로 두고, 중복되는 `gpt-4o-mini` 단독 선택 옵션은 제거함
-- 현재 단계: `/chat` Search/Lookup endpoint는 backend 고정값으로 사용하고, UI는 Search `final_k` 입력과 `Get response` / `Get lookup response` 버튼으로 분리함
+- 현재 단계: `/chat` Search/Lookup endpoint는 backend 고정값으로 사용하고, UI는 Search `final_k` 입력과 `Get response`만 노출하며 Lookup 버튼은 hidden 처리함
 - 현재 단계: 2026-04-08 기준 RAG 서버 frontend/backend runtime을 다시 복구했고 UI 확인 가능한 상태로 유지 중
 - 완료:
   - AGENTS.md, TODO.md 확인
@@ -101,7 +101,7 @@
   - backend/frontend `/chat` Query Rewrite LLM 선택 UI 및 요청 필드 반영 완료
   - backend/frontend `/chat` Query Rewrite LLM 기본값 `gpt-4o-mini` 반영 완료
   - backend/frontend `/chat` Query Rewrite LLM 선택지 `gpt-4.1-mini` 추가 완료
-  - backend/frontend `/chat` Search/Lookup 고정 endpoint와 Search `final_k`, Search/Lookup 버튼 분리 UI 반영 완료
+  - backend/frontend `/chat` Search/Lookup 고정 endpoint와 Search `final_k` 반영, Lookup 버튼 hidden UI 반영 완료
   - backend `/retrieve`, `/chat`이 `retrieved_chunks` 표준 포맷(`document_id`, `chunk_id`, `score`, `section`, `text`, `rank`)을 함께 반환하도록 반영 완료
   - backend `/chat` Step 6 Search Result Evaluation rule-based 1차 구현 완료
   - frontend `/chat`에서 `LLM Question`에 `rewritten_query`만 표시하도록 정리 완료

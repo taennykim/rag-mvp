@@ -21,7 +21,7 @@
 - RAG 서버에서 `gpt-4.1-mini` Azure OpenAI deployment 직접 호출이 성공했음을 확인했다.
 - `/chat` Search API endpoint는 backend 고정값 `http://10.160.98.123:8000/api/search`를 사용하고 화면에서는 입력받지 않는다.
 - `/chat` Search API 호출 시 `final_k`는 화면 입력값을 사용한다.
-- `/chat` Lookup API endpoint는 backend 고정값 `http://10.160.98.123:8000/api/lookup`를 사용하고, 화면에서는 직전 Search 결과 중 최고 `rrf_score` hit의 `document_id`를 사용해 `Get lookup response`로 호출한다.
+- `/chat` Lookup API endpoint는 backend 고정값 `http://10.160.98.123:8000/api/lookup`를 사용하고, 현재는 UI에서 버튼을 숨긴 상태로 backend 기능만 유지한다.
 - backend `POST /chat`은 retrieval hit 원본과 별도로 `retrieved_chunks` 표준 포맷을 함께 반환해 이후 평가/분기 단계에서 재사용할 수 있게 정리했다.
 - frontend `/chat`에 answer panel, citation slot, optional debug context 표시를 추가했다.
 - `AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o` runtime config를 사용하도록 정리했다.
