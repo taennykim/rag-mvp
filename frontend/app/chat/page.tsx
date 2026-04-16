@@ -36,6 +36,7 @@ type ChatResponse = {
   detail?: string;
   rewritten_query?: string;
   query_rewrite_model?: string | null;
+  answer_model?: string | null;
   search_api_endpoint?: string | null;
   lookup_api_endpoint?: string | null;
   action?: string | null;
@@ -46,6 +47,11 @@ type ChatResponse = {
 const API_BASE_URL = "/api";
 const QUERY_REWRITE_MODEL_OPTIONS = [
   { label: "Default (gpt-4o-mini)", value: "" },
+  { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
+  { label: "GPT-4o", value: "gpt-4o" },
+];
+const ANSWER_MODEL_OPTIONS = [
+  { label: "Default (gpt-4o)", value: "" },
   { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
   { label: "GPT-4o", value: "gpt-4o" },
 ];
@@ -130,6 +136,7 @@ function pickLookupTarget(result: ChatResponse | null): { documentId: string; se
 export default function ChatPage() {
   const [query, setQuery] = useState("");
   const [queryRewriteModel, setQueryRewriteModel] = useState("");
+  const [answerModel, setAnswerModel] = useState("");
   const [finalK, setFinalK] = useState("5");
   const [result, setResult] = useState<ChatResponse | null>(null);
   const [responseTimeMs, setResponseTimeMs] = useState<number | null>(null);
@@ -168,6 +175,7 @@ export default function ChatPage() {
           document_id: lookupTarget?.documentId ?? null,
           section_hint: lookupTarget?.sectionHint ?? null,
           query_rewrite_model: queryRewriteModel || null,
+          answer_model: answerModel || null,
         }),
       });
 
@@ -242,6 +250,21 @@ export default function ChatPage() {
               </option>
             ))}
           </select>
+          <label className="upload-label" htmlFor="chat-answer-model">
+            Answer LLM
+          </label>
+          <select
+            className="default-file-select"
+            id="chat-answer-model"
+            onChange={(event) => setAnswerModel(event.target.value)}
+            value={answerModel}
+          >
+            {ANSWER_MODEL_OPTIONS.map((option) => (
+              <option key={option.label} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
           <div className="chat-query-preview">
             <span className="chat-query-preview-label">LLM Question</span>
             <div className="chat-query-preview-body">
@@ -290,6 +313,7 @@ export default function ChatPage() {
               <span>{answerState}</span>
               {result.action ? <span>Mode: {result.action}</span> : null}
               {result.query_rewrite_model ? <span>Rewrite LLM: {result.query_rewrite_model}</span> : null}
+              {result.answer_model ? <span>Answer LLM: {result.answer_model}</span> : null}
               {result.search_api_endpoint ? <span>Search: {result.search_api_endpoint}</span> : null}
               {result.action === "lookup" && result.lookup_api_endpoint ? <span>Lookup: {result.lookup_api_endpoint}</span> : null}
             </div>

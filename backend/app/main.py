@@ -1890,6 +1890,7 @@ class ChatRequest(BaseModel):
     lookup_api_endpoint: str | None = None
     action: str | None = "search"
     query_rewrite_model: str | None = None
+    answer_model: str | None = None
     conversation_context: list[ConversationTurn] = Field(default_factory=list)
     metadata: ChatMetadata | None = None
 
@@ -2089,6 +2090,27 @@ def get_query_rewrite_model_id(requested_model: str | None = None) -> str:
 
     if requested not in configured_models:
         raise HTTPException(status_code=400, detail=f"Unsupported query rewrite model: {requested}")
+    return requested
+
+
+def get_answer_model_id(requested_model: str | None = None) -> str:
+    requested = (requested_model or "").strip()
+    if not requested:
+        configured_default = os.getenv("AZURE_OPENAI_ANSWER_DEPLOYMENT", "").strip()
+        return configured_default or get_chat_model_id()
+
+    configured_models = {
+        get_chat_model_id(),
+        DEFAULT_QUERY_REWRITE_MODEL,
+        "gpt-4.1-mini",
+        "gpt-4o",
+    }
+    extra_models = os.getenv("AZURE_OPENAI_ANSWER_DEPLOYMENTS", "").strip()
+    if extra_models:
+        configured_models.update(model.strip() for model in extra_models.split(",") if model.strip())
+
+    if requested not in configured_models:
+        raise HTTPException(status_code=400, detail=f"Unsupported answer model: {requested}")
     return requested
 
 
@@ -3567,6 +3589,7 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
     original_query = payload.query.strip()
     rewrite_started_at = time.perf_counter()
     rewrite_result = rewrite_chat_query(payload)
+    answer_model_id = get_answer_model_id(payload.answer_model)
     query_rewrite_time_ms = round((time.perf_counter() - rewrite_started_at) * 1000)
     search_started_at = time.perf_counter()
     search_api_endpoint = (payload.search_api_endpoint or DEFAULT_EXTERNAL_SEARCH_API_ENDPOINT).strip()
@@ -3628,6 +3651,7 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
             "citations": [],
             "hits": [],
             "chat_model": None,
+            "answer_model": answer_model_id,
             "detail": str(exc.detail),
         }
     search_api_response_time_ms = round((time.perf_counter() - search_started_at) * 1000)
@@ -3674,6 +3698,7 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
             "citations": [],
             "hits": [],
             "chat_model": None,
+            "answer_model": answer_model_id,
             "detail": lookup_error_detail,
         }
 
@@ -3705,7 +3730,8 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
-        ]
+        ],
+        deployment=answer_model_id,
     )
     insufficient_context, answer = parse_chat_completion(response_text)
 
@@ -3744,7 +3770,8 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         "insufficient_context": insufficient_context,
         "citations": build_chat_citations(hits),
         "hits": hits,
-        "chat_model": get_chat_model_id(),
+        "chat_model": answer_model_id,
+        "answer_model": answer_model_id,
         "detail": lookup_error_detail,
     }
 
