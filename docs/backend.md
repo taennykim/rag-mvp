@@ -137,6 +137,7 @@
   - query rewrite prompt는 `docs/query-rewrite-spec.md` 운영 문서를 읽어 `rewritten_query` 생성 기준에 반영한다.
   - chat request는 `query`, `top_k`, `stored_name`, `rag_endpoint` 외에 `query_rewrite_model`, `conversation_context`, `metadata`를 받을 수 있다.
   - `query_rewrite_model`이 지정되면 Query Rewrite LLM 호출에 해당 Azure OpenAI deployment를 사용하고, answer generation은 기존 chat deployment를 유지한다.
+  - `query_rewrite_model`이 비어 있으면 기본 Query Rewrite LLM은 `gpt-4o-mini`를 사용한다.
   - `rag_endpoint`가 입력되면 해당 endpoint로 retrieval request를 보내고, 비어 있으면 내부 `POST /retrieve`를 사용한다.
   - Search API 호출 계층은 `execute_search_for_chat`으로 분리해 내부/외부 검색 결과를 공통 trace로 정리한다.
   - 임시 외부 Search API `/api/search` endpoint는 `rewritten_query`를 `query`에 넣고 `top_k=20`, `final_k=payload.top_k`, `use_rerank=false`, `include_source_metadata=true`, `include_scores=true`, `keyword_vector_weight=0.5`로 호출한다.
@@ -171,6 +172,8 @@
 - query rewrite 운영 스펙을 `docs/query-rewrite-spec.md`로 분리 완료
 - query rewrite의 모호한 마지막 발화 판별, 최근 고객 발화 묶음 seed, 보험 도메인 보장 축 복원 규칙 보강 완료
 - query rewrite LLM 선택 요청 필드 및 응답 trace 반영 완료
+- query rewrite 기본 LLM을 `gpt-4o-mini`로 변경 완료
+- query rewrite LLM 선택지에 RAG 서버 호출 검증을 통과한 `gpt-4.1-mini` 추가 완료
 
 ## 4. 이슈 및 문제
 - parsing 결과는 아직 메모리 기준 단건 응답만 제공한다.

@@ -36,6 +36,10 @@
 - 현재 단계: 개발자 제공 임시 Search API `/api/search`를 `/chat` 외부 검색 endpoint로 사용할 수 있도록 payload와 `results` 응답 normalization을 반영함
 - 현재 단계: `/chat` 화면의 응답시간을 전체 Response time, Query rewrite time, API response time으로 세분화함
 - 현재 단계: `/chat` Question과 LLM Question 사이에 Query Rewrite LLM 선택 UI를 추가하고 backend 호출 모델 선택값을 연결함
+- 현재 단계: Query Rewrite LLM 기본값을 `gpt-4o-mini`로 변경함
+- 현재 단계: RAG 서버에서 호출 검증을 통과한 `gpt-4.1-mini`를 Query Rewrite LLM 선택지에 추가함
+- 현재 단계: Query Rewrite LLM UI 기본 선택값은 공백 `Default`로 두고, `gpt-4o-mini`는 명시 선택 옵션으로 유지함
+- 현재 단계: `/chat` Search API endpoint 기본값을 임시 외부 Search API로 설정하고 Lookup API endpoint는 later/disabled 상태로 정리함
 - 현재 단계: 2026-04-08 기준 RAG 서버 frontend/backend runtime을 다시 복구했고 UI 확인 가능한 상태로 유지 중
 - 완료:
   - AGENTS.md, TODO.md 확인
@@ -95,6 +99,9 @@
   - backend `/chat` 임시 외부 Search API `/api/search` 연동 payload와 `results` 응답 표준화 반영 완료
   - backend/frontend `/chat` 단계별 응답시간 표시 반영 완료
   - backend/frontend `/chat` Query Rewrite LLM 선택 UI 및 요청 필드 반영 완료
+  - backend/frontend `/chat` Query Rewrite LLM 기본값 `gpt-4o-mini` 반영 완료
+  - backend/frontend `/chat` Query Rewrite LLM 선택지 `gpt-4.1-mini` 추가 완료
+  - frontend `/chat` Search API endpoint 기본값과 Lookup API later/disabled UI 반영 완료
   - backend `/retrieve`, `/chat`이 `retrieved_chunks` 표준 포맷(`document_id`, `chunk_id`, `score`, `section`, `text`, `rank`)을 함께 반환하도록 반영 완료
   - backend `/chat` Step 6 Search Result Evaluation rule-based 1차 구현 완료
   - frontend `/chat`에서 `LLM Question`에 `rewritten_query`만 표시하도록 정리 완료
@@ -107,7 +114,7 @@
 - 다음 우선 작업:
   - 치조골 이식/수술특약/판결 케이스의 query rewrite 규칙을 보강한다
   - RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI, 단계별 응답시간, 외부 Search API 결과 표시를 확인한다
-  - `gpt-4o-mini` Azure OpenAI deployment 존재 여부를 확인하고 UI 선택지 운영 방식을 정한다
+  - Query Rewrite LLM 기본값 `gpt-4o-mini` 기준 브라우저 동작을 확인한다
   - `docs/chat_plan.md` 기준 Step 7 Need More Context 분기와 Step 8 Lookup API 호출 연결 방식을 정리한다
   - parser 운영 정책은 `Legacy auto` 기본, `Docling` 비교 검증용, `Docling(md)` Markdown 산출물 생성용으로 유지한다
   - `Docling` PDF 변환 장시간 실행 원인을 추가 확인하되, 현재 PDF 기본 parser 정책은 `Legacy auto / PyMuPDF 우선`으로 유지한다

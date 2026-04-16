@@ -41,10 +41,12 @@ type ChatResponse = {
 };
 
 const API_BASE_URL = "/api";
+const DEFAULT_SEARCH_API_ENDPOINT = "http://10.160.98.123:8000/api/search";
 const QUERY_REWRITE_MODEL_OPTIONS = [
-  { label: "Default (gpt-4o)", value: "" },
-  { label: "GPT-4o", value: "gpt-4o" },
+  { label: "Default", value: "" },
   { label: "GPT-4o mini", value: "gpt-4o-mini" },
+  { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
+  { label: "GPT-4o", value: "gpt-4o" },
 ];
 
 function formatAnswerState(result: ChatResponse | null) {
@@ -103,7 +105,7 @@ function formatResponseTiming(totalMs: number, result: ChatResponse) {
 export default function ChatPage() {
   const [query, setQuery] = useState("");
   const [queryRewriteModel, setQueryRewriteModel] = useState("");
-  const [searchApiEndpoint, setSearchApiEndpoint] = useState("");
+  const [searchApiEndpoint, setSearchApiEndpoint] = useState(DEFAULT_SEARCH_API_ENDPOINT);
   const [lookupApiEndpoint, setLookupApiEndpoint] = useState("");
   const [result, setResult] = useState<ChatResponse | null>(null);
   const [responseTimeMs, setResponseTimeMs] = useState<number | null>(null);
@@ -226,10 +228,11 @@ export default function ChatPage() {
             value={searchApiEndpoint}
           />
           <label className="upload-label" htmlFor="chat-lookup-api-endpoint">
-            Lookup API endpoint
+            Lookup API endpoint(Later)
           </label>
           <input
             className="default-file-select"
+            disabled
             id="chat-lookup-api-endpoint"
             onChange={(event) => setLookupApiEndpoint(event.target.value)}
             placeholder="선택 입력"

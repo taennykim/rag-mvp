@@ -142,6 +142,7 @@ EMBEDDING_PROVIDER_HASH = "hash"
 EMBEDDING_PROVIDER_AZURE_OPENAI = "azure_openai"
 DEFAULT_AZURE_OPENAI_EMBEDDING_DEPLOYMENT = "text-embedding-3-small"
 DEFAULT_AZURE_OPENAI_API_VERSION = "2024-02-01"
+DEFAULT_QUERY_REWRITE_MODEL = "gpt-4o-mini"
 AZURE_OPENAI_EMBEDDING_BATCH_SIZE = 32
 DEFAULT_CHAT_TOP_K = 5
 RUNTIME_ENV_FILE = BASE_DIR / ".env.runtime"
@@ -2068,12 +2069,13 @@ def get_chat_model_id() -> str:
 def get_query_rewrite_model_id(requested_model: str | None = None) -> str:
     requested = (requested_model or "").strip()
     if not requested:
-        return get_chat_model_id()
+        return os.getenv("AZURE_OPENAI_QUERY_REWRITE_DEPLOYMENT", DEFAULT_QUERY_REWRITE_MODEL).strip() or DEFAULT_QUERY_REWRITE_MODEL
 
     configured_models = {
         get_chat_model_id(),
+        DEFAULT_QUERY_REWRITE_MODEL,
+        "gpt-4.1-mini",
         "gpt-4o",
-        "gpt-4o-mini",
     }
     extra_models = os.getenv("AZURE_OPENAI_QUERY_REWRITE_DEPLOYMENTS", "").strip()
     if extra_models:

@@ -146,6 +146,11 @@
 - [ ] Show rewrite result and route hints on `/chat`
 - [x] Show `RAG question` (`rewritten_query`) under `Question` on `/chat`
 - [x] Add Query Rewrite LLM selector between Question and LLM Question on `/chat`
+- [x] Set default Query Rewrite LLM to `gpt-4o-mini`
+- [x] Test and add `gpt-4.1-mini` to Query Rewrite LLM selector
+- [x] Keep Query Rewrite LLM UI default as blank `Default` and expose `gpt-4o-mini` as a selectable option
+- [x] Set `/chat` Search API endpoint default to temporary external Search API
+- [x] Mark Lookup API endpoint as Later and disable its input
 - [x] Show detailed response timing on `/chat` answer panel
 - [x] Separate compact `Evidence` from full `Reference context` on `/chat`
 - [x] Show `rerank_score` and `matched_queries` on `/chat` for internal retrieval hits
@@ -227,7 +232,7 @@
 - [ ] RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI 위치와 선택 모델 표시 확인
 - [ ] RAG 서버 브라우저에서 Answer 상단 단계별 응답시간 표시 확인
 - [ ] RAG 서버 브라우저에서 외부 Search API 결과가 Evidence / Reference context에 표시되는지 확인
-- [ ] `gpt-4o-mini` Azure OpenAI deployment 존재 여부 확인 및 UI 선택지 운영 방식 결정
+- [ ] Query Rewrite LLM 기본값 `gpt-4o-mini` 기준 브라우저 동작 확인
 - [x] frontend 의존성 설치
 - [x] backend 의존성 설치
 - [x] frontend 실행 확인
