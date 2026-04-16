@@ -43,8 +43,7 @@ type ChatResponse = {
 const API_BASE_URL = "/api";
 const DEFAULT_SEARCH_API_ENDPOINT = "http://10.160.98.123:8000/api/search";
 const QUERY_REWRITE_MODEL_OPTIONS = [
-  { label: "Default", value: "" },
-  { label: "GPT-4o mini", value: "gpt-4o-mini" },
+  { label: "Default (gpt-4o-mini)", value: "" },
   { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
   { label: "GPT-4o", value: "gpt-4o" },
 ];
@@ -87,10 +86,14 @@ function formatMatchedQueries(matchedQueries?: string[]) {
   return matchedQueries.join(" | ");
 }
 
+function formatSeconds(milliseconds: number) {
+  return `${(milliseconds / 1000).toFixed(2)} s`;
+}
+
 function formatResponseTiming(totalMs: number, result: ChatResponse) {
   const detailParts: string[] = [];
   if (typeof result.query_rewrite_time_ms === "number") {
-    detailParts.push(`Query rewrite time: ${result.query_rewrite_time_ms} ms`);
+    detailParts.push(`Query rewrite time: ${formatSeconds(result.query_rewrite_time_ms)}`);
   }
   if (typeof result.search_api_response_time_ms === "number") {
     detailParts.push(`API response time: ${result.search_api_response_time_ms} ms`);
@@ -143,6 +146,11 @@ export default function ChatPage() {
 
       const data = (await response.json()) as ChatResponse;
       if (!response.ok) {
+        if (data.rewritten_query?.trim()) {
+          setResult(data);
+        } else {
+          setResult(null);
+        }
         throw new Error(data.detail ?? "Chat request failed.");
       }
 
@@ -155,7 +163,6 @@ export default function ChatPage() {
       );
     } catch (error) {
       setResponseTimeMs(null);
-      setResult(null);
       setMessage(error instanceof Error ? error.message : "Chat request failed.");
     } finally {
       setIsLoading(false);

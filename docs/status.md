@@ -33,8 +33,9 @@
 - 2026-04-15 기준 `/chat` Question과 LLM Question 사이에 Query Rewrite LLM 선택 UI를 추가했고, backend가 `query_rewrite_model`을 rewrite 호출에 적용하도록 반영했다.
 - 2026-04-16 기준 Query Rewrite LLM 기본값을 `gpt-4o-mini`로 변경했다.
 - 2026-04-16 기준 RAG 서버에서 `gpt-4.1-mini` deployment 직접 호출 성공을 확인했고 Query Rewrite LLM 선택지에 추가했다.
-- 2026-04-16 기준 Query Rewrite LLM UI 기본 선택값은 공백 `Default`로 되돌리고, `gpt-4o-mini`는 별도 선택 옵션으로 유지했다.
+- 2026-04-16 기준 Query Rewrite LLM UI 기본 선택값 라벨은 `Default (gpt-4o-mini)`로 표시하고, 중복 선택으로 보이지 않도록 별도 `gpt-4o-mini` 옵션은 제거했다.
 - 2026-04-16 기준 `/chat` Search API endpoint 기본값을 `http://10.160.98.123:8000/api/search`로 설정했고, Lookup API endpoint는 `Lookup API endpoint(Later)` 라벨과 disabled 입력으로 변경했다.
+- 2026-04-16 기준 Search API 연결 실패 시에도 `/chat`이 `rewritten_query`, 오류 메시지, insufficient-context 상태를 함께 반환하도록 보강했다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -98,6 +99,7 @@
   - `POST /chat` query rewrite 기본 LLM을 `gpt-4o-mini`로 변경 완료
   - `POST /chat` query rewrite LLM 선택지에 `gpt-4.1-mini` 추가 완료
   - `/chat` Search API endpoint 기본값과 Lookup API later/disabled UI 반영 완료
+  - Search API 연결 실패 시 `/chat`이 `rewritten_query`와 오류 메시지를 함께 반환하도록 반영 완료
   - `POST /chat` 응답에 `search_query`, `executed_search_queries`, `need_more_context`, `search_evaluation` trace 추가 완료
   - `POST /chat` 내부 검색 후보와 rerank 기준을 `rewritten_query` 우선으로 정리 완료
   - `POST /chat` query rewrite seed를 최근 고객 발화 묶음 기준으로 보강 완료

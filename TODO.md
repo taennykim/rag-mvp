@@ -149,6 +149,7 @@
 - [x] Set default Query Rewrite LLM to `gpt-4o-mini`
 - [x] Test and add `gpt-4.1-mini` to Query Rewrite LLM selector
 - [x] Keep Query Rewrite LLM UI default as blank `Default` and expose `gpt-4o-mini` as a selectable option
+- [x] Rename default Query Rewrite LLM label to `Default (gpt-4o-mini)` and remove duplicate `gpt-4o-mini` option
 - [x] Set `/chat` Search API endpoint default to temporary external Search API
 - [x] Mark Lookup API endpoint as Later and disable its input
 - [x] Show detailed response timing on `/chat` answer panel

@@ -38,7 +38,7 @@
 - 현재 단계: `/chat` Question과 LLM Question 사이에 Query Rewrite LLM 선택 UI를 추가하고 backend 호출 모델 선택값을 연결함
 - 현재 단계: Query Rewrite LLM 기본값을 `gpt-4o-mini`로 변경함
 - 현재 단계: RAG 서버에서 호출 검증을 통과한 `gpt-4.1-mini`를 Query Rewrite LLM 선택지에 추가함
-- 현재 단계: Query Rewrite LLM UI 기본 선택값은 공백 `Default`로 두고, `gpt-4o-mini`는 명시 선택 옵션으로 유지함
+- 현재 단계: Query Rewrite LLM UI 기본 선택값 라벨은 `Default (gpt-4o-mini)`로 두고, 중복되는 `gpt-4o-mini` 단독 선택 옵션은 제거함
 - 현재 단계: `/chat` Search API endpoint 기본값을 임시 외부 Search API로 설정하고 Lookup API endpoint는 later/disabled 상태로 정리함
 - 현재 단계: 2026-04-08 기준 RAG 서버 frontend/backend runtime을 다시 복구했고 UI 확인 가능한 상태로 유지 중
 - 완료:

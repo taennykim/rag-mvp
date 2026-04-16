@@ -3382,7 +3382,57 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
     rewrite_result = rewrite_chat_query(payload)
     query_rewrite_time_ms = round((time.perf_counter() - rewrite_started_at) * 1000)
     search_started_at = time.perf_counter()
-    search_result = execute_search_for_chat(payload, rewrite_result)
+    try:
+        search_result = execute_search_for_chat(payload, rewrite_result)
+    except HTTPException as exc:
+        search_api_response_time_ms = round((time.perf_counter() - search_started_at) * 1000)
+        logger.warning(
+            "chat_search_failed query=%s rewrite_query=%s detail=%s",
+            original_query,
+            rewrite_result.rewritten_query,
+            exc.detail,
+        )
+        return {
+            "status": "answered",
+            "query": original_query,
+            "interpreted_query": rewrite_result.rewritten_query,
+            "rewritten_query": rewrite_result.rewritten_query,
+            "search_queries": rewrite_result.search_queries,
+            "retrieved_chunks": [],
+            "normalized_conversation": rewrite_result.normalized_conversation,
+            "last_customer_message": rewrite_result.last_customer_message,
+            "validation_reasons": rewrite_result.validation_reasons,
+            "rewrite_source": rewrite_result.rewrite_source,
+            "query_rewrite_model": rewrite_result.query_rewrite_model,
+            "intent": rewrite_result.intent,
+            "question_type": rewrite_result.question_type,
+            "entities": rewrite_result.entities,
+            "routing_hints": rewrite_result.routing_hints,
+            "search_query": rewrite_result.rewritten_query,
+            "executed_search_queries": [],
+            "top_k": payload.top_k,
+            "hit_count": 0,
+            "collection_name": None,
+            "embedding_provider": None,
+            "embedding_model": None,
+            "rag_endpoint": payload.search_api_endpoint.strip() if payload.search_api_endpoint else "internal:/retrieve",
+            "search_api_endpoint": payload.search_api_endpoint.strip() if payload.search_api_endpoint else None,
+            "lookup_api_endpoint": payload.lookup_api_endpoint.strip() if payload.lookup_api_endpoint else None,
+            "query_rewrite_time_ms": query_rewrite_time_ms,
+            "search_api_response_time_ms": search_api_response_time_ms,
+            "need_more_context": True,
+            "search_evaluation": {
+                "need_more_context": True,
+                "reason_codes": ["search_request_failed"],
+                "evaluation_reasons": ["검색 API 연결에 실패해 검색 결과를 가져오지 못했습니다."],
+            },
+            "answer": "검색 API 연결에 실패했습니다.",
+            "insufficient_context": True,
+            "citations": [],
+            "hits": [],
+            "chat_model": None,
+            "detail": str(exc.detail),
+        }
     search_api_response_time_ms = round((time.perf_counter() - search_started_at) * 1000)
     hits = search_result["hits"]
     retrieved_chunks = search_result["retrieved_chunks"]
