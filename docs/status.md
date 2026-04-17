@@ -38,8 +38,13 @@
 - 2026-04-16 기준 Lookup은 직전 Search 결과 중 최고 `rrf_score` hit의 `document_id`를 사용하도록 연결했다.
 - 2026-04-16 기준 Search API 연결 실패 시에도 `/chat`이 `rewritten_query`, 오류 메시지, insufficient-context 상태를 함께 반환하도록 보강했다.
 - 2026-04-16 기준 `/chat`은 Query Rewrite LLM과 별도로 Answer LLM도 선택할 수 있고, backend가 `answer_model`을 grounded answer 생성 deployment에 적용하도록 반영했다.
-- 2026-04-16 기준 Query Rewrite LLM에 `Custom` 옵션을 추가했고, `Base URL`, `Model Name`, optional `API Key`를 받아 OpenAI-compatible custom endpoint로 rewrite를 호출할 수 있게 했다.
-- 2026-04-16 기준 Answer LLM에도 `Custom` 옵션을 추가했고, `Base URL`, `Model Name`, optional `API Key`를 받아 OpenAI-compatible custom endpoint로 answer generation을 호출할 수 있게 했다.
+- 2026-04-16 기준 Query Rewrite LLM에 `Custom` 옵션을 추가했고, OpenAI-compatible custom endpoint를 호출할 수 있게 했다.
+- 2026-04-16 기준 Answer LLM에도 `Custom` 옵션을 추가했고, OpenAI-compatible custom endpoint로 answer generation을 호출할 수 있게 했다.
+- 2026-04-17 기준 RAG 서버 runtime 상태를 재점검했고 backend `127.0.0.1:8000/health`, frontend `127.0.0.1:3000/upload`, `127.0.0.1:3000/chat` 응답 `200`과 `8000/3000` listen 상태를 확인했다.
+- 2026-04-17 기준 `/chat` Custom LLM 입력을 `LLM endpoint`, `LLM model name`, `API Key`, `Temperature`, `Top-K`, `Max Tokens` 구조로 정리했다.
+- 2026-04-17 기준 answer generation user prompt에 `docs/answer-generation-spec.md` 내용을 포함해 답변 생성 기준을 반영하도록 변경했다.
+- 2026-04-17 기준 `/chat`의 `Custom model name` 라벨/문구를 `LLM model name`으로 통일했다.
+- 2026-04-17 기준 RAG 서버 반영 경로 오류(루트 `main.py`, `page.tsx` 생성)를 확인했고, 실제 실행 경로(`backend/app/main.py`, `frontend/app/chat/page.tsx`)로 재동기화 후 frontend/backend 재기동 및 `8000/3000` 응답 `200`을 재확인했다.
 
 ## 3. 완료된 범위
 - 문서 체계:

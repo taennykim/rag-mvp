@@ -102,6 +102,24 @@ function formatSeconds(milliseconds: number) {
   return `${(milliseconds / 1000).toFixed(2)} s`;
 }
 
+function parseOptionalNumber(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = Number.parseFloat(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseOptionalInteger(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function formatResponseTiming(totalMs: number, result: ChatResponse) {
   const detailParts: string[] = [];
   if (typeof result.query_rewrite_time_ms === "number") {
@@ -143,10 +161,16 @@ export default function ChatPage() {
   const [queryRewriteBaseUrl, setQueryRewriteBaseUrl] = useState("");
   const [queryRewriteCustomModel, setQueryRewriteCustomModel] = useState("");
   const [queryRewriteApiKey, setQueryRewriteApiKey] = useState("");
+  const [queryRewriteTemperature, setQueryRewriteTemperature] = useState("0");
+  const [queryRewriteTopK, setQueryRewriteTopK] = useState("40");
+  const [queryRewriteMaxTokens, setQueryRewriteMaxTokens] = useState("700");
   const [answerModel, setAnswerModel] = useState("");
   const [answerBaseUrl, setAnswerBaseUrl] = useState("");
   const [answerCustomModel, setAnswerCustomModel] = useState("");
   const [answerApiKey, setAnswerApiKey] = useState("");
+  const [answerTemperature, setAnswerTemperature] = useState("0");
+  const [answerTopK, setAnswerTopK] = useState("40");
+  const [answerMaxTokens, setAnswerMaxTokens] = useState("700");
   const [finalK, setFinalK] = useState("5");
   const [result, setResult] = useState<ChatResponse | null>(null);
   const [responseTimeMs, setResponseTimeMs] = useState<number | null>(null);
@@ -163,19 +187,19 @@ export default function ChatPage() {
       return;
     }
     if (isCustomQueryRewriteModel && !queryRewriteBaseUrl.trim()) {
-      setMessage("Custom Query Rewrite LLM의 Base URL을 입력하세요.");
+      setMessage("Custom Query Rewrite LLM의 LLM endpoint를 입력하세요.");
       return;
     }
     if (isCustomQueryRewriteModel && !queryRewriteCustomModel.trim()) {
-      setMessage("Custom Query Rewrite LLM의 Model Name을 입력하세요.");
+      setMessage("Custom Query Rewrite LLM의 LLM model name을 입력하세요.");
       return;
     }
     if (isCustomAnswerModel && !answerBaseUrl.trim()) {
-      setMessage("Custom Answer LLM의 Base URL을 입력하세요.");
+      setMessage("Custom Answer LLM의 LLM endpoint를 입력하세요.");
       return;
     }
     if (isCustomAnswerModel && !answerCustomModel.trim()) {
-      setMessage("Custom Answer LLM의 Model Name을 입력하세요.");
+      setMessage("Custom Answer LLM의 LLM model name을 입력하세요.");
       return;
     }
 
@@ -206,10 +230,16 @@ export default function ChatPage() {
           query_rewrite_base_url: isCustomQueryRewriteModel ? queryRewriteBaseUrl.trim() : null,
           query_rewrite_custom_model: isCustomQueryRewriteModel ? queryRewriteCustomModel.trim() : null,
           query_rewrite_api_key: isCustomQueryRewriteModel ? queryRewriteApiKey : null,
+          query_rewrite_temperature: isCustomQueryRewriteModel ? parseOptionalNumber(queryRewriteTemperature) : null,
+          query_rewrite_top_k: isCustomQueryRewriteModel ? parseOptionalInteger(queryRewriteTopK) : null,
+          query_rewrite_max_tokens: isCustomQueryRewriteModel ? parseOptionalInteger(queryRewriteMaxTokens) : null,
           answer_model: answerModel || null,
           answer_base_url: isCustomAnswerModel ? answerBaseUrl.trim() : null,
           answer_custom_model: isCustomAnswerModel ? answerCustomModel.trim() : null,
           answer_api_key: isCustomAnswerModel ? answerApiKey : null,
+          answer_temperature: isCustomAnswerModel ? parseOptionalNumber(answerTemperature) : null,
+          answer_top_k: isCustomAnswerModel ? parseOptionalInteger(answerTopK) : null,
+          answer_max_tokens: isCustomAnswerModel ? parseOptionalInteger(answerMaxTokens) : null,
         }),
       });
 
@@ -287,7 +317,7 @@ export default function ChatPage() {
           {isCustomQueryRewriteModel ? (
             <>
               <label className="upload-label" htmlFor="chat-query-rewrite-base-url">
-                Custom Base URL
+                LLM endpoint
               </label>
               <input
                 className="default-file-select"
@@ -298,18 +328,18 @@ export default function ChatPage() {
                 value={queryRewriteBaseUrl}
               />
               <label className="upload-label" htmlFor="chat-query-rewrite-custom-model">
-                Custom Model Name
+                LLM model name
               </label>
               <input
                 className="default-file-select"
                 id="chat-query-rewrite-custom-model"
                 onChange={(event) => setQueryRewriteCustomModel(event.target.value)}
-                placeholder="Llama-3-Korean-8B"
+                placeholder="gpt-4o-mini"
                 type="text"
                 value={queryRewriteCustomModel}
               />
               <label className="upload-label" htmlFor="chat-query-rewrite-api-key">
-                Custom API Key
+                API Key
               </label>
               <input
                 autoComplete="off"
@@ -320,6 +350,53 @@ export default function ChatPage() {
                 type="password"
                 value={queryRewriteApiKey}
               />
+              <div className="chat-inline-grid">
+                <div className="chat-inline-item">
+                  <label className="upload-label" htmlFor="chat-query-rewrite-temperature">
+                    Temperature
+                  </label>
+                  <input
+                    className="default-file-select"
+                    id="chat-query-rewrite-temperature"
+                    inputMode="decimal"
+                    onChange={(event) => setQueryRewriteTemperature(event.target.value)}
+                    placeholder="0.0"
+                    step="0.1"
+                    type="number"
+                    value={queryRewriteTemperature}
+                  />
+                </div>
+                <div className="chat-inline-item">
+                  <label className="upload-label" htmlFor="chat-query-rewrite-top-k">
+                    Top-K
+                  </label>
+                  <input
+                    className="default-file-select"
+                    id="chat-query-rewrite-top-k"
+                    inputMode="numeric"
+                    min="1"
+                    onChange={(event) => setQueryRewriteTopK(event.target.value)}
+                    placeholder="40"
+                    type="number"
+                    value={queryRewriteTopK}
+                  />
+                </div>
+                <div className="chat-inline-item">
+                  <label className="upload-label" htmlFor="chat-query-rewrite-max-tokens">
+                    Max Tokens
+                  </label>
+                  <input
+                    className="default-file-select"
+                    id="chat-query-rewrite-max-tokens"
+                    inputMode="numeric"
+                    min="1"
+                    onChange={(event) => setQueryRewriteMaxTokens(event.target.value)}
+                    placeholder="700"
+                    type="number"
+                    value={queryRewriteMaxTokens}
+                  />
+                </div>
+              </div>
               <div className="chat-note">
                 Custom LLM은 OpenAI-compatible API만 지원합니다.
               </div>
@@ -343,7 +420,7 @@ export default function ChatPage() {
           {isCustomAnswerModel ? (
             <>
               <label className="upload-label" htmlFor="chat-answer-base-url">
-                Custom Answer Base URL
+                LLM endpoint
               </label>
               <input
                 className="default-file-select"
@@ -354,18 +431,18 @@ export default function ChatPage() {
                 value={answerBaseUrl}
               />
               <label className="upload-label" htmlFor="chat-answer-custom-model">
-                Custom Answer Model Name
+                LLM model name
               </label>
               <input
                 className="default-file-select"
                 id="chat-answer-custom-model"
                 onChange={(event) => setAnswerCustomModel(event.target.value)}
-                placeholder="Llama-3-Korean-8B"
+                placeholder="gpt-4o"
                 type="text"
                 value={answerCustomModel}
               />
               <label className="upload-label" htmlFor="chat-answer-api-key">
-                Custom Answer API Key
+                API Key
               </label>
               <input
                 autoComplete="off"
@@ -376,6 +453,53 @@ export default function ChatPage() {
                 type="password"
                 value={answerApiKey}
               />
+              <div className="chat-inline-grid">
+                <div className="chat-inline-item">
+                  <label className="upload-label" htmlFor="chat-answer-temperature">
+                    Temperature
+                  </label>
+                  <input
+                    className="default-file-select"
+                    id="chat-answer-temperature"
+                    inputMode="decimal"
+                    onChange={(event) => setAnswerTemperature(event.target.value)}
+                    placeholder="0.0"
+                    step="0.1"
+                    type="number"
+                    value={answerTemperature}
+                  />
+                </div>
+                <div className="chat-inline-item">
+                  <label className="upload-label" htmlFor="chat-answer-top-k">
+                    Top-K
+                  </label>
+                  <input
+                    className="default-file-select"
+                    id="chat-answer-top-k"
+                    inputMode="numeric"
+                    min="1"
+                    onChange={(event) => setAnswerTopK(event.target.value)}
+                    placeholder="40"
+                    type="number"
+                    value={answerTopK}
+                  />
+                </div>
+                <div className="chat-inline-item">
+                  <label className="upload-label" htmlFor="chat-answer-max-tokens">
+                    Max Tokens
+                  </label>
+                  <input
+                    className="default-file-select"
+                    id="chat-answer-max-tokens"
+                    inputMode="numeric"
+                    min="1"
+                    onChange={(event) => setAnswerMaxTokens(event.target.value)}
+                    placeholder="700"
+                    type="number"
+                    value={answerMaxTokens}
+                  />
+                </div>
+              </div>
               <div className="chat-note">
                 Custom Answer LLM은 OpenAI-compatible API만 지원합니다.
               </div>

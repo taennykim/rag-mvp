@@ -152,6 +152,10 @@
 - [x] Rename default Query Rewrite LLM label to `Default (gpt-4o-mini)` and remove duplicate `gpt-4o-mini` option
 - [x] Add `Custom` Query Rewrite LLM option with `Base URL`, `Model Name`, and optional `API Key` inputs for OpenAI-compatible endpoints
 - [x] Add `Custom` Answer LLM option with `Base URL`, `Model Name`, and optional `API Key` inputs for OpenAI-compatible endpoints
+- [x] Change Custom LLM inputs to `LLM endpoint` + `LLM model name` + optional `API Key`
+- [x] Rename `/chat` Custom input label from `Custom model name` to `LLM model name`
+- [x] Add `Temperature`, `Top-K`, `Max Tokens` inputs for Custom Query Rewrite/Answer LLM
+- [x] Split answer generation spec into `docs/answer-generation-spec.md` and load it in answer generation user prompt
 - [x] Set `/chat` Search API endpoint default to temporary external Search API
 - [x] Mark Lookup API endpoint as Later and disable its input
 - [x] Replace Search/Lookup endpoint inputs with fixed backend endpoints and split `/chat` buttons into Search / Lookup actions
@@ -232,7 +236,7 @@
 
 - [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-31.md`, `TODO.md`에 반영
 - [ ] 다음 시작 시 `AGENTS.md` -> `README.md` -> `docs/plan.md` -> `docs/chat_plan.md` -> `TODO.md` -> `docs/status.md` -> 관련 `docs/*.md` -> 최신 `docs/daily/*` 순서로 확인
-- [ ] 2026-04-16 시작 시 RAG 서버 backend `8000` / frontend `3000` runtime 상태 확인
+- [x] 2026-04-17 기준 RAG 서버 backend `8000` / frontend `3000` runtime 상태 확인
 - [ ] 치조골 이식/수술특약/판결 케이스 query rewrite 규칙 보강
 - [ ] 치조골 이식 케이스 기대 rewrite 기준 반영: `치조골 이식 수술이 보험 수술특약에서 수술비 지급 대상 수술로 인정되는지와 관련 판결 기준은 무엇인가요?`
 - [ ] RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI 위치와 선택 모델 표시 확인

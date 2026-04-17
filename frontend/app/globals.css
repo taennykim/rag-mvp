@@ -521,6 +521,22 @@ a {
   margin-top: 24px;
 }
 
+.chat-inline-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.chat-inline-item {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-inline-item .default-file-select {
+  width: 100%;
+}
+
 .chat-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -849,6 +865,10 @@ a {
   }
 
   .chat-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-inline-grid {
     grid-template-columns: 1fr;
   }
 

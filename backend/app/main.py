@@ -148,8 +148,11 @@ DEFAULT_QUERY_REWRITE_MODEL = "gpt-4o-mini"
 CUSTOM_QUERY_REWRITE_MODEL = "custom"
 AZURE_OPENAI_EMBEDDING_BATCH_SIZE = 32
 DEFAULT_CHAT_TOP_K = 5
+DEFAULT_CHAT_TEMPERATURE = 0.0
+DEFAULT_CHAT_MAX_TOKENS = 700
 RUNTIME_ENV_FILE = BASE_DIR / ".env.runtime"
 QUERY_REWRITE_SPEC_PATH = BASE_DIR.parent / "docs" / "query-rewrite-spec.md"
+ANSWER_GENERATION_SPEC_PATH = BASE_DIR.parent / "docs" / "answer-generation-spec.md"
 SEARCH_EVAL_MIN_TOP_CHUNK_TEXT_LENGTH = 180
 SEARCH_EVAL_MULTI_HIT_SAME_DOCUMENT_THRESHOLD = 2
 SEARCH_EVAL_CONTEXT_KEYWORDS: tuple[str, ...] = (
@@ -187,6 +190,13 @@ def load_query_rewrite_spec() -> str:
     if not QUERY_REWRITE_SPEC_PATH.is_file():
         return ""
     return QUERY_REWRITE_SPEC_PATH.read_text(encoding="utf-8").strip()
+
+
+@lru_cache(maxsize=1)
+def load_answer_generation_spec() -> str:
+    if not ANSWER_GENERATION_SPEC_PATH.is_file():
+        return ""
+    return ANSWER_GENERATION_SPEC_PATH.read_text(encoding="utf-8").strip()
 
 
 def configure_logging() -> logging.Logger:
@@ -1894,10 +1904,16 @@ class ChatRequest(BaseModel):
     query_rewrite_base_url: str | None = None
     query_rewrite_custom_model: str | None = None
     query_rewrite_api_key: str | None = None
+    query_rewrite_temperature: float | None = None
+    query_rewrite_top_k: int | None = None
+    query_rewrite_max_tokens: int | None = None
     answer_model: str | None = None
     answer_base_url: str | None = None
     answer_custom_model: str | None = None
     answer_api_key: str | None = None
+    answer_temperature: float | None = None
+    answer_top_k: int | None = None
+    answer_max_tokens: int | None = None
     conversation_context: list[ConversationTurn] = Field(default_factory=list)
     metadata: ChatMetadata | None = None
 
@@ -2109,21 +2125,54 @@ def get_query_rewrite_model_id(requested_model: str | None = None) -> str:
 def get_query_rewrite_display_model(payload: ChatRequest) -> str:
     if is_custom_query_rewrite_model(payload.query_rewrite_model):
         custom_model = (payload.query_rewrite_custom_model or "").strip()
-        return f"{CUSTOM_QUERY_REWRITE_MODEL}:{custom_model}" if custom_model else CUSTOM_QUERY_REWRITE_MODEL
+        if custom_model:
+            return f"{CUSTOM_QUERY_REWRITE_MODEL}:{custom_model}"
+        return CUSTOM_QUERY_REWRITE_MODEL
     return get_query_rewrite_model_id(payload.query_rewrite_model)
 
 
-def get_query_rewrite_custom_config(payload: ChatRequest) -> tuple[str, str, str | None]:
+def resolve_temperature(value: float | None, *, field_name: str) -> float:
+    if value is None:
+        return DEFAULT_CHAT_TEMPERATURE
+    if value < 0 or value > 2:
+        raise HTTPException(status_code=400, detail=f"{field_name} must be between 0 and 2.")
+    return float(value)
+
+
+def resolve_top_k(value: int | None, *, field_name: str) -> int | None:
+    if value is None:
+        return None
+    if value < 1 or value > 200:
+        raise HTTPException(status_code=400, detail=f"{field_name} must be between 1 and 200.")
+    return int(value)
+
+
+def resolve_max_tokens(value: int | None, *, field_name: str) -> int:
+    if value is None:
+        return DEFAULT_CHAT_MAX_TOKENS
+    if value < 1 or value > 8192:
+        raise HTTPException(status_code=400, detail=f"{field_name} must be between 1 and 8192.")
+    return int(value)
+
+
+def get_query_rewrite_custom_config(payload: ChatRequest) -> tuple[str, str, str | None, float, int | None, int]:
     base_url = (payload.query_rewrite_base_url or "").strip()
     model_name = (payload.query_rewrite_custom_model or "").strip()
     api_key = (payload.query_rewrite_api_key or "").strip() or None
 
     if not base_url:
-        raise HTTPException(status_code=400, detail="Custom query rewrite Base URL is required.")
+        raise HTTPException(status_code=400, detail="Custom query rewrite LLM endpoint is required.")
     if not model_name:
-        raise HTTPException(status_code=400, detail="Custom query rewrite Model Name is required.")
+        raise HTTPException(status_code=400, detail="Custom query rewrite LLM model name is required.")
 
-    return base_url, model_name, api_key
+    return (
+        base_url,
+        model_name,
+        api_key,
+        resolve_temperature(payload.query_rewrite_temperature, field_name="query_rewrite_temperature"),
+        resolve_top_k(payload.query_rewrite_top_k, field_name="query_rewrite_top_k"),
+        resolve_max_tokens(payload.query_rewrite_max_tokens, field_name="query_rewrite_max_tokens"),
+    )
 
 
 def is_custom_answer_model(requested_model: str | None = None) -> bool:
@@ -2156,21 +2205,30 @@ def get_answer_model_id(requested_model: str | None = None) -> str:
 def get_answer_display_model(payload: ChatRequest) -> str:
     if is_custom_answer_model(payload.answer_model):
         custom_model = (payload.answer_custom_model or "").strip()
-        return f"{CUSTOM_QUERY_REWRITE_MODEL}:{custom_model}" if custom_model else CUSTOM_QUERY_REWRITE_MODEL
+        if custom_model:
+            return f"{CUSTOM_QUERY_REWRITE_MODEL}:{custom_model}"
+        return CUSTOM_QUERY_REWRITE_MODEL
     return get_answer_model_id(payload.answer_model)
 
 
-def get_answer_custom_config(payload: ChatRequest) -> tuple[str, str, str | None]:
+def get_answer_custom_config(payload: ChatRequest) -> tuple[str, str, str | None, float, int | None, int]:
     base_url = (payload.answer_base_url or "").strip()
     model_name = (payload.answer_custom_model or "").strip()
     api_key = (payload.answer_api_key or "").strip() or None
 
     if not base_url:
-        raise HTTPException(status_code=400, detail="Custom answer Base URL is required.")
+        raise HTTPException(status_code=400, detail="Custom answer LLM endpoint is required.")
     if not model_name:
-        raise HTTPException(status_code=400, detail="Custom answer Model Name is required.")
+        raise HTTPException(status_code=400, detail="Custom answer LLM model name is required.")
 
-    return base_url, model_name, api_key
+    return (
+        base_url,
+        model_name,
+        api_key,
+        resolve_temperature(payload.answer_temperature, field_name="answer_temperature"),
+        resolve_top_k(payload.answer_top_k, field_name="answer_top_k"),
+        resolve_max_tokens(payload.answer_max_tokens, field_name="answer_max_tokens"),
+    )
 
 
 def build_azure_openai_chat_completion(
@@ -2195,8 +2253,8 @@ def build_azure_openai_chat_completion(
     payload = json.dumps(
         {
             "messages": messages,
-            "temperature": 0.0,
-            "max_tokens": 700,
+            "temperature": DEFAULT_CHAT_TEMPERATURE,
+            "max_tokens": DEFAULT_CHAT_MAX_TOKENS,
         }
     ).encode("utf-8")
     request = urllib_request.Request(
@@ -2246,12 +2304,15 @@ def build_openai_compatible_chat_completion(
     messages: list[dict[str, str]],
     *,
     base_url: str,
-    model_name: str,
+    model_name: str | None = None,
     api_key: str | None = None,
+    temperature: float = DEFAULT_CHAT_TEMPERATURE,
+    top_k: int | None = None,
+    max_tokens: int = DEFAULT_CHAT_MAX_TOKENS,
 ) -> str:
     normalized_base_url = base_url.strip().rstrip("/")
     if not normalized_base_url:
-        raise HTTPException(status_code=400, detail="Custom query rewrite Base URL is required.")
+        raise HTTPException(status_code=400, detail="Custom LLM endpoint is required.")
 
     if normalized_base_url.endswith("/chat/completions"):
         request_url = normalized_base_url
@@ -2264,14 +2325,17 @@ def build_openai_compatible_chat_completion(
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    payload = json.dumps(
-        {
-            "model": model_name,
-            "messages": messages,
-            "temperature": 0.0,
-            "max_tokens": 700,
-        }
-    ).encode("utf-8")
+    request_payload: dict[str, object] = {
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if model_name and model_name.strip():
+        request_payload["model"] = model_name.strip()
+    if top_k is not None:
+        request_payload["top_k"] = top_k
+
+    payload = json.dumps(request_payload).encode("utf-8")
     request = urllib_request.Request(
         request_url,
         data=payload,
@@ -2315,13 +2379,16 @@ def build_openai_compatible_chat_completion(
 def build_query_rewrite_chat_completion(payload: ChatRequest, messages: list[dict[str, str]]) -> tuple[str, str]:
     model_id = get_query_rewrite_model_id(payload.query_rewrite_model)
     if model_id == CUSTOM_QUERY_REWRITE_MODEL:
-        base_url, custom_model, api_key = get_query_rewrite_custom_config(payload)
+        base_url, model_name, api_key, temperature, top_k, max_tokens = get_query_rewrite_custom_config(payload)
         return (
             build_openai_compatible_chat_completion(
                 messages,
                 base_url=base_url,
-                model_name=custom_model,
+                model_name=model_name,
                 api_key=api_key,
+                temperature=temperature,
+                top_k=top_k,
+                max_tokens=max_tokens,
             ),
             get_query_rewrite_display_model(payload),
         )
@@ -2331,13 +2398,16 @@ def build_query_rewrite_chat_completion(payload: ChatRequest, messages: list[dic
 def build_answer_chat_completion(payload: ChatRequest, messages: list[dict[str, str]]) -> tuple[str, str]:
     model_id = get_answer_model_id(payload.answer_model)
     if model_id == CUSTOM_QUERY_REWRITE_MODEL:
-        base_url, custom_model, api_key = get_answer_custom_config(payload)
+        base_url, model_name, api_key, temperature, top_k, max_tokens = get_answer_custom_config(payload)
         return (
             build_openai_compatible_chat_completion(
                 messages,
                 base_url=base_url,
-                model_name=custom_model,
+                model_name=model_name,
                 api_key=api_key,
+                temperature=temperature,
+                top_k=top_k,
+                max_tokens=max_tokens,
             ),
             get_answer_display_model(payload),
         )
@@ -3887,6 +3957,8 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         f"Original Question:\n{original_query}\n\n"
         f"Interpreted Retrieval Query:\n{rewrite_result.rewritten_query}\n\n"
         f"Context:\n{format_chat_context(hits)}\n\n"
+        "Answer generation spec (from docs/answer-generation-spec.md):\n"
+        f"{load_answer_generation_spec() or 'answer generation spec is unavailable.'}\n\n"
         "Rules:\n"
         "- Answer only from the context.\n"
         "- If the context does not support a clear answer, return STATUS: insufficient.\n"
