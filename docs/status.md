@@ -33,7 +33,7 @@
 - 2026-04-15 기준 `/chat` Question과 LLM Question 사이에 Query Rewrite LLM 선택 UI를 추가했고, backend가 `query_rewrite_model`을 rewrite 호출에 적용하도록 반영했다.
 - 2026-04-16 기준 Query Rewrite LLM 기본값을 `gpt-4o-mini`로 변경했다.
 - 2026-04-16 기준 RAG 서버에서 `gpt-4.1-mini` deployment 직접 호출 성공을 확인했고 Query Rewrite LLM 선택지에 추가했다.
-- 2026-04-16 기준 Query Rewrite LLM UI 기본 선택값 라벨은 `Default (gpt-4o-mini)`로 표시하고, 중복 선택으로 보이지 않도록 별도 `gpt-4o-mini` 옵션은 제거했다.
+- 2026-04-17 기준 Query Rewrite LLM과 Answer LLM selector는 독립적으로 유지하되, 기본값은 Query Rewrite `gpt-4o-mini`, Answer `gpt-4o`로 분리 운영하도록 정리했다.
 - 2026-04-16 기준 `/chat` Search API endpoint는 backend 고정값 `http://10.160.98.123:8000/api/search`, Lookup API endpoint는 backend 고정값 `http://10.160.98.123:8000/api/lookup`를 사용하도록 바꿨고, UI는 Search `final_k`와 `Get response`만 노출하며 Lookup 버튼은 hidden 처리했다.
 - 2026-04-16 기준 Lookup은 직전 Search 결과 중 최고 `rrf_score` hit의 `document_id`를 사용하도록 연결했다.
 - 2026-04-16 기준 Search API 연결 실패 시에도 `/chat`이 `rewritten_query`, 오류 메시지, insufficient-context 상태를 함께 반환하도록 보강했다.
@@ -45,6 +45,16 @@
 - 2026-04-17 기준 answer generation user prompt에 `docs/answer-generation-spec.md` 내용을 포함해 답변 생성 기준을 반영하도록 변경했다.
 - 2026-04-17 기준 `/chat`의 `Custom model name` 라벨/문구를 `LLM model name`으로 통일했다.
 - 2026-04-17 기준 RAG 서버 반영 경로 오류(루트 `main.py`, `page.tsx` 생성)를 확인했고, 실제 실행 경로(`backend/app/main.py`, `frontend/app/chat/page.tsx`)로 재동기화 후 frontend/backend 재기동 및 `8000/3000` 응답 `200`을 재확인했다.
+- 2026-04-17 기준 `/chat` Evidence 섹션은 데이터는 유지하고 화면 렌더링에서만 숨기도록 반영했다.
+- 2026-04-17 기준 브라우저 `Application error` 보고 후 RAG 서버 backend/frontend를 포트 기준으로 완전 재기동했고 `8000/3000` listen, `/health`, `/pipeline/files`, `/chat` 응답 `200`을 재확인했다.
+- 2026-04-17 기준 `/chat`에 `stream=true` 응답 모드를 추가했고 backend SSE(`meta/delta/done`)와 frontend 실시간 answer 누적 렌더링을 연결했다.
+- 2026-04-17 기준 `/chat` SSE `delta`는 `STATUS/ANSWER` 포맷 토큰을 제외하고 `ANSWER` 본문 증분만 전달하도록 보강했다.
+- 2026-04-17 기준 stream 버벅임 완화를 위해 frontend는 delta를 배치 렌더링(약 30fps)하고, backend는 SSE delta를 짧은 간격으로 묶어 전송하도록 보강했다.
+- 2026-04-17 기준 `LLM Question`도 SSE `rewrite_delta/rewrite_done` 이벤트로 스트리밍 표시되도록 반영했다.
+- 2026-04-17 기준 `LLM Question`도 answer와 동일한 배치 렌더링/커서 표시로 보강했고, frontend/backend stream flush 기준을 낮춰 체감 속도를 개선했다.
+- 2026-04-17 기준 `/chat`의 `Get response는 Search API만 호출합니다.` 안내 문구를 제거했다.
+- 2026-04-17 기준 사용자 요청으로 특정 케이스(치조골 이식/수술특약/판결) 전용 query rewrite 규칙 보강 코드는 원복했다.
+- 2026-04-17 기준 `/chat` Answer LLM UI 기본값 라벨을 `Default (GPT-4o)`로 정리했고, frontend `DEFAULT_ANSWER_MODEL`과 backend fallback 기본값을 `gpt-4o`로 맞췄다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -256,7 +266,6 @@
 
 ## 7. 남은 핵심 작업
 - 1차 우선순위:
-  - 치조골 이식/수술특약/판결 케이스의 query rewrite 규칙 보강
   - RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI, `LLM Question`, 단계별 응답시간, 외부 Search API 결과 표시 육안 확인
   - Query Rewrite LLM 기본값 `gpt-4o-mini` 기준 브라우저 동작 확인
   - `docs/chat_plan.md` Step 7 Need More Context 분기와 Step 8 Lookup API 호출 연결 방식 정리
@@ -311,7 +320,5 @@
 7. 관련 `docs/*.md` 확인
 8. 최신 `docs/daily/*` 확인
 9. RAG 서버 UI 확인 전 frontend build 유무와 `3000/8000` runtime 상태 확인
-10. 치조골 이식/수술특약/판결 테스트 대화로 현재 `rewritten_query`와 검색 결과를 재현
-11. `docs/query-rewrite-spec.md`와 backend rewrite prompt/validation 규칙 보강
-12. RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI, 단계별 응답시간, 외부 Search API 결과 표시 확인
-13. 이후 retrieval 질문 세트 기준 retrieval/answer/citation 품질 확인
+10. RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI, 단계별 응답시간, 외부 Search API 결과 표시 확인
+11. 이후 retrieval 질문 세트 기준 retrieval/answer/citation 품질 확인

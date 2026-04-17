@@ -150,10 +150,19 @@
 - [x] Test and add `gpt-4.1-mini` to Query Rewrite LLM selector
 - [x] Keep Query Rewrite LLM UI default as blank `Default` and expose `gpt-4o-mini` as a selectable option
 - [x] Rename default Query Rewrite LLM label to `Default (gpt-4o-mini)` and remove duplicate `gpt-4o-mini` option
+- [x] Keep Query Rewrite/Answer LLM selectors independent and separate default models (Query Rewrite=`gpt-4o-mini`, Answer=`gpt-4o`)
+- [x] Update Answer LLM UI default label to `Default (GPT-4o)` and bind `DEFAULT_ANSWER_MODEL` to `gpt-4o`
 - [x] Add `Custom` Query Rewrite LLM option with `Base URL`, `Model Name`, and optional `API Key` inputs for OpenAI-compatible endpoints
 - [x] Add `Custom` Answer LLM option with `Base URL`, `Model Name`, and optional `API Key` inputs for OpenAI-compatible endpoints
 - [x] Change Custom LLM inputs to `LLM endpoint` + `LLM model name` + optional `API Key`
 - [x] Rename `/chat` Custom input label from `Custom model name` to `LLM model name`
+- [x] Hide `Evidence` section in `/chat` screen rendering only
+- [x] Stream answer output on `/chat` using SSE (`stream=true`)
+- [x] Stream `/chat` delta as answer-only text without `STATUS/ANSWER` scaffolding
+- [x] Smooth `/chat` stream rendering with delta batching and deferred heavy context rendering
+- [x] Stream `LLM Question` on `/chat` with SSE `rewrite_delta/rewrite_done`
+- [x] Apply Answer-style batching/cursor to `LLM Question` stream and reduce stream flush intervals for faster rendering
+- [x] Remove `/chat` helper note `Get response는 Search API만 호출합니다.`
 - [x] Add `Temperature`, `Top-K`, `Max Tokens` inputs for Custom Query Rewrite/Answer LLM
 - [x] Split answer generation spec into `docs/answer-generation-spec.md` and load it in answer generation user prompt
 - [x] Set `/chat` Search API endpoint default to temporary external Search API
@@ -237,8 +246,6 @@
 - [x] 오늘 작업 내용을 `README.md`, `docs/status.md`, `docs/daily/2026-03-31.md`, `TODO.md`에 반영
 - [ ] 다음 시작 시 `AGENTS.md` -> `README.md` -> `docs/plan.md` -> `docs/chat_plan.md` -> `TODO.md` -> `docs/status.md` -> 관련 `docs/*.md` -> 최신 `docs/daily/*` 순서로 확인
 - [x] 2026-04-17 기준 RAG 서버 backend `8000` / frontend `3000` runtime 상태 확인
-- [ ] 치조골 이식/수술특약/판결 케이스 query rewrite 규칙 보강
-- [ ] 치조골 이식 케이스 기대 rewrite 기준 반영: `치조골 이식 수술이 보험 수술특약에서 수술비 지급 대상 수술로 인정되는지와 관련 판결 기준은 무엇인가요?`
 - [ ] RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI 위치와 선택 모델 표시 확인
 - [ ] RAG 서버 브라우저에서 Answer 상단 단계별 응답시간 표시 확인
 - [ ] RAG 서버 브라우저에서 외부 Search API 결과가 Evidence / Reference context에 표시되는지 확인

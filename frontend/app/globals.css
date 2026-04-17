@@ -580,6 +580,10 @@ a {
   word-break: break-word;
 }
 
+.chat-query-preview-body.streaming {
+  color: var(--accent-strong);
+}
+
 .chat-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 140px;
@@ -648,6 +652,28 @@ a {
 .answer-body.warning {
   border-color: rgba(191, 84, 36, 0.18);
   background: linear-gradient(180deg, rgba(255, 247, 237, 0.92), rgba(255, 237, 213, 0.82));
+}
+
+.answer-body.streaming {
+  background: linear-gradient(180deg, rgba(240, 253, 250, 0.98), rgba(233, 250, 245, 0.94));
+}
+
+.stream-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  color: var(--accent-strong);
+  animation: stream-cursor-blink 1s steps(1, end) infinite;
+}
+
+@keyframes stream-cursor-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  46%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .citation-list {

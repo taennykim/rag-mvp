@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { startTransition, useDeferredValue, useState } from "react";
 
 type RetrievalHit = {
   id: string;
@@ -45,20 +45,25 @@ type ChatResponse = {
 };
 
 const API_BASE_URL = "/api";
-const CUSTOM_QUERY_REWRITE_MODEL = "custom";
+const CUSTOM_LLM_MODEL = "custom";
+const DEFAULT_QUERY_REWRITE_MODEL = "gpt-4o-mini";
+const DEFAULT_ANSWER_MODEL = "gpt-4o";
 const QUERY_REWRITE_MODEL_OPTIONS = [
-  { label: "Default (gpt-4o-mini)", value: "" },
+  { label: "Default (gpt-4o-mini)", value: DEFAULT_QUERY_REWRITE_MODEL },
   { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
   { label: "GPT-4o", value: "gpt-4o" },
-  { label: "Custom", value: CUSTOM_QUERY_REWRITE_MODEL },
+  { label: "Custom", value: CUSTOM_LLM_MODEL },
 ];
-const CUSTOM_ANSWER_MODEL = "custom";
+const CUSTOM_QUERY_REWRITE_MODEL = CUSTOM_LLM_MODEL;
+const CUSTOM_ANSWER_MODEL = CUSTOM_LLM_MODEL;
 const ANSWER_MODEL_OPTIONS = [
-  { label: "Default (gpt-4o)", value: "" },
+  { label: "Default (GPT-4o)", value: DEFAULT_ANSWER_MODEL },
   { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
   { label: "GPT-4o", value: "gpt-4o" },
-  { label: "Custom", value: CUSTOM_ANSWER_MODEL },
+  { label: "Custom", value: CUSTOM_LLM_MODEL },
 ];
+const ANSWER_STREAM_FLUSH_INTERVAL_MS = 20;
+const REWRITE_STREAM_FLUSH_INTERVAL_MS = 20;
 
 function formatAnswerState(result: ChatResponse | null) {
   if (!result) {
@@ -157,14 +162,14 @@ function pickLookupTarget(result: ChatResponse | null): { documentId: string; se
 
 export default function ChatPage() {
   const [query, setQuery] = useState("");
-  const [queryRewriteModel, setQueryRewriteModel] = useState("");
+  const [queryRewriteModel, setQueryRewriteModel] = useState(DEFAULT_QUERY_REWRITE_MODEL);
   const [queryRewriteBaseUrl, setQueryRewriteBaseUrl] = useState("");
   const [queryRewriteCustomModel, setQueryRewriteCustomModel] = useState("");
   const [queryRewriteApiKey, setQueryRewriteApiKey] = useState("");
   const [queryRewriteTemperature, setQueryRewriteTemperature] = useState("0");
   const [queryRewriteTopK, setQueryRewriteTopK] = useState("40");
   const [queryRewriteMaxTokens, setQueryRewriteMaxTokens] = useState("700");
-  const [answerModel, setAnswerModel] = useState("");
+  const [answerModel, setAnswerModel] = useState(DEFAULT_ANSWER_MODEL);
   const [answerBaseUrl, setAnswerBaseUrl] = useState("");
   const [answerCustomModel, setAnswerCustomModel] = useState("");
   const [answerApiKey, setAnswerApiKey] = useState("");
@@ -173,13 +178,250 @@ export default function ChatPage() {
   const [answerMaxTokens, setAnswerMaxTokens] = useState("700");
   const [finalK, setFinalK] = useState("5");
   const [result, setResult] = useState<ChatResponse | null>(null);
+  const [streamingRewrittenQuery, setStreamingRewrittenQuery] = useState("");
+  const [isStreamingRewrite, setIsStreamingRewrite] = useState(false);
+  const [streamingAnswer, setStreamingAnswer] = useState("");
+  const [isStreamingAnswer, setIsStreamingAnswer] = useState(false);
   const [responseTimeMs, setResponseTimeMs] = useState<number | null>(null);
   const [message, setMessage] = useState(
     "질문 입력과 응답 확인에 집중할 수 있도록 채팅 화면을 단순하게 유지합니다.",
   );
   const [isLoading, setIsLoading] = useState(false);
+  const deferredResult = useDeferredValue(result);
   const isCustomQueryRewriteModel = queryRewriteModel === CUSTOM_QUERY_REWRITE_MODEL;
   const isCustomAnswerModel = answerModel === CUSTOM_ANSWER_MODEL;
+
+  async function consumeChatStream(response: Response, startedAt: number) {
+    const streamReader = response.body?.getReader();
+    if (!streamReader) {
+      throw new Error("Chat stream response body is not available.");
+    }
+
+    const textDecoder = new TextDecoder();
+    let buffer = "";
+    let streamedRewrittenQuery = "";
+    let streamedAnswer = "";
+    let pendingAnswerChunk = "";
+    let pendingRewriteChunk = "";
+    let answerFlushTimer: number | null = null;
+    let rewriteFlushTimer: number | null = null;
+    let finalPayload: ChatResponse | null = null;
+
+    const flushPendingAnswerDelta = () => {
+      if (!pendingAnswerChunk) {
+        return;
+      }
+      streamedAnswer += pendingAnswerChunk;
+      pendingAnswerChunk = "";
+      startTransition(() => {
+        setStreamingAnswer(streamedAnswer);
+      });
+    };
+
+    const flushPendingRewriteDelta = () => {
+      if (!pendingRewriteChunk) {
+        return;
+      }
+      streamedRewrittenQuery += pendingRewriteChunk;
+      pendingRewriteChunk = "";
+      startTransition(() => {
+        setStreamingRewrittenQuery(streamedRewrittenQuery);
+      });
+    };
+
+    const scheduleAnswerFlush = () => {
+      if (answerFlushTimer !== null) {
+        return;
+      }
+      answerFlushTimer = window.setTimeout(() => {
+        answerFlushTimer = null;
+        flushPendingAnswerDelta();
+      }, ANSWER_STREAM_FLUSH_INTERVAL_MS);
+    };
+
+    const scheduleRewriteFlush = () => {
+      if (rewriteFlushTimer !== null) {
+        return;
+      }
+      rewriteFlushTimer = window.setTimeout(() => {
+        rewriteFlushTimer = null;
+        flushPendingRewriteDelta();
+      }, REWRITE_STREAM_FLUSH_INTERVAL_MS);
+    };
+
+    const applyDelta = (chunkText: string) => {
+      if (!chunkText) {
+        return;
+      }
+      pendingAnswerChunk += chunkText;
+      if (chunkText.includes("\n")) {
+        flushPendingAnswerDelta();
+        return;
+      }
+      scheduleAnswerFlush();
+    };
+
+    const applyRewriteDelta = (chunkText: string) => {
+      if (!chunkText) {
+        return;
+      }
+      setIsStreamingRewrite(true);
+      pendingRewriteChunk += chunkText;
+      if (chunkText.includes("\n")) {
+        flushPendingRewriteDelta();
+        return;
+      }
+      scheduleRewriteFlush();
+    };
+
+    while (true) {
+      const { value, done } = await streamReader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += textDecoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+
+      while (true) {
+        const boundaryIndex = buffer.indexOf("\n\n");
+        if (boundaryIndex === -1) {
+          break;
+        }
+
+        const rawEvent = buffer.slice(0, boundaryIndex).trim();
+        buffer = buffer.slice(boundaryIndex + 2);
+        if (!rawEvent) {
+          continue;
+        }
+
+        let eventName = "message";
+        const dataLines: string[] = [];
+        for (const line of rawEvent.split("\n")) {
+          if (line.startsWith("event:")) {
+            eventName = line.slice("event:".length).trim();
+            continue;
+          }
+          if (line.startsWith("data:")) {
+            dataLines.push(line.slice("data:".length).trimStart());
+          }
+        }
+
+        const rawData = dataLines.join("\n");
+        if (!rawData) {
+          continue;
+        }
+
+        let parsedData: unknown;
+        try {
+          parsedData = JSON.parse(rawData);
+        } catch {
+          if (eventName === "delta") {
+            applyDelta(rawData);
+          }
+          continue;
+        }
+
+        if (eventName === "meta" && parsedData && typeof parsedData === "object") {
+          const metaPayload = parsedData as ChatResponse;
+          if (!streamedRewrittenQuery && typeof metaPayload.rewritten_query === "string" && metaPayload.rewritten_query.trim()) {
+            streamedRewrittenQuery = metaPayload.rewritten_query;
+            startTransition(() => {
+              setStreamingRewrittenQuery(streamedRewrittenQuery);
+            });
+          }
+          startTransition(() => {
+            setResult({
+              ...metaPayload,
+              answer: streamedAnswer || metaPayload.answer || "",
+            });
+          });
+          continue;
+        }
+
+        if (eventName === "rewrite_delta" && parsedData && typeof parsedData === "object") {
+          const content = (parsedData as { content?: unknown }).content;
+          if (typeof content === "string") {
+            applyRewriteDelta(content);
+          }
+          continue;
+        }
+
+        if (eventName === "rewrite_done" && parsedData && typeof parsedData === "object") {
+          if (rewriteFlushTimer !== null) {
+            window.clearTimeout(rewriteFlushTimer);
+            rewriteFlushTimer = null;
+          }
+          flushPendingRewriteDelta();
+          const rewrittenQuery = (parsedData as { rewritten_query?: unknown }).rewritten_query;
+          if (typeof rewrittenQuery === "string" && rewrittenQuery.trim()) {
+            streamedRewrittenQuery = rewrittenQuery;
+            startTransition(() => {
+              setStreamingRewrittenQuery(rewrittenQuery);
+            });
+          }
+          setIsStreamingRewrite(false);
+          continue;
+        }
+
+        if (eventName === "delta" && parsedData && typeof parsedData === "object") {
+          const content = (parsedData as { content?: unknown }).content;
+          if (typeof content === "string") {
+            applyDelta(content);
+          }
+          continue;
+        }
+
+        if (eventName === "error" && parsedData && typeof parsedData === "object") {
+          const detail = (parsedData as { detail?: unknown }).detail;
+          throw new Error(typeof detail === "string" && detail ? detail : "Chat stream failed.");
+        }
+
+        if (eventName === "done" && parsedData && typeof parsedData === "object") {
+          finalPayload = parsedData as ChatResponse;
+        }
+      }
+    }
+
+    if (answerFlushTimer !== null) {
+      window.clearTimeout(answerFlushTimer);
+      answerFlushTimer = null;
+    }
+    if (rewriteFlushTimer !== null) {
+      window.clearTimeout(rewriteFlushTimer);
+      rewriteFlushTimer = null;
+    }
+    flushPendingAnswerDelta();
+    flushPendingRewriteDelta();
+
+    if (finalPayload) {
+      startTransition(() => {
+        setResult(finalPayload);
+      });
+      if (typeof finalPayload.rewritten_query === "string" && finalPayload.rewritten_query.trim()) {
+        setStreamingRewrittenQuery(finalPayload.rewritten_query);
+      }
+      setStreamingAnswer(finalPayload.answer ?? streamedAnswer);
+      setMessage(
+        finalPayload.answer
+          ? "응답을 불러왔습니다."
+          : "응답 본문은 비어 있지만 화면 구조는 유지됩니다.",
+      );
+    } else if (streamedAnswer.trim()) {
+      startTransition(() => {
+        setResult((previous) => ({
+          ...(previous ?? {}),
+          answer: streamedAnswer,
+        }));
+      });
+      setMessage("응답을 불러왔습니다.");
+    } else {
+      setMessage("응답 본문은 비어 있지만 화면 구조는 유지됩니다.");
+    }
+
+    setIsStreamingRewrite(false);
+    setIsStreamingAnswer(false);
+    setResponseTimeMs(Math.round(performance.now() - startedAt));
+  }
 
   async function requestChatResponse(action: "search" | "lookup") {
     if (!query.trim()) {
@@ -210,6 +452,10 @@ export default function ChatPage() {
     }
 
     setIsLoading(true);
+    setIsStreamingRewrite(false);
+    setStreamingRewrittenQuery("");
+    setIsStreamingAnswer(false);
+    setStreamingAnswer("");
     setResponseTimeMs(null);
     setMessage(action === "lookup" ? "Lookup 응답을 불러오는 중입니다." : "Search 응답을 불러오는 중입니다.");
 
@@ -240,8 +486,19 @@ export default function ChatPage() {
           answer_temperature: isCustomAnswerModel ? parseOptionalNumber(answerTemperature) : null,
           answer_top_k: isCustomAnswerModel ? parseOptionalInteger(answerTopK) : null,
           answer_max_tokens: isCustomAnswerModel ? parseOptionalInteger(answerMaxTokens) : null,
+          stream: true,
         }),
       });
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (contentType.includes("text/event-stream")) {
+        if (!response.ok) {
+          throw new Error("Chat stream request failed.");
+        }
+        setIsStreamingAnswer(true);
+        await consumeChatStream(response, startedAt);
+        return;
+      }
 
       const data = (await response.json()) as ChatResponse;
       if (!response.ok) {
@@ -255,12 +512,16 @@ export default function ChatPage() {
 
       setResponseTimeMs(Math.round(performance.now() - startedAt));
       setResult(data);
+      setStreamingRewrittenQuery(data.rewritten_query ?? "");
+      setIsStreamingRewrite(false);
       setMessage(
         data.answer
           ? "응답을 불러왔습니다."
           : "응답 본문은 비어 있지만 화면 구조는 유지됩니다.",
       );
     } catch (error) {
+      setIsStreamingRewrite(false);
+      setIsStreamingAnswer(false);
       setResponseTimeMs(null);
       setMessage(error instanceof Error ? error.message : "Chat request failed.");
     } finally {
@@ -276,7 +537,12 @@ export default function ChatPage() {
     return hit.source ?? hit.original_name ?? "Unknown source";
   }
 
-  const answerState = formatAnswerState(result);
+  const answerState = isStreamingAnswer ? "Streaming" : formatAnswerState(result);
+  const displayedRewrittenQuery = streamingRewrittenQuery.trim()
+    ? streamingRewrittenQuery
+    : result?.rewritten_query;
+  const displayedAnswer = isStreamingAnswer ? streamingAnswer : result?.answer;
+  const showEvidenceSection = false;
 
   return (
     <section className="page">
@@ -507,10 +773,11 @@ export default function ChatPage() {
           ) : null}
           <div className="chat-query-preview">
             <span className="chat-query-preview-label">LLM Question</span>
-            <div className="chat-query-preview-body">
-              {result?.rewritten_query?.trim()
-                ? result.rewritten_query
+            <div className={`chat-query-preview-body${isStreamingRewrite ? " streaming" : ""}`}>
+              {displayedRewrittenQuery?.trim()
+                ? displayedRewrittenQuery
                 : "응답 후 이 위치에 LLM이 정리한 질문이 표시됩니다."}
+              {isStreamingRewrite ? <span className="stream-cursor" aria-hidden="true">▌</span> : null}
             </div>
           </div>
           <label className="upload-label" htmlFor="chat-final-k">
@@ -532,9 +799,6 @@ export default function ChatPage() {
             </button>
           </div>
         </div>
-        <div className="chat-note">
-          `Get response`는 Search API만 호출합니다.
-        </div>
         <div className="chat-status">{message}</div>
       </div>
 
@@ -542,63 +806,68 @@ export default function ChatPage() {
         <p className="eyebrow">Answer</p>
         <h2>Response</h2>
         <p>최종 연결 시 이 영역에 외부 RAG 응답 또는 후속 answer generation 결과가 표시됩니다.</p>
-        {!result ? (
+        {!result && !isStreamingAnswer ? (
           <p>아직 표시할 응답이 없습니다.</p>
         ) : (
           <div className="answer-panel">
-            {typeof responseTimeMs === "number" ? (
+            {result && typeof responseTimeMs === "number" ? (
               <div className="answer-latency">{formatResponseTiming(responseTimeMs, result)}</div>
             ) : null}
             <div className="answer-summary">
               <span>{answerState}</span>
-              {result.action ? <span>Mode: {result.action}</span> : null}
-              {result.query_rewrite_model ? <span>Rewrite LLM: {result.query_rewrite_model}</span> : null}
-              {result.answer_model ? <span>Answer LLM: {result.answer_model}</span> : null}
-              {result.search_api_endpoint ? <span>Search: {result.search_api_endpoint}</span> : null}
-              {result.action === "lookup" && result.lookup_api_endpoint ? <span>Lookup: {result.lookup_api_endpoint}</span> : null}
+              {result?.action ? <span>Mode: {result.action}</span> : null}
+              {result?.query_rewrite_model ? <span>Rewrite LLM: {result.query_rewrite_model}</span> : null}
+              {result?.answer_model ? <span>Answer LLM: {result.answer_model}</span> : null}
+              {result?.search_api_endpoint ? <span>Search: {result.search_api_endpoint}</span> : null}
+              {result?.action === "lookup" && result.lookup_api_endpoint ? <span>Lookup: {result.lookup_api_endpoint}</span> : null}
             </div>
-            <div className={`answer-body${result.insufficient_context ? " warning" : ""}`}>
-              {result.answer ?? "아직 연결된 최종 응답 본문은 없습니다."}
+            <div className={`answer-body${result?.insufficient_context ? " warning" : ""}${isStreamingAnswer ? " streaming" : ""}`}>
+              {displayedAnswer ?? "아직 연결된 최종 응답 본문은 없습니다."}
+              {isStreamingAnswer ? <span className="stream-cursor" aria-hidden="true">▌</span> : null}
             </div>
           </div>
         )}
       </div>
 
-      <div className="card">
-        <p className="eyebrow">Citations</p>
-        <h2>Evidence</h2>
-        <p>답변 근거로 사용한 chunk 포인터만 간단히 보여주고, 실제 본문은 아래 Reference context에서 확인합니다.</p>
-        {!result?.citations?.length ? (
-          <p>아직 표시할 근거가 없습니다.</p>
-        ) : (
-          <div className="citation-list">
-            {result.citations.map((citation) => {
-              const metaParts = buildEvidenceMetaParts(citation);
-              return (
-                <article className="citation-card" key={citation.id ?? `${citation.source}-${citation.chunk_index}`}>
-                  <div className="citation-card-head">
-                    <strong>{renderCitationLabel(citation)}</strong>
-                    {typeof citation.rank === "number" ? <span className="citation-rank">#{citation.rank}</span> : null}
-                  </div>
-                  <div className="retrieval-meta">
-                    {metaParts.length > 0 ? metaParts.map((part) => <span key={part}>{part}</span>) : <span>metadata unavailable</span>}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {showEvidenceSection ? (
+        <div className="card">
+          <p className="eyebrow">Citations</p>
+          <h2>Evidence</h2>
+          <p>답변 근거로 사용한 chunk 포인터만 간단히 보여주고, 실제 본문은 아래 Reference context에서 확인합니다.</p>
+          {!result?.citations?.length ? (
+            <p>아직 표시할 근거가 없습니다.</p>
+          ) : (
+            <div className="citation-list">
+              {result.citations.map((citation) => {
+                const metaParts = buildEvidenceMetaParts(citation);
+                return (
+                  <article className="citation-card" key={citation.id ?? `${citation.source}-${citation.chunk_index}`}>
+                    <div className="citation-card-head">
+                      <strong>{renderCitationLabel(citation)}</strong>
+                      {typeof citation.rank === "number" ? <span className="citation-rank">#{citation.rank}</span> : null}
+                    </div>
+                    <div className="retrieval-meta">
+                      {metaParts.length > 0 ? metaParts.map((part) => <span key={part}>{part}</span>) : <span>metadata unavailable</span>}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       <div className="card">
         <p className="eyebrow">Context</p>
         <h2>Reference context</h2>
         <p>answer generation에 실제로 들어간 retrieval hit를 순서대로 보여주며, rerank score와 matched query도 함께 표시합니다.</p>
-        {!result?.hits?.length ? (
+        {isStreamingAnswer ? (
+          <p>스트리밍 중에는 context 렌더링을 잠시 지연합니다.</p>
+        ) : !deferredResult?.hits?.length ? (
           <p>아직 표시할 context가 없습니다.</p>
         ) : (
           <div className="retrieval-list">
-            {result.hits.map((hit, index) => {
+            {deferredResult.hits.map((hit, index) => {
               const metaParts = buildEvidenceMetaParts(hit);
               const matchedQueries = formatMatchedQueries(hit.matched_queries);
               return (

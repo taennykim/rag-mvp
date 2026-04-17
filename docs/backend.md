@@ -139,6 +139,11 @@
   - chat request는 `query`, `top_k`, `final_k`, `stored_name`, `action`, `query_rewrite_model`, `query_rewrite_base_url`, `query_rewrite_custom_model`, `query_rewrite_api_key`, `query_rewrite_temperature`, `query_rewrite_top_k`, `query_rewrite_max_tokens`, `answer_model`, `answer_base_url`, `answer_custom_model`, `answer_api_key`, `answer_temperature`, `answer_top_k`, `answer_max_tokens`, `conversation_context`, `metadata`를 받을 수 있다.
   - `query_rewrite_model`이 지정되면 Query Rewrite LLM 호출에 해당 Azure OpenAI deployment를 사용하고, answer generation은 기존 chat deployment를 유지한다.
   - `query_rewrite_model`이 비어 있으면 기본 Query Rewrite LLM은 `gpt-4o-mini`를 사용한다.
+  - `answer_model`이 비어 있으면 기본 Answer LLM은 `AZURE_OPENAI_ANSWER_DEPLOYMENT`를 우선 사용하고, 값이 없으면 `gpt-4o`를 사용한다.
+  - `stream=true` 요청 시 `/chat`은 SSE(`text/event-stream`)로 `meta`, `delta`, `done` 이벤트를 순서대로 반환해 answer를 실시간 렌더링할 수 있다.
+  - `LLM Question` 미리보기용으로 `rewrite_delta`, `rewrite_done` 이벤트를 추가로 반환한다.
+  - SSE `delta`는 LLM 원문 전체가 아니라 `ANSWER` 본문 증분만 전달하고, 최종 `done`에서 파싱된 정답 본문을 확정한다.
+  - stream 체감 품질을 위해 backend는 매우 짧은 token 단위를 내부 버퍼로 묶어 `delta` 이벤트 수를 줄여 전송한다.
   - `query_rewrite_model=custom`이면 Query Rewrite만 custom OpenAI-compatible endpoint로 호출한다.
   - custom rewrite는 `LLM endpoint + /chat/completions`, `model`, `messages`, `temperature`, `top_k`, `max_tokens`, optional `Authorization: Bearer <api_key>` 형식을 지원한다.
   - `answer_model=custom`이면 Answer generation도 custom OpenAI-compatible endpoint로 호출한다.

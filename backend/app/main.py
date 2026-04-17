@@ -27,7 +27,7 @@ from docx.text.paragraph import Paragraph
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from app.query_routing import (
     get_document_hint_expansions,
@@ -145,11 +145,15 @@ EMBEDDING_PROVIDER_AZURE_OPENAI = "azure_openai"
 DEFAULT_AZURE_OPENAI_EMBEDDING_DEPLOYMENT = "text-embedding-3-small"
 DEFAULT_AZURE_OPENAI_API_VERSION = "2024-02-01"
 DEFAULT_QUERY_REWRITE_MODEL = "gpt-4o-mini"
+DEFAULT_ANSWER_MODEL = "gpt-4o"
 CUSTOM_QUERY_REWRITE_MODEL = "custom"
 AZURE_OPENAI_EMBEDDING_BATCH_SIZE = 32
 DEFAULT_CHAT_TOP_K = 5
 DEFAULT_CHAT_TEMPERATURE = 0.0
 DEFAULT_CHAT_MAX_TOKENS = 700
+STREAM_DELTA_MIN_CHARS = 10
+STREAM_DELTA_FLUSH_INTERVAL_SEC = 0.025
+STREAM_REWRITE_DELTA_MIN_CHARS = 4
 RUNTIME_ENV_FILE = BASE_DIR / ".env.runtime"
 QUERY_REWRITE_SPEC_PATH = BASE_DIR.parent / "docs" / "query-rewrite-spec.md"
 ANSWER_GENERATION_SPEC_PATH = BASE_DIR.parent / "docs" / "answer-generation-spec.md"
@@ -617,6 +621,7 @@ def infer_domain_specific_focus(normalized_turns: list[dict[str, str]]) -> str |
 
 def build_customer_rewrite_focus_text(normalized_turns: list[dict[str, str]], last_customer_message: str | None) -> str:
     cleaned_last = strip_conversational_fillers(last_customer_message or "")
+
     if not normalized_turns:
         return cleaned_last
 
@@ -1914,6 +1919,7 @@ class ChatRequest(BaseModel):
     answer_temperature: float | None = None
     answer_top_k: int | None = None
     answer_max_tokens: int | None = None
+    stream: bool = False
     conversation_context: list[ConversationTurn] = Field(default_factory=list)
     metadata: ChatMetadata | None = None
 
@@ -2183,7 +2189,7 @@ def get_answer_model_id(requested_model: str | None = None) -> str:
     requested = (requested_model or "").strip()
     if not requested:
         configured_default = os.getenv("AZURE_OPENAI_ANSWER_DEPLOYMENT", "").strip()
-        return configured_default or get_chat_model_id()
+        return configured_default or DEFAULT_ANSWER_MODEL
     if is_custom_answer_model(requested):
         return CUSTOM_QUERY_REWRITE_MODEL
 
@@ -2376,6 +2382,188 @@ def build_openai_compatible_chat_completion(
     return content.strip()
 
 
+def extract_text_from_content_parts(content_parts: object) -> str:
+    if not isinstance(content_parts, list):
+        return ""
+
+    fragments: list[str] = []
+    for part in content_parts:
+        if not isinstance(part, dict):
+            continue
+        text_value = part.get("text")
+        if isinstance(text_value, str) and text_value:
+            fragments.append(text_value)
+
+    return "".join(fragments)
+
+
+def extract_stream_choice_text(choice_payload: dict[str, object]) -> str:
+    delta = choice_payload.get("delta")
+    if isinstance(delta, dict):
+        content = delta.get("content")
+        if isinstance(content, str):
+            return content
+        content_parts = extract_text_from_content_parts(content)
+        if content_parts:
+            return content_parts
+
+    message = choice_payload.get("message")
+    if isinstance(message, dict):
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+        return extract_text_from_content_parts(content)
+
+    return ""
+
+
+def iter_openai_chat_completion_stream_chunks(response, *, provider_name: str):
+    for raw_line in response:
+        if not raw_line:
+            continue
+
+        decoded_line = raw_line.decode("utf-8", errors="ignore").strip()
+        if not decoded_line or not decoded_line.startswith("data:"):
+            continue
+
+        payload_text = decoded_line[5:].strip()
+        if not payload_text:
+            continue
+        if payload_text == "[DONE]":
+            break
+
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError:
+            logger.warning("%s chat stream chunk was not valid JSON.", provider_name)
+            continue
+
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or not choices:
+            continue
+
+        first_choice = choices[0]
+        if not isinstance(first_choice, dict):
+            continue
+
+        chunk_text = extract_stream_choice_text(first_choice)
+        if chunk_text:
+            yield chunk_text
+
+
+def build_azure_openai_chat_completion_stream(
+    messages: list[dict[str, str]],
+    *,
+    deployment: str | None = None,
+):
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip().rstrip("/")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY", "").strip()
+    deployment_id = deployment.strip() if deployment else get_chat_model_id()
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", DEFAULT_AZURE_OPENAI_API_VERSION).strip()
+
+    if not endpoint:
+        raise HTTPException(status_code=500, detail="AZURE_OPENAI_ENDPOINT is not configured.")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="AZURE_OPENAI_API_KEY is not configured.")
+
+    request_url = (
+        f"{endpoint}/openai/deployments/{deployment_id}/chat/completions"
+        f"?api-version={api_version}"
+    )
+    payload = json.dumps(
+        {
+            "messages": messages,
+            "temperature": DEFAULT_CHAT_TEMPERATURE,
+            "max_tokens": DEFAULT_CHAT_MAX_TOKENS,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+    ).encode("utf-8")
+    request = urllib_request.Request(
+        request_url,
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "api-key": api_key,
+        },
+    )
+
+    try:
+        response = urllib_request.urlopen(request, timeout=120)
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise HTTPException(status_code=502, detail=f"Azure OpenAI chat stream request failed: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"Azure OpenAI chat stream request failed: {exc.reason}") from exc
+
+    def iterator():
+        with response:
+            yield from iter_openai_chat_completion_stream_chunks(response, provider_name="Azure OpenAI")
+
+    return iterator()
+
+
+def build_openai_compatible_chat_completion_stream(
+    messages: list[dict[str, str]],
+    *,
+    base_url: str,
+    model_name: str | None = None,
+    api_key: str | None = None,
+    temperature: float = DEFAULT_CHAT_TEMPERATURE,
+    top_k: int | None = None,
+    max_tokens: int = DEFAULT_CHAT_MAX_TOKENS,
+):
+    normalized_base_url = base_url.strip().rstrip("/")
+    if not normalized_base_url:
+        raise HTTPException(status_code=400, detail="Custom LLM endpoint is required.")
+
+    if normalized_base_url.endswith("/chat/completions"):
+        request_url = normalized_base_url
+    else:
+        request_url = f"{normalized_base_url}/chat/completions"
+
+    headers = {
+        "Content-Type": "application/json",
+    }
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    request_payload: dict[str, object] = {
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    if model_name and model_name.strip():
+        request_payload["model"] = model_name.strip()
+    if top_k is not None:
+        request_payload["top_k"] = top_k
+
+    payload = json.dumps(request_payload).encode("utf-8")
+    request = urllib_request.Request(
+        request_url,
+        data=payload,
+        method="POST",
+        headers=headers,
+    )
+
+    try:
+        response = urllib_request.urlopen(request, timeout=120)
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise HTTPException(status_code=502, detail=f"Custom answer stream request failed: {detail}") from exc
+    except urllib_error.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"Custom answer stream request failed: {exc.reason}") from exc
+
+    def iterator():
+        with response:
+            yield from iter_openai_chat_completion_stream_chunks(response, provider_name="Custom answer")
+
+    return iterator()
+
+
 def build_query_rewrite_chat_completion(payload: ChatRequest, messages: list[dict[str, str]]) -> tuple[str, str]:
     model_id = get_query_rewrite_model_id(payload.query_rewrite_model)
     if model_id == CUSTOM_QUERY_REWRITE_MODEL:
@@ -2412,6 +2600,25 @@ def build_answer_chat_completion(payload: ChatRequest, messages: list[dict[str, 
             get_answer_display_model(payload),
         )
     return build_azure_openai_chat_completion(messages, deployment=model_id), model_id
+
+
+def build_answer_chat_completion_stream(payload: ChatRequest, messages: list[dict[str, str]]):
+    model_id = get_answer_model_id(payload.answer_model)
+    if model_id == CUSTOM_QUERY_REWRITE_MODEL:
+        base_url, model_name, api_key, temperature, top_k, max_tokens = get_answer_custom_config(payload)
+        return (
+            build_openai_compatible_chat_completion_stream(
+                messages,
+                base_url=base_url,
+                model_name=model_name,
+                api_key=api_key,
+                temperature=temperature,
+                top_k=top_k,
+                max_tokens=max_tokens,
+            ),
+            get_answer_display_model(payload),
+        )
+    return build_azure_openai_chat_completion_stream(messages, deployment=model_id), model_id
 
 
 def build_embeddings(texts: list[str]) -> list[list[float]]:
@@ -2995,6 +3202,22 @@ def parse_chat_completion(content: str) -> tuple[bool, str]:
     status = status_match.group(1).strip().lower()
     answer = answer_match.group(1).strip()
     return status == "insufficient", answer
+
+
+def extract_streaming_answer_preview(content: str) -> str:
+    answer_match = re.search(r"ANSWER:\s*(.*)", content, flags=re.IGNORECASE | re.DOTALL)
+    if answer_match:
+        return answer_match.group(1)
+
+    stripped_content = content.lstrip()
+    if not stripped_content:
+        return ""
+
+    # Keep STATUS/ANSWER scaffolding out of incremental UI updates.
+    if stripped_content.upper().startswith("STATUS") or stripped_content.upper().startswith("ANSWER"):
+        return ""
+
+    return content
 
 
 def extract_json_object(text: str) -> dict[str, object]:
@@ -3825,6 +4048,316 @@ def evaluate_retrieved_chunks(retrieved_chunks: list[dict[str, object]]) -> Sear
     )
 
 
+def build_answer_generation_messages(
+    *,
+    original_query: str,
+    rewritten_query: str,
+    hits: list[dict[str, object]],
+) -> list[dict[str, str]]:
+    system_prompt = (
+        "You answer questions using only the provided document context.\n"
+        "Do not use outside knowledge.\n"
+        "If the context is insufficient, say so.\n"
+        "Respond in Korean.\n"
+        "When the context includes conditional requirements, keep common requirements and conditional requirements separate.\n"
+        "Never present conditional requirements as unconditional facts.\n"
+        "Use this exact format:\n"
+        "STATUS: grounded or insufficient\n"
+        "ANSWER: <final answer>"
+    )
+    user_prompt = (
+        f"Original Question:\n{original_query}\n\n"
+        f"Interpreted Retrieval Query:\n{rewritten_query}\n\n"
+        f"Context:\n{format_chat_context(hits)}\n\n"
+        "Answer generation spec (from docs/answer-generation-spec.md):\n"
+        f"{load_answer_generation_spec() or 'answer generation spec is unavailable.'}\n\n"
+        "Rules:\n"
+        "- Answer only from the context.\n"
+        "- If the context does not support a clear answer, return STATUS: insufficient.\n"
+        "- Keep the answer concise and factual.\n"
+        "- Do not mention information not present in the context.\n"
+        "- If the document lists items that apply only in certain cases, separate them into '공통 서류' and '조건부 추가 서류'.\n"
+        "- If the user's question is broad and the required documents vary by condition, explicitly say that additional documents depend on case.\n"
+        "- Do not merge multiple scenario-specific document lists into one unconditional checklist."
+    )
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+
+def format_sse_event(event: str, payload: dict[str, object]) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def build_sse_response(events) -> StreamingResponse:
+    return StreamingResponse(
+        events,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def generate_grounded_answer_stream(payload: ChatRequest) -> StreamingResponse:
+    original_query = payload.query.strip()
+    rewrite_started_at = time.perf_counter()
+    rewrite_result = rewrite_chat_query(payload)
+    answer_model_id = get_answer_display_model(payload)
+    query_rewrite_time_ms = round((time.perf_counter() - rewrite_started_at) * 1000)
+    search_started_at = time.perf_counter()
+    search_api_endpoint = (payload.search_api_endpoint or DEFAULT_EXTERNAL_SEARCH_API_ENDPOINT).strip()
+    lookup_api_endpoint = (payload.lookup_api_endpoint or DEFAULT_EXTERNAL_LOOKUP_API_ENDPOINT).strip()
+    action = (payload.action or "search").strip().lower()
+
+    try:
+        if action == "lookup":
+            search_result = execute_lookup_for_chat(payload, rewrite_result)
+        else:
+            search_result = execute_search_for_chat(payload, rewrite_result)
+    except HTTPException as exc:
+        search_api_response_time_ms = round((time.perf_counter() - search_started_at) * 1000)
+        error_reason = "Lookup API 연결에 실패해 검색 결과를 가져오지 못했습니다." if action == "lookup" else "검색 API 연결에 실패해 검색 결과를 가져오지 못했습니다."
+        error_answer = "Lookup API 연결에 실패했습니다." if action == "lookup" else "검색 API 연결에 실패했습니다."
+        logger.warning(
+            "chat_%s_failed query=%s rewrite_query=%s detail=%s",
+            action,
+            original_query,
+            rewrite_result.rewritten_query,
+            exc.detail,
+        )
+        error_payload = {
+            "status": "answered",
+            "query": original_query,
+            "interpreted_query": rewrite_result.rewritten_query,
+            "rewritten_query": rewrite_result.rewritten_query,
+            "search_queries": rewrite_result.search_queries,
+            "retrieved_chunks": [],
+            "normalized_conversation": rewrite_result.normalized_conversation,
+            "last_customer_message": rewrite_result.last_customer_message,
+            "validation_reasons": rewrite_result.validation_reasons,
+            "rewrite_source": rewrite_result.rewrite_source,
+            "query_rewrite_model": rewrite_result.query_rewrite_model,
+            "intent": rewrite_result.intent,
+            "question_type": rewrite_result.question_type,
+            "entities": rewrite_result.entities,
+            "routing_hints": rewrite_result.routing_hints,
+            "search_query": rewrite_result.rewritten_query,
+            "executed_search_queries": [],
+            "top_k": payload.final_k if action == "search" else payload.top_k,
+            "hit_count": 0,
+            "collection_name": None,
+            "embedding_provider": None,
+            "embedding_model": None,
+            "rag_endpoint": (lookup_api_endpoint if action == "lookup" else search_api_endpoint) or "internal:/retrieve",
+            "search_api_endpoint": search_api_endpoint or None,
+            "lookup_api_endpoint": lookup_api_endpoint or None,
+            "action": action,
+            "query_rewrite_time_ms": query_rewrite_time_ms,
+            "search_api_response_time_ms": search_api_response_time_ms,
+            "need_more_context": True,
+            "search_evaluation": {
+                "need_more_context": True,
+                "reason_codes": [f"{action}_request_failed"],
+                "evaluation_reasons": [error_reason],
+            },
+            "answer": error_answer,
+            "insufficient_context": True,
+            "citations": [],
+            "hits": [],
+            "chat_model": None,
+            "answer_model": answer_model_id,
+            "detail": str(exc.detail),
+        }
+
+        def error_events():
+            yield format_sse_event("done", error_payload)
+
+        return build_sse_response(error_events())
+
+    search_api_response_time_ms = round((time.perf_counter() - search_started_at) * 1000)
+    hits = search_result["hits"]
+    retrieved_chunks = search_result["retrieved_chunks"]
+    lookup_error_detail: str | None = None
+    search_evaluation = evaluate_retrieved_chunks(retrieved_chunks)
+
+    if not hits:
+        empty_payload = {
+            "status": "answered",
+            "query": original_query,
+            "interpreted_query": rewrite_result.rewritten_query,
+            "rewritten_query": rewrite_result.rewritten_query,
+            "search_queries": rewrite_result.search_queries,
+            "retrieved_chunks": retrieved_chunks,
+            "normalized_conversation": rewrite_result.normalized_conversation,
+            "last_customer_message": rewrite_result.last_customer_message,
+            "validation_reasons": rewrite_result.validation_reasons,
+            "rewrite_source": rewrite_result.rewrite_source,
+            "query_rewrite_model": rewrite_result.query_rewrite_model,
+            "intent": rewrite_result.intent,
+            "question_type": rewrite_result.question_type,
+            "entities": rewrite_result.entities,
+            "routing_hints": rewrite_result.routing_hints,
+            "search_query": search_result["query"],
+            "executed_search_queries": search_result["executed_queries"],
+            "top_k": search_result["top_k"],
+            "hit_count": 0,
+            "collection_name": search_result["collection_name"],
+            "embedding_provider": search_result["embedding_provider"],
+            "embedding_model": search_result["embedding_model"],
+            "rag_endpoint": search_result["rag_endpoint"],
+            "search_api_endpoint": search_api_endpoint or None,
+            "lookup_api_endpoint": lookup_api_endpoint or None,
+            "action": action,
+            "query_rewrite_time_ms": query_rewrite_time_ms,
+            "search_api_response_time_ms": search_api_response_time_ms,
+            "need_more_context": search_evaluation.need_more_context,
+            "search_evaluation": serialize_search_evaluation(search_evaluation),
+            "answer": "문서에서 충분한 근거를 찾지 못했습니다.",
+            "insufficient_context": True,
+            "citations": [],
+            "hits": [],
+            "chat_model": None,
+            "answer_model": answer_model_id,
+            "detail": lookup_error_detail,
+        }
+
+        def empty_events():
+            yield format_sse_event("done", empty_payload)
+
+        return build_sse_response(empty_events())
+
+    messages = build_answer_generation_messages(
+        original_query=original_query,
+        rewritten_query=rewrite_result.rewritten_query,
+        hits=hits,
+    )
+
+    def stream_events():
+        base_payload: dict[str, object] = {
+            "status": "answered",
+            "query": original_query,
+            "interpreted_query": rewrite_result.rewritten_query,
+            "rewritten_query": rewrite_result.rewritten_query,
+            "search_queries": rewrite_result.search_queries,
+            "retrieved_chunks": retrieved_chunks,
+            "normalized_conversation": rewrite_result.normalized_conversation,
+            "last_customer_message": rewrite_result.last_customer_message,
+            "validation_reasons": rewrite_result.validation_reasons,
+            "rewrite_source": rewrite_result.rewrite_source,
+            "query_rewrite_model": rewrite_result.query_rewrite_model,
+            "intent": rewrite_result.intent,
+            "question_type": rewrite_result.question_type,
+            "entities": rewrite_result.entities,
+            "routing_hints": rewrite_result.routing_hints,
+            "search_query": search_result["query"],
+            "executed_search_queries": search_result["executed_queries"],
+            "top_k": search_result["top_k"],
+            "hit_count": search_result["hit_count"],
+            "collection_name": search_result["collection_name"],
+            "embedding_provider": search_result["embedding_provider"],
+            "embedding_model": search_result["embedding_model"],
+            "rag_endpoint": search_result["rag_endpoint"],
+            "search_api_endpoint": search_api_endpoint or None,
+            "lookup_api_endpoint": lookup_api_endpoint or None,
+            "action": action,
+            "query_rewrite_time_ms": query_rewrite_time_ms,
+            "search_api_response_time_ms": search_api_response_time_ms,
+            "need_more_context": search_evaluation.need_more_context,
+            "search_evaluation": serialize_search_evaluation(search_evaluation),
+            "answer": "",
+            "insufficient_context": False,
+            "citations": build_chat_citations(hits),
+            "hits": hits,
+            "chat_model": answer_model_id,
+            "answer_model": answer_model_id,
+            "detail": lookup_error_detail,
+        }
+
+        rewrite_text = rewrite_result.rewritten_query.strip()
+        if rewrite_text:
+            pending_rewrite_delta = ""
+            for char in rewrite_text:
+                pending_rewrite_delta += char
+                if len(pending_rewrite_delta) >= STREAM_REWRITE_DELTA_MIN_CHARS or char in {" ", "\n", "\t", "?", ".", "!"}:
+                    yield format_sse_event("rewrite_delta", {"content": pending_rewrite_delta})
+                    pending_rewrite_delta = ""
+            if pending_rewrite_delta:
+                yield format_sse_event("rewrite_delta", {"content": pending_rewrite_delta})
+            yield format_sse_event("rewrite_done", {"rewritten_query": rewrite_text})
+
+        yield format_sse_event("meta", base_payload)
+
+        streamed_response_text = ""
+        streamed_answer_preview = ""
+        pending_delta_text = ""
+        last_delta_flush_at = time.perf_counter()
+        streamed_model_id = answer_model_id
+        try:
+            answer_stream, streamed_model_id = build_answer_chat_completion_stream(payload, messages)
+            for chunk_text in answer_stream:
+                if not chunk_text:
+                    continue
+                streamed_response_text += chunk_text
+                next_answer_preview = extract_streaming_answer_preview(streamed_response_text)
+                if not next_answer_preview:
+                    continue
+                if not next_answer_preview.startswith(streamed_answer_preview):
+                    # Stream deltas are append-only, so skip incompatible rewrites and rely on final `done`.
+                    continue
+                delta_text = next_answer_preview[len(streamed_answer_preview) :]
+                if not delta_text:
+                    continue
+                streamed_answer_preview = next_answer_preview
+                pending_delta_text += delta_text
+                now = time.perf_counter()
+                should_flush = (
+                    len(pending_delta_text) >= STREAM_DELTA_MIN_CHARS
+                    or "\n" in pending_delta_text
+                    or (now - last_delta_flush_at) >= STREAM_DELTA_FLUSH_INTERVAL_SEC
+                )
+                if should_flush:
+                    yield format_sse_event("delta", {"content": pending_delta_text})
+                    pending_delta_text = ""
+                    last_delta_flush_at = now
+            if pending_delta_text:
+                yield format_sse_event("delta", {"content": pending_delta_text})
+        except HTTPException as exc:
+            logger.warning(
+                "chat_answer_stream_failed query=%s rewrite_query=%s detail=%s",
+                original_query,
+                rewrite_result.rewritten_query,
+                exc.detail,
+            )
+            yield format_sse_event("error", {"detail": str(exc.detail)})
+            failed_payload = {
+                **base_payload,
+                "answer": "답변 생성 스트림에 실패했습니다.",
+                "insufficient_context": True,
+                "chat_model": streamed_model_id,
+                "answer_model": streamed_model_id,
+                "detail": str(exc.detail),
+            }
+            yield format_sse_event("done", failed_payload)
+            return
+
+        response_text = streamed_response_text
+        insufficient_context, answer = parse_chat_completion(response_text)
+        completed_payload = {
+            **base_payload,
+            "answer": answer,
+            "insufficient_context": insufficient_context,
+            "chat_model": streamed_model_id,
+            "answer_model": streamed_model_id,
+        }
+        yield format_sse_event("done", completed_payload)
+
+    return build_sse_response(stream_events())
+
+
 def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
     original_query = payload.query.strip()
     rewrite_started_at = time.perf_counter()
@@ -3942,38 +4475,14 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
             "detail": lookup_error_detail,
         }
 
-    system_prompt = (
-        "You answer questions using only the provided document context.\n"
-        "Do not use outside knowledge.\n"
-        "If the context is insufficient, say so.\n"
-        "Respond in Korean.\n"
-        "When the context includes conditional requirements, keep common requirements and conditional requirements separate.\n"
-        "Never present conditional requirements as unconditional facts.\n"
-        "Use this exact format:\n"
-        "STATUS: grounded or insufficient\n"
-        "ANSWER: <final answer>"
-    )
-    user_prompt = (
-        f"Original Question:\n{original_query}\n\n"
-        f"Interpreted Retrieval Query:\n{rewrite_result.rewritten_query}\n\n"
-        f"Context:\n{format_chat_context(hits)}\n\n"
-        "Answer generation spec (from docs/answer-generation-spec.md):\n"
-        f"{load_answer_generation_spec() or 'answer generation spec is unavailable.'}\n\n"
-        "Rules:\n"
-        "- Answer only from the context.\n"
-        "- If the context does not support a clear answer, return STATUS: insufficient.\n"
-        "- Keep the answer concise and factual.\n"
-        "- Do not mention information not present in the context.\n"
-        "- If the document lists items that apply only in certain cases, separate them into '공통 서류' and '조건부 추가 서류'.\n"
-        "- If the user's question is broad and the required documents vary by condition, explicitly say that additional documents depend on case.\n"
-        "- Do not merge multiple scenario-specific document lists into one unconditional checklist."
+    messages = build_answer_generation_messages(
+        original_query=original_query,
+        rewritten_query=rewrite_result.rewritten_query,
+        hits=hits,
     )
     response_text, answer_model_id = build_answer_chat_completion(
         payload,
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+        messages,
     )
     insufficient_context, answer = parse_chat_completion(response_text)
 
@@ -4635,7 +5144,9 @@ def get_chat_status() -> dict[str, object]:
 
 
 @app.post("/chat")
-def answer_with_retrieval(payload: ChatRequest) -> dict[str, object]:
+def answer_with_retrieval(payload: ChatRequest):
+    if payload.stream:
+        return generate_grounded_answer_stream(payload)
     return generate_grounded_answer(payload)
 
 
