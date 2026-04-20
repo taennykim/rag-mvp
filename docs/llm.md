@@ -17,13 +17,13 @@
 - backend `POST /chat`은 `conversation_context`가 비어 있어도 `Question` 멀티라인의 `고객:` / `상담사:` prefix를 파싱해 대화 입력으로 재구성할 수 있다.
 - backend `POST /chat`은 rewrite 결과에 대해 Standalone Search Query 검증을 수행하고 `rewrite_source`, `validation_reasons`로 fallback trace를 함께 반환한다.
 - frontend `/chat`은 `Question`과 `LLM Question` 사이에서 Query Rewrite LLM을 선택할 수 있고, backend는 선택된 `query_rewrite_model`을 rewrite 호출에만 적용한다.
-- Query Rewrite LLM에서 `Custom`을 선택하면 `LLM endpoint`, `LLM model name`, optional `API Key`, `Temperature`, `Top-K`, `Max Tokens`를 입력할 수 있고, custom rewrite는 OpenAI-compatible API만 지원한다.
+- Query Rewrite LLM에서 `Custom`을 선택하면 `LLM endpoint`, `LLM model name`, optional `API Key`를 입력할 수 있고, custom rewrite는 OpenAI-compatible API만 지원한다.
 - frontend `/chat`은 `Answer LLM`도 선택할 수 있고, backend는 선택된 `answer_model`을 grounded answer 생성 호출에 적용한다.
-- Answer LLM에서도 `Custom`을 선택하면 `LLM endpoint`, `LLM model name`, optional `API Key`, `Temperature`, `Top-K`, `Max Tokens`를 입력할 수 있고, custom answer는 OpenAI-compatible API만 지원한다.
-- Query Rewrite LLM selector 옵션은 `Default (gpt-4o-mini)`, `gpt-4.1-mini`, `gpt-4o`, `Custom`이다.
-- Answer LLM selector 옵션은 `Default (GPT-4o)`, `gpt-4.1-mini`, `gpt-4o`, `Custom`이다.
-- UI에서 `gpt-4.1-mini`, `gpt-4o`를 명시적으로 선택할 수 있다.
-- UI에서 `Custom`을 선택하면 `LLM endpoint`, `LLM model name`, `API Key`, `Temperature`, `Top-K`, `Max Tokens` 입력창이 조건부로 노출된다.
+- Answer LLM에서도 `Custom`을 선택하면 `LLM endpoint`, `LLM model name`, optional `API Key`를 입력할 수 있고, custom answer는 OpenAI-compatible API만 지원한다.
+- Query Rewrite LLM selector 옵션은 `Default (gpt-4o-mini)`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-4.1-mini`, `gpt-4o`, `Custom`이다.
+- Answer LLM selector 옵션은 `Default (GPT-4o)`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-4.1-mini`, `gpt-4o`, `Custom`이다.
+- UI에서 `gpt-5.4`, `gpt-5.4-mini`, `gpt-4.1-mini`, `gpt-4o`를 명시적으로 선택할 수 있다.
+- UI에서는 모델 선택과 custom endpoint 정보만 입력받고, 모든 LLM 호출은 `temperature=0`, `top_p=0.9`, `max_tokens=700` 기본값을 사용한다.
 - `/chat` Custom 입력 라벨은 `Custom model name`에서 `LLM model name`으로 통일했다.
 - 두 selector는 서로 독립 동작이며, Query Rewrite 기본 모델은 `gpt-4o-mini`다.
 - Answer 기본 모델은 UI 기본값 `gpt-4o`이며, backend에서도 `answer_model`이 비어 있고 `AZURE_OPENAI_ANSWER_DEPLOYMENT`가 없으면 `gpt-4o`를 사용한다.

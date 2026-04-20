@@ -134,10 +134,10 @@
   - RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI, 단계별 응답시간, 외부 Search API 결과 표시를 확인한다
   - RAG 서버 브라우저에서 Query Rewrite LLM / Answer LLM의 `Custom` 선택 시 조건부 입력창 노출과 validation 메시지를 확인한다
   - Query Rewrite LLM 기본값 `gpt-4o-mini` 기준 브라우저 동작을 확인한다
-  - `docs/chat_plan.md` 기준 Step 7 Need More Context 분기와 Step 8 Lookup API 호출 연결 방식을 정리한다
   - parser 운영 정책은 `Legacy auto` 기본, `Docling` 비교 검증용, `Docling(md)` Markdown 산출물 생성용으로 유지한다
   - `Docling` PDF 변환 장시간 실행 원인을 추가 확인하되, 현재 PDF 기본 parser 정책은 `Legacy auto / PyMuPDF 우선`으로 유지한다
   - RAG 서버 UI 확인 전에는 먼저 frontend build 유무와 `3000/8000` runtime 상태를 다시 점검한다
   - 외부 RAG contract 확정 전까지 `/chat` answer/citation shell 화면과 문구를 먼저 안정화한다
   - `docs/answer-eval.md` 기준으로 retrieval 질문 세트의 answer/citation 품질을 기록한다
   - 외부 RAG contract가 정해지면 adapter request/response mapping을 별도로 연결한다
+  - `docs/chat_plan.md` Step 7~9는 현재 스코프에서 제외하고 추후 개발 항목으로 유지한다

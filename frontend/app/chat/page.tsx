@@ -50,6 +50,8 @@ const DEFAULT_QUERY_REWRITE_MODEL = "gpt-4o-mini";
 const DEFAULT_ANSWER_MODEL = "gpt-4o";
 const QUERY_REWRITE_MODEL_OPTIONS = [
   { label: "Default (gpt-4o-mini)", value: DEFAULT_QUERY_REWRITE_MODEL },
+  { label: "GPT-5.4", value: "gpt-5.4" },
+  { label: "GPT-5.4 mini", value: "gpt-5.4-mini" },
   { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
   { label: "GPT-4o", value: "gpt-4o" },
   { label: "Custom", value: CUSTOM_LLM_MODEL },
@@ -58,6 +60,8 @@ const CUSTOM_QUERY_REWRITE_MODEL = CUSTOM_LLM_MODEL;
 const CUSTOM_ANSWER_MODEL = CUSTOM_LLM_MODEL;
 const ANSWER_MODEL_OPTIONS = [
   { label: "Default (GPT-4o)", value: DEFAULT_ANSWER_MODEL },
+  { label: "GPT-5.4", value: "gpt-5.4" },
+  { label: "GPT-5.4 mini", value: "gpt-5.4-mini" },
   { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
   { label: "GPT-4o", value: "gpt-4o" },
   { label: "Custom", value: CUSTOM_LLM_MODEL },
@@ -107,24 +111,6 @@ function formatSeconds(milliseconds: number) {
   return `${(milliseconds / 1000).toFixed(2)} s`;
 }
 
-function parseOptionalNumber(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const parsed = Number.parseFloat(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function parseOptionalInteger(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const parsed = Number.parseInt(trimmed, 10);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function formatResponseTiming(totalMs: number, result: ChatResponse) {
   const detailParts: string[] = [];
   if (typeof result.query_rewrite_time_ms === "number") {
@@ -166,17 +152,10 @@ export default function ChatPage() {
   const [queryRewriteBaseUrl, setQueryRewriteBaseUrl] = useState("");
   const [queryRewriteCustomModel, setQueryRewriteCustomModel] = useState("");
   const [queryRewriteApiKey, setQueryRewriteApiKey] = useState("");
-  const [queryRewriteTemperature, setQueryRewriteTemperature] = useState("0");
-  const [queryRewriteTopK, setQueryRewriteTopK] = useState("40");
-  const [queryRewriteMaxTokens, setQueryRewriteMaxTokens] = useState("700");
   const [answerModel, setAnswerModel] = useState(DEFAULT_ANSWER_MODEL);
   const [answerBaseUrl, setAnswerBaseUrl] = useState("");
   const [answerCustomModel, setAnswerCustomModel] = useState("");
   const [answerApiKey, setAnswerApiKey] = useState("");
-  const [answerTemperature, setAnswerTemperature] = useState("0");
-  const [answerTopK, setAnswerTopK] = useState("40");
-  const [answerMaxTokens, setAnswerMaxTokens] = useState("700");
-  const [finalK, setFinalK] = useState("5");
   const [result, setResult] = useState<ChatResponse | null>(null);
   const [streamingRewrittenQuery, setStreamingRewrittenQuery] = useState("");
   const [isStreamingRewrite, setIsStreamingRewrite] = useState(false);
@@ -469,23 +448,17 @@ export default function ChatPage() {
         body: JSON.stringify({
           query,
           action,
-          final_k: Number.parseInt(finalK, 10) || 5,
+          final_k: 5,
           document_id: lookupTarget?.documentId ?? null,
           section_hint: lookupTarget?.sectionHint ?? null,
           query_rewrite_model: queryRewriteModel || null,
           query_rewrite_base_url: isCustomQueryRewriteModel ? queryRewriteBaseUrl.trim() : null,
           query_rewrite_custom_model: isCustomQueryRewriteModel ? queryRewriteCustomModel.trim() : null,
           query_rewrite_api_key: isCustomQueryRewriteModel ? queryRewriteApiKey : null,
-          query_rewrite_temperature: isCustomQueryRewriteModel ? parseOptionalNumber(queryRewriteTemperature) : null,
-          query_rewrite_top_k: isCustomQueryRewriteModel ? parseOptionalInteger(queryRewriteTopK) : null,
-          query_rewrite_max_tokens: isCustomQueryRewriteModel ? parseOptionalInteger(queryRewriteMaxTokens) : null,
           answer_model: answerModel || null,
           answer_base_url: isCustomAnswerModel ? answerBaseUrl.trim() : null,
           answer_custom_model: isCustomAnswerModel ? answerCustomModel.trim() : null,
           answer_api_key: isCustomAnswerModel ? answerApiKey : null,
-          answer_temperature: isCustomAnswerModel ? parseOptionalNumber(answerTemperature) : null,
-          answer_top_k: isCustomAnswerModel ? parseOptionalInteger(answerTopK) : null,
-          answer_max_tokens: isCustomAnswerModel ? parseOptionalInteger(answerMaxTokens) : null,
           stream: true,
         }),
       });
@@ -616,55 +589,8 @@ export default function ChatPage() {
                 type="password"
                 value={queryRewriteApiKey}
               />
-              <div className="chat-inline-grid">
-                <div className="chat-inline-item">
-                  <label className="upload-label" htmlFor="chat-query-rewrite-temperature">
-                    Temperature
-                  </label>
-                  <input
-                    className="default-file-select"
-                    id="chat-query-rewrite-temperature"
-                    inputMode="decimal"
-                    onChange={(event) => setQueryRewriteTemperature(event.target.value)}
-                    placeholder="0.0"
-                    step="0.1"
-                    type="number"
-                    value={queryRewriteTemperature}
-                  />
-                </div>
-                <div className="chat-inline-item">
-                  <label className="upload-label" htmlFor="chat-query-rewrite-top-k">
-                    Top-K
-                  </label>
-                  <input
-                    className="default-file-select"
-                    id="chat-query-rewrite-top-k"
-                    inputMode="numeric"
-                    min="1"
-                    onChange={(event) => setQueryRewriteTopK(event.target.value)}
-                    placeholder="40"
-                    type="number"
-                    value={queryRewriteTopK}
-                  />
-                </div>
-                <div className="chat-inline-item">
-                  <label className="upload-label" htmlFor="chat-query-rewrite-max-tokens">
-                    Max Tokens
-                  </label>
-                  <input
-                    className="default-file-select"
-                    id="chat-query-rewrite-max-tokens"
-                    inputMode="numeric"
-                    min="1"
-                    onChange={(event) => setQueryRewriteMaxTokens(event.target.value)}
-                    placeholder="700"
-                    type="number"
-                    value={queryRewriteMaxTokens}
-                  />
-                </div>
-              </div>
               <div className="chat-note">
-                Custom LLM은 OpenAI-compatible API만 지원합니다.
+                Custom LLM은 OpenAI-compatible API만 지원하며, 모든 LLM 호출은 `temperature=0`, `top_p=0.9`, `max_tokens=700` 기본값을 사용합니다.
               </div>
             </>
           ) : null}
@@ -719,55 +645,8 @@ export default function ChatPage() {
                 type="password"
                 value={answerApiKey}
               />
-              <div className="chat-inline-grid">
-                <div className="chat-inline-item">
-                  <label className="upload-label" htmlFor="chat-answer-temperature">
-                    Temperature
-                  </label>
-                  <input
-                    className="default-file-select"
-                    id="chat-answer-temperature"
-                    inputMode="decimal"
-                    onChange={(event) => setAnswerTemperature(event.target.value)}
-                    placeholder="0.0"
-                    step="0.1"
-                    type="number"
-                    value={answerTemperature}
-                  />
-                </div>
-                <div className="chat-inline-item">
-                  <label className="upload-label" htmlFor="chat-answer-top-k">
-                    Top-K
-                  </label>
-                  <input
-                    className="default-file-select"
-                    id="chat-answer-top-k"
-                    inputMode="numeric"
-                    min="1"
-                    onChange={(event) => setAnswerTopK(event.target.value)}
-                    placeholder="40"
-                    type="number"
-                    value={answerTopK}
-                  />
-                </div>
-                <div className="chat-inline-item">
-                  <label className="upload-label" htmlFor="chat-answer-max-tokens">
-                    Max Tokens
-                  </label>
-                  <input
-                    className="default-file-select"
-                    id="chat-answer-max-tokens"
-                    inputMode="numeric"
-                    min="1"
-                    onChange={(event) => setAnswerMaxTokens(event.target.value)}
-                    placeholder="700"
-                    type="number"
-                    value={answerMaxTokens}
-                  />
-                </div>
-              </div>
               <div className="chat-note">
-                Custom Answer LLM은 OpenAI-compatible API만 지원합니다.
+                Custom Answer LLM은 OpenAI-compatible API만 지원하며, 모든 LLM 호출은 `temperature=0`, `top_p=0.9`, `max_tokens=700` 기본값을 사용합니다.
               </div>
             </>
           ) : null}
@@ -780,19 +659,6 @@ export default function ChatPage() {
               {isStreamingRewrite ? <span className="stream-cursor" aria-hidden="true">▌</span> : null}
             </div>
           </div>
-          <label className="upload-label" htmlFor="chat-final-k">
-            Search final_k
-          </label>
-          <input
-            className="default-file-select"
-            id="chat-final-k"
-            inputMode="numeric"
-            min="1"
-            onChange={(event) => setFinalK(event.target.value)}
-            placeholder="5"
-            type="number"
-            value={finalK}
-          />
           <div className="button-row">
             <button className="upload-button" disabled={isLoading} onClick={() => void requestChatResponse("search")} type="button">
               {isLoading ? "Loading..." : "Get response"}

@@ -268,11 +268,11 @@
 - 1차 우선순위:
   - RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI, `LLM Question`, 단계별 응답시간, 외부 Search API 결과 표시 육안 확인
   - Query Rewrite LLM 기본값 `gpt-4o-mini` 기준 브라우저 동작 확인
-  - `docs/chat_plan.md` Step 7 Need More Context 분기와 Step 8 Lookup API 호출 연결 방식 정리
   - 외부 RAG contract 확정 전까지 `/chat` question / answer / citation shell 유지
   - 정식 외부 Search API contract 확정 시 `/api/search` 임시 adapter request/response mapping 재정리
 - retrieval 질문 세트 기준 `/chat` answer generation 품질 및 citation 품질 기록
 - internal retrieval 기준 `rerank_score` / `matched_queries`를 활용한 retrieval trace 점검은 가능해졌고, 다음은 실제 answer/citation 품질 기록 보강이다
+- `docs/chat_plan.md` Step 7~9(Need More Context 분기 / Lookup API 호출 / Expanded Context 병합)는 현재 스코프에서 제외했고 추후 개발로 남겨둔다
 - parser 후속 우선순위:
   - `Docling` PDF 변환 장시간 실행 원인을 확인
   - garbled detection false negative를 줄이기 위한 문자군 규칙 또는 별도 기준 추가

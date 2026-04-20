@@ -136,7 +136,7 @@
   - `/chat`은 사용자 질의를 Input 정규화 후 structured rewrite로 변환한 뒤, 요청 action에 따라 Search API 또는 Lookup API를 단독 호출한다.
   - query rewrite prompt는 `docs/query-rewrite-spec.md` 운영 문서를 읽어 `rewritten_query` 생성 기준에 반영한다.
   - answer generation user prompt는 `docs/answer-generation-spec.md` 내용을 함께 포함해 답변 생성 기준을 반영한다.
-  - chat request는 `query`, `top_k`, `final_k`, `stored_name`, `action`, `query_rewrite_model`, `query_rewrite_base_url`, `query_rewrite_custom_model`, `query_rewrite_api_key`, `query_rewrite_temperature`, `query_rewrite_top_k`, `query_rewrite_max_tokens`, `answer_model`, `answer_base_url`, `answer_custom_model`, `answer_api_key`, `answer_temperature`, `answer_top_k`, `answer_max_tokens`, `conversation_context`, `metadata`를 받을 수 있다.
+  - chat request는 `query`, `top_k`, `final_k`, `stored_name`, `action`, `query_rewrite_model`, `query_rewrite_base_url`, `query_rewrite_custom_model`, `query_rewrite_api_key`, `answer_model`, `answer_base_url`, `answer_custom_model`, `answer_api_key`, `conversation_context`, `metadata`를 받을 수 있다.
   - `query_rewrite_model`이 지정되면 Query Rewrite LLM 호출에 해당 Azure OpenAI deployment를 사용하고, answer generation은 기존 chat deployment를 유지한다.
   - `query_rewrite_model`이 비어 있으면 기본 Query Rewrite LLM은 `gpt-4o-mini`를 사용한다.
   - `answer_model`이 비어 있으면 기본 Answer LLM은 `AZURE_OPENAI_ANSWER_DEPLOYMENT`를 우선 사용하고, 값이 없으면 `gpt-4o`를 사용한다.
@@ -145,9 +145,10 @@
   - SSE `delta`는 LLM 원문 전체가 아니라 `ANSWER` 본문 증분만 전달하고, 최종 `done`에서 파싱된 정답 본문을 확정한다.
   - stream 체감 품질을 위해 backend는 매우 짧은 token 단위를 내부 버퍼로 묶어 `delta` 이벤트 수를 줄여 전송한다.
   - `query_rewrite_model=custom`이면 Query Rewrite만 custom OpenAI-compatible endpoint로 호출한다.
-  - custom rewrite는 `LLM endpoint + /chat/completions`, `model`, `messages`, `temperature`, `top_k`, `max_tokens`, optional `Authorization: Bearer <api_key>` 형식을 지원한다.
+  - 모든 LLM 호출은 `temperature=0`, `top_p=0.9`, `max_tokens=700` 기본값을 사용한다.
+  - custom rewrite는 `LLM endpoint + /chat/completions`, `model`, `messages`, `temperature`, `top_p`, `max_tokens`, optional `Authorization: Bearer <api_key>` 형식을 지원한다.
   - `answer_model=custom`이면 Answer generation도 custom OpenAI-compatible endpoint로 호출한다.
-  - custom answer도 `LLM endpoint + /chat/completions`, `model`, `messages`, `temperature`, `top_k`, `max_tokens`, optional `Authorization: Bearer <api_key>` 형식을 지원한다.
+  - custom answer도 `LLM endpoint + /chat/completions`, `model`, `messages`, `temperature`, `top_p`, `max_tokens`, optional `Authorization: Bearer <api_key>` 형식을 지원한다.
   - Search API 호출 계층은 `execute_search_for_chat`으로 분리해 내부/외부 검색 결과를 공통 trace로 정리한다.
   - Search API는 고정 endpoint `http://10.160.98.123:8000/api/search`를 사용하고 `rewritten_query`를 `query`에 넣어 `top_k=20`, `final_k=payload.final_k`, `use_rerank=false`, `include_source_metadata=true`, `include_scores=true`, `keyword_vector_weight=0.5`로 호출한다.
   - Lookup API는 고정 endpoint `http://10.160.98.123:8000/api/lookup`를 사용하고, 직전 Search 결과 중 최고 `rrf_score` hit의 `document_id`와 `section_hint`를 사용해 조회한다.
@@ -184,9 +185,10 @@
 - query rewrite의 모호한 마지막 발화 판별, 최근 고객 발화 묶음 seed, 보험 도메인 보장 축 복원 규칙 보강 완료
 - query rewrite LLM 선택 요청 필드 및 응답 trace 반영 완료
 - query rewrite 기본 LLM을 `gpt-4o-mini`로 변경 완료
+- query rewrite / answer LLM Azure 선택지에 `gpt-5.4`, `gpt-5.4-mini` 추가 완료
 - query rewrite LLM 선택지에 RAG 서버 호출 검증을 통과한 `gpt-4.1-mini` 추가 완료
-- query rewrite LLM에 `Custom` 옵션과 OpenAI-compatible endpoint 입력값(`LLM endpoint`, `LLM model name`, optional `API Key`, `Temperature`, `Top-K`, `Max Tokens`) 반영 완료
-- Answer LLM에 `Custom` 옵션과 OpenAI-compatible endpoint 입력값(`LLM endpoint`, `LLM model name`, optional `API Key`, `Temperature`, `Top-K`, `Max Tokens`) 반영 완료
+- query rewrite LLM에 `Custom` 옵션과 OpenAI-compatible endpoint 입력값(`LLM endpoint`, `LLM model name`, optional `API Key`) 반영 완료
+- Answer LLM에 `Custom` 옵션과 OpenAI-compatible endpoint 입력값(`LLM endpoint`, `LLM model name`, optional `API Key`) 반영 완료
 - `/chat` Search/Lookup endpoint를 backend 고정값으로 전환하고, Search/Lookup 단독 action과 Search `final_k` 입력을 반영 완료
 
 ## 4. 이슈 및 문제

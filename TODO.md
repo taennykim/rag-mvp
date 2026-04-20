@@ -187,9 +187,9 @@
 - [x] 임시 외부 Search API `/api/search` payload와 `results` 응답 normalization 연결
 - [x] Step 5. Retrieved Candidate Chunks 표준화
 - [x] Step 6. Search Result Evaluation
-- [ ] Step 7. Need More Context 분기
-- [ ] Step 8. Lookup API 호출
-- [ ] Step 9. Expanded Context 병합
+- [ ] Step 7. Need More Context 분기 (`추후 개발`)
+- [ ] Step 8. Lookup API 호출 (`추후 개발`)
+- [ ] Step 9. Expanded Context 병합 (`추후 개발`)
 - [ ] Step 10. Answer Generation LLM
 - [ ] Step 11. 최종 상담 답변 후처리
 

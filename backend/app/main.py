@@ -150,7 +150,10 @@ CUSTOM_QUERY_REWRITE_MODEL = "custom"
 AZURE_OPENAI_EMBEDDING_BATCH_SIZE = 32
 DEFAULT_CHAT_TOP_K = 5
 DEFAULT_CHAT_TEMPERATURE = 0.0
+DEFAULT_CHAT_TOP_P = 0.9
 DEFAULT_CHAT_MAX_TOKENS = 700
+DEFAULT_QUERY_REWRITE_TIMEOUT_SEC = 15
+QUERY_REWRITE_RESPONSE_LOG_PREVIEW_CHARS = 800
 STREAM_DELTA_MIN_CHARS = 10
 STREAM_DELTA_FLUSH_INTERVAL_SEC = 0.025
 STREAM_REWRITE_DELTA_MIN_CHARS = 4
@@ -201,6 +204,13 @@ def load_answer_generation_spec() -> str:
     if not ANSWER_GENERATION_SPEC_PATH.is_file():
         return ""
     return ANSWER_GENERATION_SPEC_PATH.read_text(encoding="utf-8").strip()
+
+
+def summarize_llm_response_preview(text: str, *, limit: int = QUERY_REWRITE_RESPONSE_LOG_PREVIEW_CHARS) -> str:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit]}..."
 
 
 def configure_logging() -> logging.Logger:
@@ -1909,16 +1919,10 @@ class ChatRequest(BaseModel):
     query_rewrite_base_url: str | None = None
     query_rewrite_custom_model: str | None = None
     query_rewrite_api_key: str | None = None
-    query_rewrite_temperature: float | None = None
-    query_rewrite_top_k: int | None = None
-    query_rewrite_max_tokens: int | None = None
     answer_model: str | None = None
     answer_base_url: str | None = None
     answer_custom_model: str | None = None
     answer_api_key: str | None = None
-    answer_temperature: float | None = None
-    answer_top_k: int | None = None
-    answer_max_tokens: int | None = None
     stream: bool = False
     conversation_context: list[ConversationTurn] = Field(default_factory=list)
     metadata: ChatMetadata | None = None
@@ -2116,6 +2120,8 @@ def get_query_rewrite_model_id(requested_model: str | None = None) -> str:
     configured_models = {
         get_chat_model_id(),
         DEFAULT_QUERY_REWRITE_MODEL,
+        "gpt-5.4",
+        "gpt-5.4-mini",
         "gpt-4.1-mini",
         "gpt-4o",
     }
@@ -2137,31 +2143,7 @@ def get_query_rewrite_display_model(payload: ChatRequest) -> str:
     return get_query_rewrite_model_id(payload.query_rewrite_model)
 
 
-def resolve_temperature(value: float | None, *, field_name: str) -> float:
-    if value is None:
-        return DEFAULT_CHAT_TEMPERATURE
-    if value < 0 or value > 2:
-        raise HTTPException(status_code=400, detail=f"{field_name} must be between 0 and 2.")
-    return float(value)
-
-
-def resolve_top_k(value: int | None, *, field_name: str) -> int | None:
-    if value is None:
-        return None
-    if value < 1 or value > 200:
-        raise HTTPException(status_code=400, detail=f"{field_name} must be between 1 and 200.")
-    return int(value)
-
-
-def resolve_max_tokens(value: int | None, *, field_name: str) -> int:
-    if value is None:
-        return DEFAULT_CHAT_MAX_TOKENS
-    if value < 1 or value > 8192:
-        raise HTTPException(status_code=400, detail=f"{field_name} must be between 1 and 8192.")
-    return int(value)
-
-
-def get_query_rewrite_custom_config(payload: ChatRequest) -> tuple[str, str, str | None, float, int | None, int]:
+def get_query_rewrite_custom_config(payload: ChatRequest) -> tuple[str, str, str | None]:
     base_url = (payload.query_rewrite_base_url or "").strip()
     model_name = (payload.query_rewrite_custom_model or "").strip()
     api_key = (payload.query_rewrite_api_key or "").strip() or None
@@ -2171,14 +2153,7 @@ def get_query_rewrite_custom_config(payload: ChatRequest) -> tuple[str, str, str
     if not model_name:
         raise HTTPException(status_code=400, detail="Custom query rewrite LLM model name is required.")
 
-    return (
-        base_url,
-        model_name,
-        api_key,
-        resolve_temperature(payload.query_rewrite_temperature, field_name="query_rewrite_temperature"),
-        resolve_top_k(payload.query_rewrite_top_k, field_name="query_rewrite_top_k"),
-        resolve_max_tokens(payload.query_rewrite_max_tokens, field_name="query_rewrite_max_tokens"),
-    )
+    return (base_url, model_name, api_key)
 
 
 def is_custom_answer_model(requested_model: str | None = None) -> bool:
@@ -2196,6 +2171,8 @@ def get_answer_model_id(requested_model: str | None = None) -> str:
     configured_models = {
         get_chat_model_id(),
         DEFAULT_QUERY_REWRITE_MODEL,
+        "gpt-5.4",
+        "gpt-5.4-mini",
         "gpt-4.1-mini",
         "gpt-4o",
     }
@@ -2217,7 +2194,7 @@ def get_answer_display_model(payload: ChatRequest) -> str:
     return get_answer_model_id(payload.answer_model)
 
 
-def get_answer_custom_config(payload: ChatRequest) -> tuple[str, str, str | None, float, int | None, int]:
+def get_answer_custom_config(payload: ChatRequest) -> tuple[str, str, str | None]:
     base_url = (payload.answer_base_url or "").strip()
     model_name = (payload.answer_custom_model or "").strip()
     api_key = (payload.answer_api_key or "").strip() or None
@@ -2227,20 +2204,15 @@ def get_answer_custom_config(payload: ChatRequest) -> tuple[str, str, str | None
     if not model_name:
         raise HTTPException(status_code=400, detail="Custom answer LLM model name is required.")
 
-    return (
-        base_url,
-        model_name,
-        api_key,
-        resolve_temperature(payload.answer_temperature, field_name="answer_temperature"),
-        resolve_top_k(payload.answer_top_k, field_name="answer_top_k"),
-        resolve_max_tokens(payload.answer_max_tokens, field_name="answer_max_tokens"),
-    )
+    return (base_url, model_name, api_key)
 
 
 def build_azure_openai_chat_completion(
     messages: list[dict[str, str]],
     *,
     deployment: str | None = None,
+    max_tokens: int = DEFAULT_CHAT_MAX_TOKENS,
+    timeout_sec: int = 120,
 ) -> str:
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip().rstrip("/")
     api_key = os.getenv("AZURE_OPENAI_API_KEY", "").strip()
@@ -2256,11 +2228,13 @@ def build_azure_openai_chat_completion(
         f"{endpoint}/openai/deployments/{deployment_id}/chat/completions"
         f"?api-version={api_version}"
     )
+    token_field_name = "max_completion_tokens" if deployment_id.lower().startswith("gpt-5") else "max_tokens"
     payload = json.dumps(
         {
             "messages": messages,
             "temperature": DEFAULT_CHAT_TEMPERATURE,
-            "max_tokens": DEFAULT_CHAT_MAX_TOKENS,
+            "top_p": DEFAULT_CHAT_TOP_P,
+            token_field_name: max_tokens,
         }
     ).encode("utf-8")
     request = urllib_request.Request(
@@ -2274,7 +2248,7 @@ def build_azure_openai_chat_completion(
     )
 
     try:
-        with urllib_request.urlopen(request, timeout=120) as response:
+        with urllib_request.urlopen(request, timeout=timeout_sec) as response:
             raw_body = response.read()
     except urllib_error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
@@ -2312,9 +2286,8 @@ def build_openai_compatible_chat_completion(
     base_url: str,
     model_name: str | None = None,
     api_key: str | None = None,
-    temperature: float = DEFAULT_CHAT_TEMPERATURE,
-    top_k: int | None = None,
     max_tokens: int = DEFAULT_CHAT_MAX_TOKENS,
+    timeout_sec: int = 120,
 ) -> str:
     normalized_base_url = base_url.strip().rstrip("/")
     if not normalized_base_url:
@@ -2333,13 +2306,12 @@ def build_openai_compatible_chat_completion(
 
     request_payload: dict[str, object] = {
         "messages": messages,
-        "temperature": temperature,
+        "temperature": DEFAULT_CHAT_TEMPERATURE,
+        "top_p": DEFAULT_CHAT_TOP_P,
         "max_tokens": max_tokens,
     }
     if model_name and model_name.strip():
         request_payload["model"] = model_name.strip()
-    if top_k is not None:
-        request_payload["top_k"] = top_k
 
     payload = json.dumps(request_payload).encode("utf-8")
     request = urllib_request.Request(
@@ -2350,7 +2322,7 @@ def build_openai_compatible_chat_completion(
     )
 
     try:
-        with urllib_request.urlopen(request, timeout=120) as response:
+        with urllib_request.urlopen(request, timeout=timeout_sec) as response:
             raw_body = response.read()
     except urllib_error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
@@ -2455,6 +2427,7 @@ def build_azure_openai_chat_completion_stream(
     messages: list[dict[str, str]],
     *,
     deployment: str | None = None,
+    max_tokens: int = DEFAULT_CHAT_MAX_TOKENS,
 ):
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip().rstrip("/")
     api_key = os.getenv("AZURE_OPENAI_API_KEY", "").strip()
@@ -2470,11 +2443,13 @@ def build_azure_openai_chat_completion_stream(
         f"{endpoint}/openai/deployments/{deployment_id}/chat/completions"
         f"?api-version={api_version}"
     )
+    token_field_name = "max_completion_tokens" if deployment_id.lower().startswith("gpt-5") else "max_tokens"
     payload = json.dumps(
         {
             "messages": messages,
             "temperature": DEFAULT_CHAT_TEMPERATURE,
-            "max_tokens": DEFAULT_CHAT_MAX_TOKENS,
+            "top_p": DEFAULT_CHAT_TOP_P,
+            token_field_name: max_tokens,
             "stream": True,
             "stream_options": {"include_usage": True},
         }
@@ -2510,8 +2485,6 @@ def build_openai_compatible_chat_completion_stream(
     base_url: str,
     model_name: str | None = None,
     api_key: str | None = None,
-    temperature: float = DEFAULT_CHAT_TEMPERATURE,
-    top_k: int | None = None,
     max_tokens: int = DEFAULT_CHAT_MAX_TOKENS,
 ):
     normalized_base_url = base_url.strip().rstrip("/")
@@ -2531,15 +2504,14 @@ def build_openai_compatible_chat_completion_stream(
 
     request_payload: dict[str, object] = {
         "messages": messages,
-        "temperature": temperature,
+        "temperature": DEFAULT_CHAT_TEMPERATURE,
+        "top_p": DEFAULT_CHAT_TOP_P,
         "max_tokens": max_tokens,
         "stream": True,
         "stream_options": {"include_usage": True},
     }
     if model_name and model_name.strip():
         request_payload["model"] = model_name.strip()
-    if top_k is not None:
-        request_payload["top_k"] = top_k
 
     payload = json.dumps(request_payload).encode("utf-8")
     request = urllib_request.Request(
@@ -2567,35 +2539,34 @@ def build_openai_compatible_chat_completion_stream(
 def build_query_rewrite_chat_completion(payload: ChatRequest, messages: list[dict[str, str]]) -> tuple[str, str]:
     model_id = get_query_rewrite_model_id(payload.query_rewrite_model)
     if model_id == CUSTOM_QUERY_REWRITE_MODEL:
-        base_url, model_name, api_key, temperature, top_k, max_tokens = get_query_rewrite_custom_config(payload)
+        base_url, model_name, api_key = get_query_rewrite_custom_config(payload)
         return (
             build_openai_compatible_chat_completion(
                 messages,
                 base_url=base_url,
                 model_name=model_name,
                 api_key=api_key,
-                temperature=temperature,
-                top_k=top_k,
-                max_tokens=max_tokens,
+                timeout_sec=DEFAULT_QUERY_REWRITE_TIMEOUT_SEC,
             ),
             get_query_rewrite_display_model(payload),
         )
-    return build_azure_openai_chat_completion(messages, deployment=model_id), model_id
+    return build_azure_openai_chat_completion(
+        messages,
+        deployment=model_id,
+        timeout_sec=DEFAULT_QUERY_REWRITE_TIMEOUT_SEC,
+    ), model_id
 
 
 def build_answer_chat_completion(payload: ChatRequest, messages: list[dict[str, str]]) -> tuple[str, str]:
     model_id = get_answer_model_id(payload.answer_model)
     if model_id == CUSTOM_QUERY_REWRITE_MODEL:
-        base_url, model_name, api_key, temperature, top_k, max_tokens = get_answer_custom_config(payload)
+        base_url, model_name, api_key = get_answer_custom_config(payload)
         return (
             build_openai_compatible_chat_completion(
                 messages,
                 base_url=base_url,
                 model_name=model_name,
                 api_key=api_key,
-                temperature=temperature,
-                top_k=top_k,
-                max_tokens=max_tokens,
             ),
             get_answer_display_model(payload),
         )
@@ -2605,16 +2576,13 @@ def build_answer_chat_completion(payload: ChatRequest, messages: list[dict[str, 
 def build_answer_chat_completion_stream(payload: ChatRequest, messages: list[dict[str, str]]):
     model_id = get_answer_model_id(payload.answer_model)
     if model_id == CUSTOM_QUERY_REWRITE_MODEL:
-        base_url, model_name, api_key, temperature, top_k, max_tokens = get_answer_custom_config(payload)
+        base_url, model_name, api_key = get_answer_custom_config(payload)
         return (
             build_openai_compatible_chat_completion_stream(
                 messages,
                 base_url=base_url,
                 model_name=model_name,
                 api_key=api_key,
-                temperature=temperature,
-                top_k=top_k,
-                max_tokens=max_tokens,
             ),
             get_answer_display_model(payload),
         )
@@ -3583,7 +3551,17 @@ def rewrite_chat_query(payload: ChatRequest) -> RewriteResult:
 
     try:
         response_text, query_rewrite_model = build_query_rewrite_chat_completion(payload, messages)
-        response_payload = extract_json_object(response_text)
+        try:
+            response_payload = extract_json_object(response_text)
+        except (ValueError, json.JSONDecodeError) as exc:
+            logger.warning(
+                "query_rewrite_invalid_response original_query=%s model=%s preview=%s error=%s",
+                trimmed_query,
+                query_rewrite_model,
+                summarize_llm_response_preview(response_text),
+                exc,
+            )
+            raise
         rewritten_query, search_queries, intent, question_type, entities, routing_hints = parse_query_rewrite_response(
             response_payload,
             seed_query,
