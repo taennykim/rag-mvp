@@ -24,8 +24,8 @@
   - `Question` 멀티라인에 `고객:` / `상담사:` prefix를 넣으면 backend에서 상담 대화로 해석
   - `Query Rewrite LLM` 선택
   - `Answer LLM` 선택
-  - Query Rewrite LLM 선택 옵션(`Default (gpt-4o-mini)`, `GPT-5.4`, `GPT-5.4 mini`, `GPT-4.1 mini`, `GPT-4o`, `Custom`)
-  - Answer LLM 선택 옵션(`Default (GPT-4o)`, `GPT-5.4`, `GPT-5.4 mini`, `GPT-4.1 mini`, `GPT-4o`, `Custom`)
+  - Query Rewrite LLM 선택 옵션(`Default`, `GPT-5.4`, `GPT-5.4 mini`, `GPT-4.1 mini`, `GPT-4o mini`, `GPT-4o`, `Custom`)
+  - Answer LLM 선택 옵션(`Default`, `GPT-5.4`, `GPT-5.4 mini`, `GPT-4.1 mini`, `GPT-4o mini`, `GPT-4o`, `Custom`)
   - 모든 LLM 호출은 `temperature=0`, `top_p=0.9`, `max_tokens=700` 기본값을 사용
   - 화면에서는 LLM 파라미터 입력 필드를 노출하지 않음
   - `LLM Question` 표시

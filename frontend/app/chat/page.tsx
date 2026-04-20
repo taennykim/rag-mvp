@@ -45,23 +45,26 @@ type ChatResponse = {
 
 const API_BASE_URL = "/api";
 const CUSTOM_LLM_MODEL = "custom";
+const DEFAULT_LLM_OPTION = "";
 const DEFAULT_QUERY_REWRITE_MODEL = "gpt-4o-mini";
 const DEFAULT_ANSWER_MODEL = "gpt-4o";
 const QUERY_REWRITE_MODEL_OPTIONS = [
-  { label: "Default (gpt-4o-mini)", value: DEFAULT_QUERY_REWRITE_MODEL },
+  { label: "Default", value: DEFAULT_LLM_OPTION },
   { label: "GPT-5.4", value: "gpt-5.4" },
   { label: "GPT-5.4 mini", value: "gpt-5.4-mini" },
   { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
+  { label: "GPT-4o mini", value: "gpt-4o-mini" },
   { label: "GPT-4o", value: "gpt-4o" },
   { label: "Custom", value: CUSTOM_LLM_MODEL },
 ];
 const CUSTOM_QUERY_REWRITE_MODEL = CUSTOM_LLM_MODEL;
 const CUSTOM_ANSWER_MODEL = CUSTOM_LLM_MODEL;
 const ANSWER_MODEL_OPTIONS = [
-  { label: "Default (GPT-4o)", value: DEFAULT_ANSWER_MODEL },
+  { label: "Default", value: DEFAULT_LLM_OPTION },
   { label: "GPT-5.4", value: "gpt-5.4" },
   { label: "GPT-5.4 mini", value: "gpt-5.4-mini" },
   { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
+  { label: "GPT-4o mini", value: "gpt-4o-mini" },
   { label: "GPT-4o", value: "gpt-4o" },
   { label: "Custom", value: CUSTOM_LLM_MODEL },
 ];
@@ -127,11 +130,11 @@ function formatResponseTiming(totalMs: number, result: ChatResponse) {
 
 export default function ChatPage() {
   const [query, setQuery] = useState("");
-  const [queryRewriteModel, setQueryRewriteModel] = useState(DEFAULT_QUERY_REWRITE_MODEL);
+  const [queryRewriteModel, setQueryRewriteModel] = useState(DEFAULT_LLM_OPTION);
   const [queryRewriteBaseUrl, setQueryRewriteBaseUrl] = useState("");
   const [queryRewriteCustomModel, setQueryRewriteCustomModel] = useState("");
   const [queryRewriteApiKey, setQueryRewriteApiKey] = useState("");
-  const [answerModel, setAnswerModel] = useState(DEFAULT_ANSWER_MODEL);
+  const [answerModel, setAnswerModel] = useState(DEFAULT_LLM_OPTION);
   const [answerBaseUrl, setAnswerBaseUrl] = useState("");
   const [answerCustomModel, setAnswerCustomModel] = useState("");
   const [answerApiKey, setAnswerApiKey] = useState("");
