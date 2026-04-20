@@ -29,13 +29,13 @@
 - Answer 기본 모델은 UI 기본값 `gpt-4o`이며, backend에서도 `answer_model`이 비어 있고 `AZURE_OPENAI_ANSWER_DEPLOYMENT`가 없으면 `gpt-4o`를 사용한다.
 - RAG 서버에서 `gpt-4.1-mini` Azure OpenAI deployment 직접 호출이 성공했음을 확인했다.
 - `/chat` Search API endpoint는 backend 고정값 `http://10.160.98.123:8000/api/search`를 사용하고 화면에서는 입력받지 않는다.
-- `/chat` Search API 호출 시 `final_k`는 화면 입력값을 사용한다.
+- `/chat` Search API 호출 시 `final_k=5` 고정값을 사용한다.
 - `/chat`은 answer 생성 시 `stream=true`로 SSE `delta`를 받아 `Response` 영역에 실시간으로 누적 출력할 수 있다.
 - `/chat`은 query rewrite 결과도 SSE `rewrite_delta/rewrite_done`로 받아 `LLM Question` 영역에 실시간으로 표시할 수 있다.
 - `/chat` SSE `delta`는 `STATUS/ANSWER` 템플릿 라인을 제외하고 `ANSWER` 본문 증분만 전달한다.
 - stream 체감 품질을 위해 frontend는 delta를 배치 렌더링하고 backend는 delta 이벤트를 짧은 간격으로 묶어 전달한다.
 - `LLM Question`도 answer와 같은 타이머 배치 렌더링과 커서 표시를 사용하며, frontend/backend flush 간격을 낮춰 더 빠르게 표시되도록 보정했다.
-- `/chat` Lookup API endpoint는 backend 고정값 `http://10.160.98.123:8000/api/lookup`를 사용하고, 현재는 UI에서 버튼을 숨긴 상태로 backend 기능만 유지한다.
+- `/chat`은 현재 Search API만 사용하고 Lookup 경로는 사용하지 않는다.
 - backend `POST /chat`은 retrieval hit 원본과 별도로 `retrieved_chunks` 표준 포맷을 함께 반환해 이후 평가/분기 단계에서 재사용할 수 있게 정리했다.
 - frontend `/chat`에 answer panel, citation slot, optional debug context 표시를 추가했다.
 - `AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o` runtime config를 사용하도록 정리했다.

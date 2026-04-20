@@ -31,9 +31,7 @@
   - `LLM Question` 표시
   - `LLM Question` 실시간 stream 출력
   - `LLM Question` stream도 answer와 같은 배치 렌더링/커서 표시 적용
-  - `Search final_k` 입력
   - `Get response` 버튼으로 Search API 호출
-  - Lookup 버튼 기능은 유지하되 현재 UI에서는 hidden 처리
   - response 표시 영역
   - response answer 실시간 stream 출력
   - stream 중 `STATUS/ANSWER` 헤더 없이 answer 본문만 누적 출력
@@ -59,12 +57,11 @@
 - quality metric 라벨은 한글 설명 포함 형태로 표시한다.
 - 하단 `Parsing test result` 패널은 preview 중심으로 단순화했다.
 - `/chat`은 외부 RAG 연동 스키마가 확정되기 전까지 schema-light shell로 유지한다.
-- `/chat` main form은 질문, Query Rewrite LLM 선택, Search `final_k`, Search/Lookup 실행 버튼만 노출하고 endpoint 값은 backend 고정값을 사용한다.
+- `/chat` main form은 질문, Query Rewrite LLM 선택, Answer LLM 선택, `Get response` 버튼만 노출하고 endpoint 값은 backend 고정값을 사용한다.
 - `/chat` Query Rewrite LLM과 Answer LLM selector는 서로 독립적으로 동작한다.
 - Query Rewrite LLM 기본값은 `gpt-4o-mini`다.
 - Answer LLM 기본값은 `gpt-4o`다.
-- Lookup은 직전 Search 결과가 있어야 하며, 가장 높은 `rrf_score` hit의 `document_id`와 `section_hint`를 사용한다.
-- 다만 현재 브라우저 UI에서는 Lookup 버튼을 잠시 숨겨 두고 backend 기능만 유지한다.
+- `/chat`은 현재 Search API만 사용하고 Lookup 경로는 사용하지 않는다.
 - `/chat` Question은 단일 질문뿐 아니라 `고객:` / `상담사:` 멀티라인 입력도 허용하고, backend가 이를 `conversation_context`로 정규화한다.
 - `/chat` Question 바로 아래에는 최종 `rewritten_query`만 `LLM Question`으로 표시한다.
 - `/chat` answer card는 최종 응답 영역, citation card는 근거 영역, context card는 참고용 context 확인용으로 나눴다.

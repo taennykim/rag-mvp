@@ -38,7 +38,6 @@ type ChatResponse = {
   query_rewrite_model?: string | null;
   answer_model?: string | null;
   search_api_endpoint?: string | null;
-  lookup_api_endpoint?: string | null;
   action?: string | null;
   query_rewrite_time_ms?: number;
   search_api_response_time_ms?: number;
@@ -124,26 +123,6 @@ function formatResponseTiming(totalMs: number, result: ChatResponse) {
     return `Response time: ${formatSeconds(totalMs)}`;
   }
   return `Response time: ${formatSeconds(totalMs)}, (${detailParts.join(", ")})`;
-}
-
-function pickLookupTarget(result: ChatResponse | null): { documentId: string; sectionHint: string | null } | null {
-  if (result?.action !== "search" || !result.hits?.length) {
-    return null;
-  }
-
-  const rankedHits = result.hits.filter((hit) => (hit.document_id || hit.stored_name) && typeof hit.rerank_score === "number");
-  const targetHit =
-    rankedHits.sort((left, right) => (right.rerank_score ?? Number.NEGATIVE_INFINITY) - (left.rerank_score ?? Number.NEGATIVE_INFINITY))[0]
-    ?? result.hits.find((hit) => hit.document_id || hit.stored_name);
-
-  if (!targetHit) {
-    return null;
-  }
-
-  return {
-    documentId: targetHit.document_id ?? targetHit.stored_name ?? "",
-    sectionHint: targetHit.section_header?.trim() || null,
-  };
 }
 
 export default function ChatPage() {
@@ -402,7 +381,7 @@ export default function ChatPage() {
     setResponseTimeMs(Math.round(performance.now() - startedAt));
   }
 
-  async function requestChatResponse(action: "search" | "lookup") {
+  async function requestChatResponse() {
     if (!query.trim()) {
       setMessage("질문을 먼저 입력하세요.");
       return;
@@ -424,19 +403,13 @@ export default function ChatPage() {
       return;
     }
 
-    const lookupTarget = action === "lookup" ? pickLookupTarget(result) : null;
-    if (action === "lookup" && !lookupTarget?.documentId) {
-      setMessage("먼저 Get response로 Search 결과를 조회한 뒤 Lookup을 실행하세요.");
-      return;
-    }
-
     setIsLoading(true);
     setIsStreamingRewrite(false);
     setStreamingRewrittenQuery("");
     setIsStreamingAnswer(false);
     setStreamingAnswer("");
     setResponseTimeMs(null);
-    setMessage(action === "lookup" ? "Lookup 응답을 불러오는 중입니다." : "Search 응답을 불러오는 중입니다.");
+    setMessage("Search 응답을 불러오는 중입니다.");
 
     try {
       const startedAt = performance.now();
@@ -447,10 +420,8 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           query,
-          action,
+          action: "search",
           final_k: 5,
-          document_id: lookupTarget?.documentId ?? null,
-          section_hint: lookupTarget?.sectionHint ?? null,
           query_rewrite_model: queryRewriteModel || null,
           query_rewrite_base_url: isCustomQueryRewriteModel ? queryRewriteBaseUrl.trim() : null,
           query_rewrite_custom_model: isCustomQueryRewriteModel ? queryRewriteCustomModel.trim() : null,
@@ -660,7 +631,7 @@ export default function ChatPage() {
             </div>
           </div>
           <div className="button-row">
-            <button className="upload-button" disabled={isLoading} onClick={() => void requestChatResponse("search")} type="button">
+            <button className="upload-button" disabled={isLoading} onClick={() => void requestChatResponse()} type="button">
               {isLoading ? "Loading..." : "Get response"}
             </button>
           </div>
@@ -685,7 +656,6 @@ export default function ChatPage() {
               {result?.query_rewrite_model ? <span>Rewrite LLM: {result.query_rewrite_model}</span> : null}
               {result?.answer_model ? <span>Answer LLM: {result.answer_model}</span> : null}
               {result?.search_api_endpoint ? <span>Search: {result.search_api_endpoint}</span> : null}
-              {result?.action === "lookup" && result.lookup_api_endpoint ? <span>Lookup: {result.lookup_api_endpoint}</span> : null}
             </div>
             <div className={`answer-body${result?.insufficient_context ? " warning" : ""}${isStreamingAnswer ? " streaming" : ""}`}>
               {displayedAnswer ?? "아직 연결된 최종 응답 본문은 없습니다."}

@@ -52,7 +52,7 @@
 - 현재 단계: `/chat` 안내 문구 `Get response는 Search API만 호출합니다.`를 화면에서 제거함
 - 현재 단계: answer generation user prompt가 `docs/answer-generation-spec.md`를 함께 읽어 답변 생성 기준을 반영하도록 정리함
 - 현재 단계: answer generation 운영 기준을 `docs/answer-generation-spec.md`로 분리하고 backend prompt가 해당 문서를 참조하도록 정리함
-- 현재 단계: `/chat` Search/Lookup endpoint는 backend 고정값으로 사용하고, UI는 Search `final_k` 입력과 `Get response`만 노출하며 Lookup 버튼은 hidden 처리함
+- 현재 단계: `/chat` Search API endpoint는 backend 고정값으로 사용하고, UI는 `Get response`만 노출하는 Search-only 흐름으로 운영함
 - 현재 단계: 2026-04-08 기준 RAG 서버 frontend/backend runtime을 다시 복구했고 UI 확인 가능한 상태로 유지 중
 - 현재 단계: 2026-04-17 기준 RAG 서버 backend `127.0.0.1:8000/health`, frontend `127.0.0.1:3000/upload`, `127.0.0.1:3000/chat` 응답 `200`과 `8000/3000` listen 상태를 재확인함
 - 현재 단계: RAG 서버 반영 시 잘못된 동기화 경로를 수정해 실제 실행 파일 경로(`backend/app/main.py`, `frontend/app/chat/page.tsx`) 기준으로 재반영함
