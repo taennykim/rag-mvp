@@ -55,6 +55,12 @@
 - 2026-04-17 기준 `/chat`의 `Get response는 Search API만 호출합니다.` 안내 문구를 제거했다.
 - 2026-04-17 기준 사용자 요청으로 특정 케이스(치조골 이식/수술특약/판결) 전용 query rewrite 규칙 보강 코드는 원복했다.
 - 2026-04-17 기준 `/chat` Answer LLM UI 기본값 라벨을 `Default (GPT-4o)`로 정리했고, frontend `DEFAULT_ANSWER_MODEL`과 backend fallback 기본값을 `gpt-4o`로 맞췄다.
+- 2026-04-20 기준 Query Rewrite/Answer LLM selector에 `gpt-5.4`, `gpt-5.4-mini` Azure deployment 선택지를 추가했다.
+- 2026-04-20 기준 Azure `gpt-5.*` deployment 호출 시 `max_tokens` 대신 `max_completion_tokens`를 사용하도록 backend request payload를 분기했다.
+- 2026-04-20 기준 모든 LLM 호출은 preset/custom 구분 없이 `temperature=0`, `top_p=0.9`, `max_tokens=700` 고정값을 사용하도록 정리했고, `/chat` 화면의 LLM 파라미터 입력 필드는 제거했다.
+- 2026-04-20 기준 `/chat` 화면의 `Search final_k` 입력도 제거하고 backend 기본값 `5`를 사용하도록 단순화했다.
+- 2026-04-20 기준 query rewrite 실패 분석을 위해 rewrite 전용 timeout `15초`, 응답 preview 로그(`query_rewrite_invalid_response`)를 추가했다.
+- 2026-04-20 기준 현재 서버, RAG 서버, GitHub `main`의 대상 파일 해시를 다시 일치시켰고 GitHub `main` 최신 커밋을 `597947e`로 반영했다.
 
 ## 3. 완료된 범위
 - 문서 체계:
@@ -116,8 +122,13 @@
   - `POST /chat` 응답에 `query_rewrite_time_ms`, `search_api_response_time_ms` 추가 완료
   - `POST /chat` 요청/응답에 query rewrite LLM 선택 trace 추가 완료
   - `POST /chat` query rewrite 기본 LLM을 `gpt-4o-mini`로 변경 완료
+  - `POST /chat` query rewrite / answer LLM Azure 선택지에 `gpt-5.4`, `gpt-5.4-mini` 추가 완료
   - `POST /chat` query rewrite LLM 선택지에 `gpt-4.1-mini` 추가 완료
-  - `/chat` Search/Lookup 고정 endpoint와 Search `final_k`, Lookup 버튼 hidden UI 반영 완료
+  - `POST /chat` Azure `gpt-5.*` deployment 호출 시 `max_completion_tokens` 사용 분기 반영 완료
+  - `POST /chat`의 모든 LLM 호출 기본값을 `temperature=0`, `top_p=0.9`, `max_tokens=700`으로 고정 완료
+  - `/chat` Search/Lookup 고정 endpoint와 Lookup 버튼 hidden UI 반영 완료
+  - `/chat` 화면의 LLM 파라미터 입력 필드와 `Search final_k` 입력 제거 완료
+  - query rewrite 실패 분석용 response preview 로그와 rewrite 전용 timeout `15초` 반영 완료
   - Search API 연결 실패 시 `/chat`이 `rewritten_query`와 오류 메시지를 함께 반환하도록 반영 완료
   - `POST /chat` 응답에 `search_query`, `executed_search_queries`, `need_more_context`, `search_evaluation` trace 추가 완료
   - `POST /chat` 내부 검색 후보와 rerank 기준을 `rewritten_query` 우선으로 정리 완료
@@ -177,6 +188,7 @@
   - 2026-04-07 기준 RAG 서버 `/chat`에서 `Search API endpoint`, `Lookup API endpoint` 노출 및 `Target file` 비노출 확인 완료
   - 2026-04-07 기준 RAG 서버 `default-files`로 대표 문서 3건을 다시 업로드하고 `chunk_count=103` 상태까지 복구 완료
   - 2026-04-09 기준 GitHub `main`, 현재 서버, RAG 서버 핵심 소스/문서 해시 재일치 확인 완료
+  - 2026-04-20 기준 현재 서버와 RAG 서버 대상 파일 해시 재일치 및 GitHub `main` push 완료
 
 ## 4. 현재 동작 기준
 - frontend 실행 기준:
