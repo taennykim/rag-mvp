@@ -25,6 +25,7 @@
 - 2026-04-14 기준 `Step 4` Search API 호출 계층을 backend `/chat`에서 분리했고, 내부/외부 검색 경로 공통 trace를 `search_query`, `executed_search_queries` 기준으로 정리했다.
 - 2026-04-14 기준 `Step 6` Search Result Evaluation rule-based 1차 구현을 추가했고, `/chat` 응답에 `need_more_context`와 `search_evaluation`을 포함하도록 반영했다.
 - 2026-04-14 기준 query rewrite 운영 스펙을 `docs/query-rewrite-spec.md`로 분리했고, backend prompt가 이 문서를 읽어 `rewritten_query` 기준에 반영하도록 연결했다.
+- 2026-04-20 기준 query rewrite system prompt는 `docs/query-rewrite-spec.md` 전체가 아니라 `11. LLM System Prompt` 블록만 로딩하도록 정리했다.
 - 2026-04-14 기준 `/chat` main UI는 `rewritten_query`만 노출하도록 단순화했고, 내부 Search 후보와 rerank 기준도 `rewritten_query` 우선으로 정리했다.
 - 2026-04-15 기준 query rewrite에서 모호한 마지막 고객 발화를 최근 고객 발화 묶음으로 보강하고, `종신보험` 계열 문의의 보장 축 복원 규칙을 추가했다.
 - 2026-04-15 기준 개발자 제공 임시 Search API `http://10.160.98.123:8000/api/search`를 `/chat` 외부 검색 endpoint로 사용할 수 있도록 `/api/search` payload와 `results` 응답 normalization을 반영했다.

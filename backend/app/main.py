@@ -201,6 +201,28 @@ def load_query_rewrite_spec() -> str:
 
 
 @lru_cache(maxsize=1)
+def load_query_rewrite_system_prompt() -> str:
+    spec_text = load_query_rewrite_spec()
+    if not spec_text:
+        return ""
+
+    section_match = re.search(
+        r"^##\s*11\.\s*LLM System Prompt\s*$" r"(.*?)" r"(?=^##\s*\d+\.|\Z)",
+        spec_text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if not section_match:
+        return ""
+
+    section_body = section_match.group(1).strip()
+    code_block_match = re.search(r"```(?:text)?\s*(.*?)\s*```", section_body, flags=re.DOTALL)
+    if not code_block_match:
+        return ""
+
+    return code_block_match.group(1).strip()
+
+
+@lru_cache(maxsize=1)
 def load_answer_generation_spec() -> str:
     if not ANSWER_GENERATION_SPEC_PATH.is_file():
         return ""
@@ -3331,9 +3353,8 @@ def build_query_rewrite_messages(
 ) -> list[dict[str, str]]:
     context_lines = [f"{turn['role']}: {turn['content']}" for turn in normalized_conversation[-6:]]
     domain_focus = infer_domain_specific_focus(normalized_conversation)
-    system_prompt = (
+    fallback_system_prompt = (
         "You are a query rewriter for a Hybrid RAG system.\n"
-        "Return JSON only.\n"
         "Preserve the original meaning.\n"
         "Respond in Korean when the user question is Korean.\n"
         "Base the rewrite on the latest meaningful customer utterance when conversation context is provided.\n"
@@ -3342,6 +3363,9 @@ def build_query_rewrite_messages(
         "Output one complete standalone question sentence for rewritten_query.\n"
         "The rewritten_query must remain a question.\n"
         "Prefer concise output over verbose reasoning.\n"
+    )
+    response_contract = (
+        "Return JSON only.\n"
         "Do not output analysis, markdown, or code fences.\n"
         "The JSON schema is:\n"
         "{\n"
@@ -3353,6 +3377,8 @@ def build_query_rewrite_messages(
         '  "routing_hints": object\n'
         "}"
     )
+    system_prompt_base = load_query_rewrite_system_prompt() or fallback_system_prompt
+    system_prompt = f"{system_prompt_base.strip()}\n\n{response_contract}"
     user_prompt = (
         "Rewrite the customer question into retrieval-friendly search queries.\n"
         "Rules:\n"
@@ -3382,12 +3408,14 @@ def build_standalone_query_rewrite_messages(
     original_query: str,
     metadata: dict[str, object],
 ) -> list[dict[str, str]]:
-    system_prompt = (
+    fallback_system_prompt = (
         "You rewrite a single Korean user question into a concise retrieval-friendly Korean question.\n"
-        "Return JSON only.\n"
         "Do not include personal information.\n"
         "Keep the original intent.\n"
         "rewritten_query must be one complete question sentence.\n"
+    )
+    response_contract = (
+        "Return JSON only.\n"
         "Do not output reasoning, markdown, or code fences.\n"
         "The JSON schema is:\n"
         "{\n"
@@ -3399,6 +3427,8 @@ def build_standalone_query_rewrite_messages(
         '  "routing_hints": object\n'
         "}"
     )
+    system_prompt_base = load_query_rewrite_system_prompt() or fallback_system_prompt
+    system_prompt = f"{system_prompt_base.strip()}\n\n{response_contract}"
     user_prompt = (
         "Rewrite this single user question for retrieval.\n"
         "Rules:\n"

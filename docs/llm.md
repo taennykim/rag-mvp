@@ -13,6 +13,7 @@
 - 진행중
 - backend `POST /chat`에 retrieval -> answer generation 흐름을 연결했다.
 - backend `POST /chat`에 Input 정규화 + structured rewrite 단계를 추가했다.
+- backend query rewrite system prompt는 `docs/query-rewrite-spec.md` 전체가 아니라 `11. LLM System Prompt` 블록만 로딩해 사용한다.
 - backend answer generation user prompt는 `docs/answer-generation-spec.md` 문서를 함께 읽어 답변 기준으로 반영한다.
 - backend `POST /chat`은 `conversation_context`가 비어 있어도 `Question` 멀티라인의 `고객:` / `상담사:` prefix를 파싱해 대화 입력으로 재구성할 수 있다.
 - backend `POST /chat`은 rewrite 결과에 대해 Standalone Search Query 검증을 수행하고 `rewrite_source`, `validation_reasons`로 fallback trace를 함께 반환한다.

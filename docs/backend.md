@@ -134,7 +134,7 @@
   - ranking 보정용 lexical rerank가 추가되어 있다.
 - chat:
   - `/chat`은 사용자 질의를 Input 정규화 후 structured rewrite로 변환한 뒤 Search API만 호출한다.
-  - query rewrite prompt는 `docs/query-rewrite-spec.md` 운영 문서를 읽어 `rewritten_query` 생성 기준에 반영한다.
+  - query rewrite prompt는 `docs/query-rewrite-spec.md`에서 `11. LLM System Prompt` 블록만 로딩해 `rewritten_query` 생성 기준에 반영한다.
   - answer generation user prompt는 `docs/answer-generation-spec.md` 내용을 함께 포함해 답변 생성 기준을 반영한다.
   - chat request는 `query`, `top_k`, `final_k`, `stored_name`, `action`, `query_rewrite_model`, `query_rewrite_base_url`, `query_rewrite_custom_model`, `query_rewrite_api_key`, `answer_model`, `answer_base_url`, `answer_custom_model`, `answer_api_key`, `conversation_context`, `metadata`를 받을 수 있다.
   - `query_rewrite_model`이 지정되면 Query Rewrite LLM 호출에 해당 Azure OpenAI deployment를 사용하고, answer generation은 기존 chat deployment를 유지한다.
@@ -180,6 +180,7 @@
 - `/chat` Search Result Evaluation rule-based 1차 구현 완료
 - `/chat` query rewrite 시간과 Search API 응답시간을 응답 필드로 분리 제공 완료
 - query rewrite 운영 스펙을 `docs/query-rewrite-spec.md`로 분리 완료
+- query rewrite system prompt는 `docs/query-rewrite-spec.md`의 `11. LLM System Prompt` 블록만 로딩하도록 정리 완료
 - query rewrite의 모호한 마지막 발화 판별, 최근 고객 발화 묶음 seed, 보험 도메인 보장 축 복원 규칙 보강 완료
 - query rewrite LLM 선택 요청 필드 및 응답 trace 반영 완료
 - query rewrite 기본 LLM을 `gpt-4o-mini`로 변경 완료
