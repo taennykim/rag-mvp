@@ -116,6 +116,12 @@ a {
   gap: 20px;
 }
 
+.chat-page {
+  width: min(1395px, 100%);
+  max-width: 1395px;
+  margin: 0 auto;
+}
+
 .card {
   border-radius: 28px;
   padding: 28px;
@@ -521,6 +527,28 @@ a {
   margin-top: 24px;
 }
 
+.chat-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.4fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.chat-left-column,
+.chat-right-column {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+
+.chat-card {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+
 .chat-inline-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -896,6 +924,20 @@ a {
 
   .chat-inline-grid {
     grid-template-columns: 1fr;
+  }
+
+  .chat-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-page {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+  }
+
+  .chat-card {
+    position: static;
   }
 
   .section-header,

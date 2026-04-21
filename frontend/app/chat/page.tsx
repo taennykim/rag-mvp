@@ -492,260 +492,265 @@ export default function ChatPage() {
   const showEvidenceSection = false;
 
   return (
-    <section className="page">
-      <div className="card">
-        <p className="eyebrow">Chat</p>
-        <h2>Chat</h2>
-        <p>외부 RAG 연동 세부 스키마가 정해지기 전까지는 질문, 응답, 근거 표시 구조를 먼저 고정합니다.</p>
-        <div className="chat-form">
-          <label className="upload-label" htmlFor="chat-query">
-            Question
-          </label>
-          <textarea
-            className="chat-textarea"
-            id="chat-query"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={"단일 질문 또는 멀티라인 상담 대화를 입력하세요.\n예:\n고객: 실손보험 청구하려고 하는데요.\n상담사: 어떤 부분이 궁금하신가요?\n고객: 통원 치료도 청구 가능한가요?"}
-            rows={6}
-            value={query}
-          />
-          <div className="chat-note">
-            `고객:` / `상담사:` 라벨이 있는 멀티라인 입력은 backend에서 `conversation_context`로 해석합니다.
-          </div>
-          <label className="upload-label" htmlFor="chat-query-rewrite-model">
-            Query rewrite LLM
-          </label>
-          <select
-            className="default-file-select"
-            id="chat-query-rewrite-model"
-            onChange={(event) => setQueryRewriteModel(event.target.value)}
-            value={queryRewriteModel}
-          >
-            {QUERY_REWRITE_MODEL_OPTIONS.map((option) => (
-              <option key={option.label} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          {isCustomQueryRewriteModel ? (
-            <>
-              <label className="upload-label" htmlFor="chat-query-rewrite-base-url">
-                LLM endpoint
+    <section className="page chat-page">
+      <div className="chat-layout">
+        <div className="chat-left-column">
+          <div className="card chat-card">
+            <p className="eyebrow">Chat</p>
+            <h2>Chat</h2>
+            <div className="chat-form">
+              <label className="upload-label" htmlFor="chat-query">
+                Question
               </label>
-              <input
-                className="default-file-select"
-                id="chat-query-rewrite-base-url"
-                onChange={(event) => setQueryRewriteBaseUrl(event.target.value)}
-                placeholder="http://10.x.x.x:8000/v1"
-                type="text"
-                value={queryRewriteBaseUrl}
-              />
-              <label className="upload-label" htmlFor="chat-query-rewrite-custom-model">
-                LLM model name
-              </label>
-              <input
-                className="default-file-select"
-                id="chat-query-rewrite-custom-model"
-                onChange={(event) => setQueryRewriteCustomModel(event.target.value)}
-                placeholder="gpt-4o-mini"
-                type="text"
-                value={queryRewriteCustomModel}
-              />
-              <label className="upload-label" htmlFor="chat-query-rewrite-api-key">
-                API Key
-              </label>
-              <input
-                autoComplete="off"
-                className="default-file-select"
-                id="chat-query-rewrite-api-key"
-                onChange={(event) => setQueryRewriteApiKey(event.target.value)}
-                placeholder="필요한 경우만 입력"
-                type="password"
-                value={queryRewriteApiKey}
+              <textarea
+                className="chat-textarea"
+                id="chat-query"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={"단일 질문 또는 멀티라인 상담 대화를 입력하세요.\n예:\n고객: 실손보험 청구하려고 하는데요.\n상담사: 어떤 부분이 궁금하신가요?\n고객: 통원 치료도 청구 가능한가요?"}
+                rows={6}
+                value={query}
               />
               <div className="chat-note">
-                Custom LLM은 OpenAI-compatible API만 지원하며, 모든 LLM 호출은 `temperature=0`, `top_p=0.9`, `max_tokens=700` 기본값을 사용합니다.
+                `고객:` / `상담사:` 라벨이 있는 멀티라인 입력은 backend에서 `conversation_context`로 해석합니다.
               </div>
-            </>
-          ) : null}
-          <label className="upload-label" htmlFor="chat-answer-model">
-            Answer LLM
-          </label>
-          <select
-            className="default-file-select"
-            id="chat-answer-model"
-            onChange={(event) => setAnswerModel(event.target.value)}
-            value={answerModel}
-          >
-            {ANSWER_MODEL_OPTIONS.map((option) => (
-              <option key={option.label} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          {isCustomAnswerModel ? (
-            <>
-              <label className="upload-label" htmlFor="chat-answer-base-url">
-                LLM endpoint
+              <label className="upload-label" htmlFor="chat-query-rewrite-model">
+                Query rewrite LLM
               </label>
-              <input
+              <select
                 className="default-file-select"
-                id="chat-answer-base-url"
-                onChange={(event) => setAnswerBaseUrl(event.target.value)}
-                placeholder="http://10.x.x.x:8000/v1"
-                type="text"
-                value={answerBaseUrl}
-              />
-              <label className="upload-label" htmlFor="chat-answer-custom-model">
-                LLM model name
-              </label>
-              <input
-                className="default-file-select"
-                id="chat-answer-custom-model"
-                onChange={(event) => setAnswerCustomModel(event.target.value)}
-                placeholder="gpt-4o"
-                type="text"
-                value={answerCustomModel}
-              />
-              <label className="upload-label" htmlFor="chat-answer-api-key">
-                API Key
-              </label>
-              <input
-                autoComplete="off"
-                className="default-file-select"
-                id="chat-answer-api-key"
-                onChange={(event) => setAnswerApiKey(event.target.value)}
-                placeholder="필요한 경우만 입력"
-                type="password"
-                value={answerApiKey}
-              />
-              <div className="chat-note">
-                Custom Answer LLM은 OpenAI-compatible API만 지원하며, 모든 LLM 호출은 `temperature=0`, `top_p=0.9`, `max_tokens=700` 기본값을 사용합니다.
-              </div>
-            </>
-          ) : null}
-          <div className="chat-query-preview">
-            <span className="chat-query-preview-label">LLM Question</span>
-            <div className={`chat-query-preview-body${isStreamingRewrite ? " streaming" : ""}`}>
-              {displayedRewrittenQuery?.trim()
-                ? displayedRewrittenQuery
-                : "응답 후 이 위치에 LLM이 정리한 질문이 표시됩니다."}
-              {isStreamingRewrite ? <span className="stream-cursor" aria-hidden="true">▌</span> : null}
-            </div>
-          </div>
-          <div className="button-row">
-            <button className="upload-button" disabled={isLoading} onClick={() => void requestChatResponse()} type="button">
-              {isLoading ? "Loading..." : "Get response"}
-            </button>
-          </div>
-        </div>
-        <div className="chat-status">{message}</div>
-      </div>
-
-      <div className="card">
-        <p className="eyebrow">Answer</p>
-        <h2>Response</h2>
-        <p>최종 연결 시 이 영역에 외부 RAG 응답 또는 후속 answer generation 결과가 표시됩니다.</p>
-        {!result && !isStreamingAnswer ? (
-          <p>아직 표시할 응답이 없습니다.</p>
-        ) : (
-          <div className="answer-panel">
-            {result && typeof responseTimeMs === "number" ? (
-              <div className="answer-latency">{formatResponseTiming(responseTimeMs, result)}</div>
-            ) : null}
-            <div className="answer-summary">
-              <span>{answerState}</span>
-              {result?.action ? <span>Mode: {result.action}</span> : null}
-              {result?.query_rewrite_model ? <span>Rewrite LLM: {result.query_rewrite_model}</span> : null}
-              {result?.answer_model ? <span>Answer LLM: {result.answer_model}</span> : null}
-              {result?.search_api_endpoint ? <span>Search: {result.search_api_endpoint}</span> : null}
-            </div>
-            <div className={`answer-body${result?.insufficient_context ? " warning" : ""}${isStreamingAnswer ? " streaming" : ""}`}>
-              {displayedAnswer ?? "아직 연결된 최종 응답 본문은 없습니다."}
-              {isStreamingAnswer ? <span className="stream-cursor" aria-hidden="true">▌</span> : null}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {showEvidenceSection ? (
-        <div className="card">
-          <p className="eyebrow">Citations</p>
-          <h2>Evidence</h2>
-          <p>답변 근거로 사용한 chunk 포인터만 간단히 보여주고, 실제 본문은 아래 Reference context에서 확인합니다.</p>
-          {!result?.citations?.length ? (
-            <p>아직 표시할 근거가 없습니다.</p>
-          ) : (
-            <div className="citation-list">
-              {result.citations.map((citation) => {
-                const metaParts = buildEvidenceMetaParts(citation);
-                return (
-                  <article className="citation-card" key={citation.id ?? `${citation.source}-${citation.chunk_index}`}>
-                    <div className="citation-card-head">
-                      <strong>{renderCitationLabel(citation)}</strong>
-                      {typeof citation.rank === "number" ? <span className="citation-rank">#{citation.rank}</span> : null}
-                    </div>
-                    <div className="retrieval-meta">
-                      {metaParts.length > 0 ? metaParts.map((part) => <span key={part}>{part}</span>) : <span>metadata unavailable</span>}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ) : null}
-
-      <div className="card">
-        <p className="eyebrow">Context</p>
-        <h2>Reference context</h2>
-        <p>answer generation에 실제로 들어간 retrieval hit를 순서대로 보여주며, rerank score와 matched query도 함께 표시합니다.</p>
-        {isStreamingAnswer ? (
-          <p>스트리밍 중에는 context 렌더링을 잠시 지연합니다.</p>
-        ) : !deferredResult?.hits?.length ? (
-          <p>아직 표시할 context가 없습니다.</p>
-        ) : (
-          <div className="retrieval-list">
-            {deferredResult.hits.map((hit, index) => {
-              const metaParts = buildEvidenceMetaParts(hit);
-              const matchedQueries = formatMatchedQueries(hit.matched_queries);
-              return (
-                <article className="retrieval-card" key={hit.id}>
-                  <div className="retrieval-head">
-                    <div className="retrieval-title">
-                      <div className="retrieval-rank-row">
-                        <strong>{renderHitLabel(hit)}</strong>
-                        <span className="retrieval-rank">Context #{index + 1}</span>
-                      </div>
-                      <div className="retrieval-meta">
-                        {metaParts.map((part) => (
-                          <span key={part}>{part}</span>
-                        ))}
-                        {typeof hit.distance === "number" ? <span>distance {hit.distance.toFixed(4)}</span> : null}
-                        {typeof hit.rerank_score === "number" ? <span>rerank {hit.rerank_score.toFixed(4)}</span> : null}
-                      </div>
-                    </div>
+                id="chat-query-rewrite-model"
+                onChange={(event) => setQueryRewriteModel(event.target.value)}
+                value={queryRewriteModel}
+              >
+                {QUERY_REWRITE_MODEL_OPTIONS.map((option) => (
+                  <option key={option.label} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {isCustomQueryRewriteModel ? (
+                <>
+                  <label className="upload-label" htmlFor="chat-query-rewrite-base-url">
+                    LLM endpoint
+                  </label>
+                  <input
+                    className="default-file-select"
+                    id="chat-query-rewrite-base-url"
+                    onChange={(event) => setQueryRewriteBaseUrl(event.target.value)}
+                    placeholder="http://10.x.x.x:8000/v1"
+                    type="text"
+                    value={queryRewriteBaseUrl}
+                  />
+                  <label className="upload-label" htmlFor="chat-query-rewrite-custom-model">
+                    LLM model name
+                  </label>
+                  <input
+                    className="default-file-select"
+                    id="chat-query-rewrite-custom-model"
+                    onChange={(event) => setQueryRewriteCustomModel(event.target.value)}
+                    placeholder="gpt-4o-mini"
+                    type="text"
+                    value={queryRewriteCustomModel}
+                  />
+                  <label className="upload-label" htmlFor="chat-query-rewrite-api-key">
+                    API Key
+                  </label>
+                  <input
+                    autoComplete="off"
+                    className="default-file-select"
+                    id="chat-query-rewrite-api-key"
+                    onChange={(event) => setQueryRewriteApiKey(event.target.value)}
+                    placeholder="필요한 경우만 입력"
+                    type="password"
+                    value={queryRewriteApiKey}
+                  />
+                  <div className="chat-note">
+                    Custom LLM은 OpenAI-compatible API만 지원하며, 모든 LLM 호출은 `temperature=0`, `top_p=0.9`, `max_tokens=700` 기본값을 사용합니다.
                   </div>
-                  {matchedQueries ? (
-                    <div className="retrieval-query-block">
-                      <span className="retrieval-query-label">matched queries</span>
-                      <div className="retrieval-tags">
-                        {hit.matched_queries?.map((matchedQuery) => <span key={matchedQuery}>{matchedQuery}</span>)}
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="retrieval-preview">{hit.preview ?? hit.text}</div>
-                  <details className="parse-json retrieval-full">
-                    <summary>전체 context 보기</summary>
-                    <div className="retrieval-full-body">
-                      <pre>{hit.text}</pre>
-                    </div>
-                  </details>
-                </article>
-              );
-            })}
+                </>
+              ) : null}
+              <label className="upload-label" htmlFor="chat-answer-model">
+                Answer LLM
+              </label>
+              <select
+                className="default-file-select"
+                id="chat-answer-model"
+                onChange={(event) => setAnswerModel(event.target.value)}
+                value={answerModel}
+              >
+                {ANSWER_MODEL_OPTIONS.map((option) => (
+                  <option key={option.label} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {isCustomAnswerModel ? (
+                <>
+                  <label className="upload-label" htmlFor="chat-answer-base-url">
+                    LLM endpoint
+                  </label>
+                  <input
+                    className="default-file-select"
+                    id="chat-answer-base-url"
+                    onChange={(event) => setAnswerBaseUrl(event.target.value)}
+                    placeholder="http://10.x.x.x:8000/v1"
+                    type="text"
+                    value={answerBaseUrl}
+                  />
+                  <label className="upload-label" htmlFor="chat-answer-custom-model">
+                    LLM model name
+                  </label>
+                  <input
+                    className="default-file-select"
+                    id="chat-answer-custom-model"
+                    onChange={(event) => setAnswerCustomModel(event.target.value)}
+                    placeholder="gpt-4o"
+                    type="text"
+                    value={answerCustomModel}
+                  />
+                  <label className="upload-label" htmlFor="chat-answer-api-key">
+                    API Key
+                  </label>
+                  <input
+                    autoComplete="off"
+                    className="default-file-select"
+                    id="chat-answer-api-key"
+                    onChange={(event) => setAnswerApiKey(event.target.value)}
+                    placeholder="필요한 경우만 입력"
+                    type="password"
+                    value={answerApiKey}
+                  />
+                  <div className="chat-note">
+                    Custom Answer LLM은 OpenAI-compatible API만 지원하며, 모든 LLM 호출은 `temperature=0`, `top_p=0.9`, `max_tokens=700` 기본값을 사용합니다.
+                  </div>
+                </>
+              ) : null}
+              <div className="chat-query-preview">
+                <span className="chat-query-preview-label">LLM Question</span>
+                <div className={`chat-query-preview-body${isStreamingRewrite ? " streaming" : ""}`}>
+                  {displayedRewrittenQuery?.trim()
+                    ? displayedRewrittenQuery
+                    : "응답 후 이 위치에 LLM이 정리한 질문이 표시됩니다."}
+                  {isStreamingRewrite ? <span className="stream-cursor" aria-hidden="true">▌</span> : null}
+                </div>
+              </div>
+              <div className="button-row">
+                <button className="upload-button" disabled={isLoading} onClick={() => void requestChatResponse()} type="button">
+                  {isLoading ? "Loading..." : "Get response"}
+                </button>
+              </div>
+            </div>
+            <div className="chat-status">{message}</div>
           </div>
-        )}
+        </div>
+
+        <div className="chat-right-column">
+          <div className="card">
+            <p className="eyebrow">Answer</p>
+            <h2>Response</h2>
+            <p>최종 연결 시 이 영역에 외부 RAG 응답 또는 후속 answer generation 결과가 표시됩니다.</p>
+            {!result && !isStreamingAnswer ? (
+              <p>아직 표시할 응답이 없습니다.</p>
+            ) : (
+              <div className="answer-panel">
+                {result && typeof responseTimeMs === "number" ? (
+                  <div className="answer-latency">{formatResponseTiming(responseTimeMs, result)}</div>
+                ) : null}
+                <div className="answer-summary">
+                  <span>{answerState}</span>
+                  {result?.action ? <span>Mode: {result.action}</span> : null}
+                  {result?.query_rewrite_model ? <span>Rewrite LLM: {result.query_rewrite_model}</span> : null}
+                  {result?.answer_model ? <span>Answer LLM: {result.answer_model}</span> : null}
+                  {result?.search_api_endpoint ? <span>Search: {result.search_api_endpoint}</span> : null}
+                </div>
+                <div className={`answer-body${result?.insufficient_context ? " warning" : ""}${isStreamingAnswer ? " streaming" : ""}`}>
+                  {displayedAnswer ?? "아직 연결된 최종 응답 본문은 없습니다."}
+                  {isStreamingAnswer ? <span className="stream-cursor" aria-hidden="true">▌</span> : null}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {showEvidenceSection ? (
+            <div className="card">
+              <p className="eyebrow">Citations</p>
+              <h2>Evidence</h2>
+              <p>답변 근거로 사용한 chunk 포인터만 간단히 보여주고, 실제 본문은 아래 Reference context에서 확인합니다.</p>
+              {!result?.citations?.length ? (
+                <p>아직 표시할 근거가 없습니다.</p>
+              ) : (
+                <div className="citation-list">
+                  {result.citations.map((citation) => {
+                    const metaParts = buildEvidenceMetaParts(citation);
+                    return (
+                      <article className="citation-card" key={citation.id ?? `${citation.source}-${citation.chunk_index}`}>
+                        <div className="citation-card-head">
+                          <strong>{renderCitationLabel(citation)}</strong>
+                          {typeof citation.rank === "number" ? <span className="citation-rank">#{citation.rank}</span> : null}
+                        </div>
+                        <div className="retrieval-meta">
+                          {metaParts.length > 0 ? metaParts.map((part) => <span key={part}>{part}</span>) : <span>metadata unavailable</span>}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <div className="card">
+            <p className="eyebrow">Context</p>
+            <h2>Reference context</h2>
+            <p>answer generation에 실제로 들어간 retrieval hit를 순서대로 보여주며, rerank score와 matched query도 함께 표시합니다.</p>
+            {isStreamingAnswer ? (
+              <p>스트리밍 중에는 context 렌더링을 잠시 지연합니다.</p>
+            ) : !deferredResult?.hits?.length ? (
+              <p>아직 표시할 context가 없습니다.</p>
+            ) : (
+              <div className="retrieval-list">
+                {deferredResult.hits.map((hit, index) => {
+                  const metaParts = buildEvidenceMetaParts(hit);
+                  const matchedQueries = formatMatchedQueries(hit.matched_queries);
+                  return (
+                    <article className="retrieval-card" key={hit.id}>
+                      <div className="retrieval-head">
+                        <div className="retrieval-title">
+                          <div className="retrieval-rank-row">
+                            <strong>{renderHitLabel(hit)}</strong>
+                            <span className="retrieval-rank">Context #{index + 1}</span>
+                          </div>
+                          <div className="retrieval-meta">
+                            {metaParts.map((part) => (
+                              <span key={part}>{part}</span>
+                            ))}
+                            {typeof hit.distance === "number" ? <span>distance {hit.distance.toFixed(4)}</span> : null}
+                            {typeof hit.rerank_score === "number" ? <span>rerank {hit.rerank_score.toFixed(4)}</span> : null}
+                          </div>
+                        </div>
+                      </div>
+                      {matchedQueries ? (
+                        <div className="retrieval-query-block">
+                          <span className="retrieval-query-label">matched queries</span>
+                          <div className="retrieval-tags">
+                            {hit.matched_queries?.map((matchedQuery) => <span key={matchedQuery}>{matchedQuery}</span>)}
+                          </div>
+                        </div>
+                      ) : null}
+                      <div className="retrieval-preview">{hit.preview ?? hit.text}</div>
+                      <details className="parse-json retrieval-full">
+                        <summary>전체 context 보기</summary>
+                        <div className="retrieval-full-body">
+                          <pre>{hit.text}</pre>
+                        </div>
+                      </details>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );
