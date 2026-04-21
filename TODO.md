@@ -31,10 +31,10 @@
 - [x] Create frontend with Next.js skeleton
 - [x] Create backend with FastAPI skeleton
 - [x] Connect basic routing skeleton
-- [x] Add frontend pages for `/upload`, `/chat`, `/evaluation`
+- [x] Add frontend pages for `/upload`, `/chat`
 - [x] Add frontend root redirect from `/` to `/upload`
 - [x] Add shared frontend layout and global styles
-- [x] Add backend status routes for `/health`, `/upload`, `/chat`, `/evaluation`
+- [x] Add backend status routes for `/health`, `/upload`, `/chat`
 - [x] Add backend dependency manifest
 - [x] Add README.md
 - [x] Add AGENTS.md
@@ -187,6 +187,12 @@
 - [x] 임시 외부 Search API `/api/search` payload와 `results` 응답 normalization 연결
 - [x] Step 5. Retrieved Candidate Chunks 표준화
 - [x] Step 6. Search Result Evaluation
+- [x] 통계/수치형 상담 질의에서 마지막 고객 질문 중심 query rewrite 보강
+- [x] query rewrite validation에 연도/수치 키워드 의미 보존 규칙 추가
+- [x] rewrite 결과의 `question_type` / `entities` / `routing_hints` 보강
+- [x] `/api/search` payload를 `retrieval_api_design.md` 스펙 기준 필드만 사용하도록 정리
+- [x] `llm_call` / `search_api_call` 로그 추가(API key 비노출)
+- [x] `Insufficient context` 응답 시 Search API 1회 재시도와 stream `재 시도 중입니다.` 표시 추가
 - [ ] Step 7. Need More Context 분기 (`추후 개발`)
 - [ ] Step 8. Lookup API 호출 (`추후 개발`)
 - [ ] Step 9. Expanded Context 병합 (`추후 개발`)
@@ -206,33 +212,7 @@
 
 ---
 
-## Phase 10. Evaluation Data
-
-- [ ] Prepare small evaluation dataset
-- [ ] Add sample questions
-- [ ] Add reference answers if available
-
----
-
-## Phase 11. RAGAS
-
-- [ ] Create RAGAS runner
-- [ ] Run evaluation on sample dataset
-- [ ] Save evaluation results
-- [ ] Create evaluation API
-
----
-
-## Phase 12. Evaluation UI
-
-- [ ] Build evaluation page
-- [ ] Show average metrics
-- [ ] Show per-question results table
-- [ ] Highlight low-scoring cases
-
----
-
-## Phase 13. Daily Management (중요)
+## Phase 10. Daily Management (중요)
 
 - [x] daily 기록 생성
 - [x] 작업 내용 기록
@@ -295,4 +275,3 @@
 - [x] Retrieval works
 - [x] Answer generation works with runtime chat deployment
 - [x] Sources are visible
-- [ ] RAGAS evaluation works

@@ -4,13 +4,12 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Insurance Document RAG MVP",
-  description: "Simple frontend skeleton for upload, chat, and evaluation.",
+  description: "Simple frontend skeleton for upload and chat.",
 };
 
 const navItems = [
   { href: "/upload", label: "Upload" },
   { href: "/chat", label: "Chat" },
-  { href: "/evaluation", label: "Evaluation" },
 ];
 
 export default function RootLayout({

@@ -35,15 +35,13 @@
   - response 표시 영역
   - response answer 실시간 stream 출력
   - stream 중 `STATUS/ANSWER` 헤더 없이 answer 본문만 누적 출력
+  - answer가 `Insufficient context`이면 stream 중 `재 시도 중입니다.` 문구를 먼저 보여주고 Search API를 1회 더 호출
   - stream 중에는 answer를 배치 업데이트하고, `Reference context` 렌더링을 잠시 지연해 버벅임을 줄임
   - stream flush 간격을 줄여 `LLM Question`/answer 표시 속도를 개선함
   - evidence 표시 영역(현재 화면에서는 숨김)
   - reference context 표시 영역
   - internal retrieval 기준 `rerank_score`, `distance`, `matched_queries` 표시
   - `전체 context 보기` 확장 블록 표시
-- `/evaluation`
-  - 페이지 skeleton만 존재
-  - 실제 평가 결과 UI는 아직 미구현
 
 ## 3. 현재 상태
 - 진행중
@@ -64,12 +62,12 @@
 - `/chat`은 현재 Search API만 사용하고 Lookup 경로는 사용하지 않는다.
 - `/chat` Question은 단일 질문뿐 아니라 `고객:` / `상담사:` 멀티라인 입력도 허용하고, backend가 이를 `conversation_context`로 정규화한다.
 - `/chat` Question 바로 아래에는 최종 `rewritten_query`만 `LLM Question`으로 표시한다.
+- `/chat` stream 중 answer 재시도가 발생하면 answer 영역을 `재 시도 중입니다.`로 교체한 뒤 최종 응답으로 확정한다.
 - `/chat` answer card는 최종 응답 영역, citation card는 근거 영역, context card는 참고용 context 확인용으로 나눴다.
 - `/chat` Evidence 카드는 source / chunk / page 같은 citation pointer만 compact하게 보여주고, 중복 preview는 제거했다.
 - `/chat` Evidence 카드는 데이터는 유지하고 화면 렌더링에서만 임시 숨김 처리했다.
 - `/chat` Reference context 카드는 실제 retrieval hit 순서를 유지하며 preview, full text, `distance`, `rerank_score`, `matched_queries`를 함께 보여준다.
 - `/chat` preview / citation / raw chunk 블록은 긴 텍스트가 잘리지 않도록 overflow를 정리했다.
-- `/evaluation`은 라우트와 기본 페이지만 있고 실제 결과 화면은 아직 없다.
 - 실제 화면 확인 기준은 RAG 서버 frontend `127.0.0.1:3000`이다.
 
 ## 4. 이슈 및 문제
@@ -89,4 +87,3 @@
 - upload 화면의 parse history / preview / quality 표시를 실제 화면 기준으로 검증하고 필요 시 정리한다.
 - parser별 PDF 비교 결과를 어떤 문구로 경고에 매핑할지 다듬는다.
 - 외부 RAG contract가 정해지면 `/chat` adapter와 결과 매핑 UI를 그 스키마 기준으로 다시 연결한다.
-- evaluation 실행 흐름이 준비되면 `/evaluation` 실제 결과 UI를 구현한다.

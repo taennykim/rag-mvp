@@ -51,7 +51,7 @@
 | chunk_types | array[string] | N | `["text","table","mixed"]` | 검색 대상 chunk 유형 제한 |
 | include_source_metadata | boolean | N | `true` | 출처 metadata 포함 여부 |
 | include_scores | boolean | N | `true` | BM25, vector, RRF, rerank score 포함 여부 |
-| keyword_vector_weight | float | N | `0.5` | weighted RRF에서 keyword/BM25 비중 |
+| keyword_vector_weight | float | N | `0.3` | weighted RRF에서 keyword/BM25 비중 |
 | return_format | string | N | `"json"` | 반환 형식 (text, markdown, json) |
 
 ### Response

@@ -158,6 +158,7 @@ QUERY_REWRITE_RESPONSE_LOG_PREVIEW_CHARS = 800
 STREAM_DELTA_MIN_CHARS = 10
 STREAM_DELTA_FLUSH_INTERVAL_SEC = 0.025
 STREAM_REWRITE_DELTA_MIN_CHARS = 4
+CHAT_RETRY_ANSWER_TEXT = "재 시도 중입니다."
 RUNTIME_ENV_FILE = BASE_DIR / ".env.runtime"
 QUERY_REWRITE_SPEC_PATH = BASE_DIR.parent / "docs" / "query-rewrite-spec.md"
 ANSWER_GENERATION_SPEC_PATH = BASE_DIR.parent / "docs" / "answer-generation-spec.md"
@@ -172,6 +173,51 @@ SEARCH_EVAL_CONTEXT_KEYWORDS: tuple[str, ...] = (
     "제외",
     "제출서류",
 )
+STATISTICS_KEYWORDS: tuple[str, ...] = (
+    "통계",
+    "수치",
+    "평균",
+    "기준",
+    "연도",
+    "인당",
+    "비율",
+    "건수",
+    "금액",
+    "진료비",
+    "수술비",
+    "발생 건수",
+    "발생건수",
+    "자료",
+    "현황",
+)
+STATISTICS_REQUIRED_PRESERVATION_KEYWORDS: tuple[str, ...] = (
+    "평균",
+    "통계",
+    "기준",
+    "연도",
+    "인당",
+    "비율",
+    "건수",
+    "금액",
+    "진료비",
+    "수술비",
+    "발생 건수",
+    "발생건수",
+)
+POLICY_OR_CLAIM_KEYWORDS: tuple[str, ...] = (
+    "보장",
+    "면책",
+    "청구",
+    "약관",
+    "가능 여부",
+    "가능여부",
+    "보험금",
+    "지급",
+)
+STATISTICS_DOCUMENT_HINTS: tuple[str, ...] = ("statistics_table", "statistics_report")
+STATISTICS_ROUTING_CHUNK_TYPES: tuple[str, ...] = ("statistics_table", "statistics_report")
+YEAR_TOKEN_PATTERN = re.compile(r"(?<!\\d)((?:19|20)\\d{2})\\s*년?")
+PROCEDURE_TOKEN_PATTERN = re.compile(r"([0-9A-Za-z가-힣]+(?:\\s*[0-9A-Za-z가-힣]+){0,2}\\s*수술)")
 
 
 def load_runtime_env_file() -> None:
@@ -764,6 +810,89 @@ def extract_query_keywords(*texts: str) -> list[str]:
     return keywords
 
 
+def extract_year_tokens(text: str) -> list[str]:
+    return [match.group(1) for match in YEAR_TOKEN_PATTERN.finditer(text or "")]
+
+
+def extract_matching_keywords(text: str, keywords: tuple[str, ...]) -> list[str]:
+    normalized_text = text or ""
+    matched: list[str] = []
+    for keyword in keywords:
+        if keyword in normalized_text and keyword not in matched:
+            matched.append(keyword)
+    return matched
+
+
+def is_statistics_or_numeric_query(text: str) -> bool:
+    matched_keywords = extract_matching_keywords(text, STATISTICS_KEYWORDS)
+    if "통계" in matched_keywords or "수치" in matched_keywords:
+        return True
+    return len(matched_keywords) >= 2
+
+
+def contains_policy_or_claim_focus(text: str) -> bool:
+    return any(keyword in (text or "") for keyword in POLICY_OR_CLAIM_KEYWORDS)
+
+
+def extract_statistics_entities(text: str) -> dict[str, str]:
+    normalized_text = normalize_chat_text(text)
+    entities: dict[str, str] = {}
+    years = extract_year_tokens(normalized_text)
+    if years:
+        entities["year"] = years[0]
+
+    metric_keywords = extract_matching_keywords(normalized_text, STATISTICS_REQUIRED_PRESERVATION_KEYWORDS)
+    if metric_keywords:
+        entities["metric"] = ", ".join(metric_keywords[:3])
+
+    procedure_match = PROCEDURE_TOKEN_PATTERN.search(normalized_text)
+    if procedure_match:
+        procedure = normalize_chat_text(procedure_match.group(1))
+        entities["procedure"] = procedure
+        entities.setdefault("target", procedure)
+        entities.setdefault("topic", procedure)
+
+    if "topic" not in entities and metric_keywords:
+        entities["topic"] = metric_keywords[0]
+    return entities
+
+
+def get_statistics_query_expansions(query: str, entities: dict[str, str]) -> list[str]:
+    normalized_query = normalize_chat_text(query).strip()
+    procedure = (entities.get("procedure") or entities.get("target") or entities.get("topic") or "").strip()
+    year = (entities.get("year") or "").strip()
+    metric = (entities.get("metric") or "").split(",", 1)[0].strip()
+
+    candidates = [
+        normalized_query,
+        f"{year}년 {procedure} {metric}".strip(),
+        f"{procedure} 통계".strip(),
+        f"{year}년 {procedure} 통계".strip(),
+    ]
+    return [candidate for candidate in candidates if candidate]
+
+
+def normalize_external_search_chunk_types(raw_chunk_types: list[str]) -> list[str]:
+    normalized_chunk_types: list[str] = []
+    for chunk_type in raw_chunk_types:
+        lowered = chunk_type.strip().lower()
+        if "table" in lowered:
+            normalized_chunk_types.append("table")
+        elif "mixed" in lowered or "report" in lowered:
+            normalized_chunk_types.append("mixed")
+        elif lowered in {"text", "table", "mixed"}:
+            normalized_chunk_types.append(lowered)
+
+    unique_chunk_types: list[str] = []
+    seen: set[str] = set()
+    for chunk_type in normalized_chunk_types:
+        if chunk_type in seen:
+            continue
+        seen.add(chunk_type)
+        unique_chunk_types.append(chunk_type)
+    return unique_chunk_types
+
+
 def validate_standalone_search_query(
     query: str,
     *,
@@ -798,11 +927,32 @@ def validate_standalone_search_query(
             failure_reasons.append("vague_referential_query")
 
     source_keywords = extract_query_keywords(*source_texts)
+    source_text = normalize_chat_text(" ".join(source_texts))
+    source_years = extract_year_tokens(source_text)
+    required_statistics_keywords = extract_matching_keywords(source_text, STATISTICS_REQUIRED_PRESERVATION_KEYWORDS)
+    source_is_statistics_query = is_statistics_or_numeric_query(source_text)
+
     if source_keywords:
         query_lower = normalized_query.lower()
         has_product_or_coverage = contains_insurance_product_clues(normalized_query) or "보장" in normalized_query
         if not has_product_or_coverage and not any(keyword.lower() in query_lower for keyword in source_keywords[:8]):
             failure_reasons.append("missing_core_keyword")
+
+    should_preserve_year = source_is_statistics_query or "가입" in source_text or "기준" in source_text
+    if source_years and should_preserve_year and not any(year in normalized_query for year in source_years):
+        failure_reasons.append("missing_year")
+
+    if required_statistics_keywords and not any(keyword in normalized_query for keyword in required_statistics_keywords):
+        failure_reasons.append("missing_statistics_keyword")
+
+    if source_is_statistics_query:
+        rewritten_is_statistics_query = is_statistics_or_numeric_query(normalized_query)
+        if not rewritten_is_statistics_query:
+            failure_reasons.append("statistics_intent_lost")
+        if contains_policy_or_claim_focus(normalized_query) and not any(
+            keyword in normalized_query for keyword in required_statistics_keywords
+        ):
+            failure_reasons.append("statistics_query_shifted_to_policy")
 
     return normalized_query, failure_reasons
 
@@ -2293,6 +2443,34 @@ def get_answer_custom_config(payload: ChatRequest) -> tuple[str, str, str | None
     return (base_url, model_name, api_key)
 
 
+def log_llm_call(
+    *,
+    stage: str,
+    provider: str,
+    endpoint: str,
+    model: str,
+    max_tokens: int,
+    message_count: int,
+    timeout_sec: int | None = None,
+    extra: dict[str, object] | None = None,
+) -> None:
+    payload: dict[str, object] = {
+        "stage": stage,
+        "provider": provider,
+        "endpoint": endpoint,
+        "model": model,
+        "temperature": DEFAULT_CHAT_TEMPERATURE,
+        "top_p": DEFAULT_CHAT_TOP_P,
+        "max_tokens": max_tokens,
+        "message_count": message_count,
+    }
+    if timeout_sec is not None:
+        payload["timeout_sec"] = timeout_sec
+    if extra:
+        payload.update(extra)
+    logger.info("llm_call %s", json.dumps(payload, ensure_ascii=False, sort_keys=True))
+
+
 def build_azure_openai_chat_completion(
     messages: list[dict[str, str]],
     *,
@@ -2634,6 +2812,16 @@ def build_query_rewrite_chat_completion(payload: ChatRequest, messages: list[dic
     model_id = get_query_rewrite_model_id(payload.query_rewrite_model)
     if model_id == CUSTOM_QUERY_REWRITE_MODEL:
         base_url, model_name, api_key = get_query_rewrite_custom_config(payload)
+        log_llm_call(
+            stage="query_rewrite",
+            provider="custom",
+            endpoint=base_url.rstrip("/") + ("" if base_url.rstrip("/").endswith("/chat/completions") else "/chat/completions"),
+            model=model_name,
+            max_tokens=DEFAULT_CHAT_MAX_TOKENS,
+            message_count=len(messages),
+            timeout_sec=DEFAULT_QUERY_REWRITE_TIMEOUT_SEC,
+            extra={"api_key_configured": bool(api_key)},
+        )
         return (
             build_openai_compatible_chat_completion(
                 messages,
@@ -2644,6 +2832,19 @@ def build_query_rewrite_chat_completion(payload: ChatRequest, messages: list[dic
             ),
             get_query_rewrite_display_model(payload),
         )
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip().rstrip("/")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", DEFAULT_AZURE_OPENAI_API_VERSION).strip()
+    request_url = f"{azure_endpoint}/openai/deployments/{model_id}/chat/completions?api-version={api_version}" if azure_endpoint else ""
+    log_llm_call(
+        stage="query_rewrite",
+        provider="azure_openai",
+        endpoint=request_url,
+        model=model_id,
+        max_tokens=DEFAULT_CHAT_MAX_TOKENS,
+        message_count=len(messages),
+        timeout_sec=DEFAULT_QUERY_REWRITE_TIMEOUT_SEC,
+        extra={"token_field": "max_completion_tokens" if model_id.lower().startswith("gpt-5") else "max_tokens"},
+    )
     return build_azure_openai_chat_completion(
         messages,
         deployment=model_id,
@@ -2655,6 +2856,16 @@ def build_answer_chat_completion(payload: ChatRequest, messages: list[dict[str, 
     model_id = get_answer_model_id(payload.answer_model)
     if model_id == CUSTOM_QUERY_REWRITE_MODEL:
         base_url, model_name, api_key = get_answer_custom_config(payload)
+        log_llm_call(
+            stage="answer",
+            provider="custom",
+            endpoint=base_url.rstrip("/") + ("" if base_url.rstrip("/").endswith("/chat/completions") else "/chat/completions"),
+            model=model_name,
+            max_tokens=DEFAULT_CHAT_MAX_TOKENS,
+            message_count=len(messages),
+            timeout_sec=120,
+            extra={"api_key_configured": bool(api_key)},
+        )
         return (
             build_openai_compatible_chat_completion(
                 messages,
@@ -2664,6 +2875,19 @@ def build_answer_chat_completion(payload: ChatRequest, messages: list[dict[str, 
             ),
             get_answer_display_model(payload),
         )
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip().rstrip("/")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", DEFAULT_AZURE_OPENAI_API_VERSION).strip()
+    request_url = f"{azure_endpoint}/openai/deployments/{model_id}/chat/completions?api-version={api_version}" if azure_endpoint else ""
+    log_llm_call(
+        stage="answer",
+        provider="azure_openai",
+        endpoint=request_url,
+        model=model_id,
+        max_tokens=DEFAULT_CHAT_MAX_TOKENS,
+        message_count=len(messages),
+        timeout_sec=120,
+        extra={"token_field": "max_completion_tokens" if model_id.lower().startswith("gpt-5") else "max_tokens"},
+    )
     return build_azure_openai_chat_completion(messages, deployment=model_id), model_id
 
 
@@ -2671,6 +2895,16 @@ def build_answer_chat_completion_stream(payload: ChatRequest, messages: list[dic
     model_id = get_answer_model_id(payload.answer_model)
     if model_id == CUSTOM_QUERY_REWRITE_MODEL:
         base_url, model_name, api_key = get_answer_custom_config(payload)
+        log_llm_call(
+            stage="answer_stream",
+            provider="custom",
+            endpoint=base_url.rstrip("/") + ("" if base_url.rstrip("/").endswith("/chat/completions") else "/chat/completions"),
+            model=model_name,
+            max_tokens=DEFAULT_CHAT_MAX_TOKENS,
+            message_count=len(messages),
+            timeout_sec=120,
+            extra={"api_key_configured": bool(api_key), "stream": True},
+        )
         return (
             build_openai_compatible_chat_completion_stream(
                 messages,
@@ -2680,6 +2914,19 @@ def build_answer_chat_completion_stream(payload: ChatRequest, messages: list[dic
             ),
             get_answer_display_model(payload),
         )
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip().rstrip("/")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", DEFAULT_AZURE_OPENAI_API_VERSION).strip()
+    request_url = f"{azure_endpoint}/openai/deployments/{model_id}/chat/completions?api-version={api_version}" if azure_endpoint else ""
+    log_llm_call(
+        stage="answer_stream",
+        provider="azure_openai",
+        endpoint=request_url,
+        model=model_id,
+        max_tokens=DEFAULT_CHAT_MAX_TOKENS,
+        message_count=len(messages),
+        timeout_sec=120,
+        extra={"token_field": "max_completion_tokens" if model_id.lower().startswith("gpt-5") else "max_tokens", "stream": True},
+    )
     return build_azure_openai_chat_completion_stream(messages, deployment=model_id), model_id
 
 
@@ -3354,15 +3601,16 @@ def build_query_rewrite_messages(
     context_lines = [f"{turn['role']}: {turn['content']}" for turn in normalized_conversation[-6:]]
     domain_focus = infer_domain_specific_focus(normalized_conversation)
     fallback_system_prompt = (
-        "You are a query rewriter for a Hybrid RAG system.\n"
-        "Preserve the original meaning.\n"
-        "Respond in Korean when the user question is Korean.\n"
-        "Base the rewrite on the latest meaningful customer utterance when conversation context is provided.\n"
-        "Use conversation context and metadata only to resolve omitted subjects such as product or document names.\n"
+        "You rewrite financial customer-service conversations into one retrieval-friendly standalone Korean question.\n"
+        "Preserve the original meaning and the user's actual search intent.\n"
+        "Base the rewrite on the latest meaningful customer utterance.\n"
+        "Remove greetings, counselor guidance, and identity-verification details.\n"
+        "If the latest customer question is statistical or numeric, keep it statistical or numeric.\n"
+        "Preserve the measured target, reference year, and metric such as 평균, 비율, 건수, 금액, 진료비, 수술비, 인당.\n"
+        "Do not rewrite a statistical question into coverage, claimability, terms, or exemption questions.\n"
+        "Include product or service names only when they are truly required for retrieval.\n"
         "Do not include personal information.\n"
         "Output one complete standalone question sentence for rewritten_query.\n"
-        "The rewritten_query must remain a question.\n"
-        "Prefer concise output over verbose reasoning.\n"
     )
     response_contract = (
         "Return JSON only.\n"
@@ -3385,14 +3633,19 @@ def build_query_rewrite_messages(
         "- Use the latest meaningful customer message as the primary rewrite target.\n"
         "- If the latest customer message is vague, referential, full of conversational fillers, or only contains identity verification details, use earlier customer turns to restore the full question.\n"
         "- Do not copy conversational fillers such as '그러니까요', '예를 들면', '네', or unfinished spoken fragments into rewritten_query.\n"
-        "- Exclude name, birth date, resident number, and other identity verification details.\n"
+        "- Exclude greetings, counselor guidance, name, birth date, resident number, and other identity verification details.\n"
         "- Keep meaningful policy attributes such as 가입 시점, 보험 종류, 계약 형태 when they help retrieval.\n"
-        "- If the conversation strongly implies a concrete coverage focus, restore that focus explicitly in rewritten_query.\n"
-        "- Preserve important entities, insurance document terms, conditions, and scenario details.\n"
+        "- If the latest customer question is statistical or numeric, remove earlier coverage, underwriting, greeting, and identity-verification context unless it is essential to the statistic itself.\n"
+        "- Preserve important entities, scenario details, reference years, and numeric/statistical expressions.\n"
+        "- Keep keywords such as 평균, 통계, 기준, 연도, 인당, 비율, 건수, 금액, 진료비, 수술비, 발생 건수 when they appear in the customer's real question.\n"
+        "- Do not convert a statistical or numeric question into a coverage, claimability, terms, or exemption question.\n"
+        "- Include product or service names only when they are actually core retrieval keys. Do not force them into statistical queries when unnecessary.\n"
         "- Infer the most likely product or document name from the context when omitted.\n"
         "- Exclude topics that the agent has already answered.\n"
-        "- question_type should be one of documents, period, numeric, definition, conditions, comparison, or general when possible.\n"
-        "- routing_hints should include likely category such as terms, pricing_method, change_process, or general when possible.\n"
+        "- question_type should be one of statistics, numeric, documents, period, definition, conditions, comparison, or general when possible.\n"
+        "- For statistical queries, fill entities such as year, metric, target, procedure, or topic when possible.\n"
+        "- For statistical queries, routing_hints should prefer statistics_table or statistics_report.\n"
+        "- For policy or terms questions, routing_hints may include terms, pricing_method, change_process, or general.\n"
         "- Return valid JSON only with no extra text.\n\n"
         f"Input:\n{json.dumps({'seed_query': seed_query, 'original_query': original_query, 'last_customer_message': last_customer_message, 'conversation_context': context_lines, 'metadata': metadata, 'domain_focus_hint': domain_focus}, ensure_ascii=False)}"
     )
@@ -3409,9 +3662,11 @@ def build_standalone_query_rewrite_messages(
     metadata: dict[str, object],
 ) -> list[dict[str, str]]:
     fallback_system_prompt = (
-        "You rewrite a single Korean user question into a concise retrieval-friendly Korean question.\n"
-        "Do not include personal information.\n"
+        "You rewrite one Korean user question into one concise retrieval-friendly Korean question.\n"
         "Keep the original intent.\n"
+        "If the question is statistical or numeric, preserve the target, year, and metric.\n"
+        "Do not convert statistical questions into coverage, claimability, terms, or exemption questions.\n"
+        "Do not include personal information.\n"
         "rewritten_query must be one complete question sentence.\n"
     )
     response_contract = (
@@ -3432,8 +3687,13 @@ def build_standalone_query_rewrite_messages(
     user_prompt = (
         "Rewrite this single user question for retrieval.\n"
         "Rules:\n"
-        "- Keep product, app, service, document, and task names.\n"
+        "- Keep product, app, service, document, and task names only when they are core retrieval keys.\n"
         "- Remove conversational phrasing only when unnecessary.\n"
+        "- Preserve reference years, numbers, and keywords such as 평균, 통계, 기준, 연도, 인당, 비율, 건수, 금액, 진료비, 수술비 when they appear in the original question.\n"
+        "- Do not rewrite a statistical or numeric question into a coverage, claimability, terms, or exemption question.\n"
+        "- question_type should be one of statistics, numeric, documents, period, definition, conditions, comparison, or general when possible.\n"
+        "- For statistical queries, fill entities such as year, metric, target, procedure, or topic when possible.\n"
+        "- For statistical queries, routing_hints should prefer statistics_table or statistics_report.\n"
         "- Keep it short and retrieval-friendly.\n"
         "- Return valid JSON only.\n\n"
         f"Input:\n{json.dumps({'seed_query': seed_query, 'original_query': original_query, 'metadata': metadata}, ensure_ascii=False)}"
@@ -3516,7 +3776,10 @@ def retry_query_rewrite_once(
         "The previous rewritten_query failed validation.\n"
         f"Validation failures: {', '.join(validation_reasons)}.\n"
         "Return one Korean standalone question sentence between 15 and 150 characters.\n"
-        "Keep the core insurance keywords from the customer message.\n"
+        "Preserve the original intent, year, and critical keywords from the customer message.\n"
+        "If the source question is statistical or numeric, keep it statistical or numeric.\n"
+        "Do not convert it into coverage, claimability, terms, or exemption intent.\n"
+        "Keep keywords such as 평균, 통계, 기준, 연도, 인당, 비율, 건수, 금액, 진료비, 수술비 when present.\n"
         "Return JSON only."
     )
     messages.append({"role": "user", "content": retry_note})
@@ -3632,16 +3895,44 @@ def enrich_rewrite_result(payload: ChatRequest, rewrite_result: RewriteResult) -
     entities = dict(rewrite_result.entities)
     routing_hints = dict(rewrite_result.routing_hints)
     search_queries = [query.strip() for query in rewrite_result.search_queries if query.strip()]
-    question_type = rewrite_result.question_type or infer_question_type(payload.query)
-    document_hint = infer_document_hint(payload.query, payload.metadata, entities, routing_hints)
+    enrichment_source = normalize_chat_text(
+        " ".join(
+            [
+                rewrite_result.rewritten_query,
+                rewrite_result.last_customer_message or "",
+                payload.query,
+            ]
+        )
+    )
+    inferred_question_type = infer_question_type(payload.query)
+    if is_statistics_or_numeric_query(enrichment_source):
+        question_type = "statistics" if "통계" in enrichment_source or "자료" in enrichment_source else "numeric"
+    else:
+        question_type = rewrite_result.question_type or inferred_question_type
+
+    statistics_entities = extract_statistics_entities(enrichment_source)
+    for key, value in statistics_entities.items():
+        entities.setdefault(key, value)
 
     if question_type and "question_type" not in entities:
         entities["question_type"] = question_type
+
+    document_hint = infer_document_hint(payload.query, payload.metadata, entities, routing_hints)
+    if question_type in {"statistics", "numeric"} and not document_hint:
+        document_hint = STATISTICS_DOCUMENT_HINTS[1]
+        routing_hints.setdefault("preferred_document_hint", STATISTICS_DOCUMENT_HINTS[0])
+        routing_hints.setdefault("chunk_types", ",".join(STATISTICS_ROUTING_CHUNK_TYPES))
+        if entities.get("year"):
+            routing_hints.setdefault("year", entities["year"])
+
     if document_hint:
         routing_hints["document_hint"] = document_hint
 
     search_queries.extend(get_document_hint_expansions(document_hint))
-    search_queries.extend(get_question_type_expansions(question_type))
+    if question_type == "statistics":
+        search_queries.extend(get_statistics_query_expansions(rewrite_result.rewritten_query, entities))
+    else:
+        search_queries.extend(get_question_type_expansions(question_type))
 
     unique_queries: list[str] = []
     seen: set[str] = set()
@@ -3825,25 +4116,49 @@ def build_external_search_payload(
     top_k: int,
     final_k: int,
     stored_name: str | None,
+    rewrite_result: RewriteResult | None = None,
 ) -> dict[str, object]:
+    entities = dict(rewrite_result.entities) if rewrite_result else {}
+    routing_hints = dict(rewrite_result.routing_hints) if rewrite_result else {}
+    year = (entities.get("year") or routing_hints.get("year") or "").strip()
+    chunk_types = normalize_external_search_chunk_types([
+        item.strip()
+        for item in (routing_hints.get("chunk_types") or "").split(",")
+        if item and item.strip()
+    ])
+    filters: dict[str, object] = {}
+    if year:
+        filters["year"] = [year]
+
     if endpoint.rstrip("/").endswith("/api/search"):
-        return {
+        payload: dict[str, object] = {
             "query": query,
             "top_k": max(20, top_k),
             "final_k": max(1, min(final_k, top_k)),
             "use_rerank": False,
             "include_source_metadata": True,
             "include_scores": True,
-            "keyword_vector_weight": 0.5,
+            "keyword_vector_weight": 0.3,
+            "return_format": "json",
         }
+        if filters:
+            payload["filters"] = filters
+        if chunk_types:
+            payload["chunk_types"] = chunk_types
+        return payload
 
-    return {
+    payload = {
         "question": question,
         "query": query,
         "rewritten_query": query,
         "top_k": top_k,
         "stored_name": stored_name,
     }
+    if filters:
+        payload["filters"] = filters
+    if chunk_types:
+        payload["chunk_types"] = chunk_types
+    return payload
 
 
 def call_rag_retrieval_endpoint(
@@ -3854,6 +4169,7 @@ def call_rag_retrieval_endpoint(
     top_k: int,
     final_k: int,
     stored_name: str | None,
+    rewrite_result: RewriteResult | None = None,
 ) -> dict[str, object]:
     normalized_endpoint = endpoint.strip()
     if not normalized_endpoint:
@@ -3868,6 +4184,19 @@ def call_rag_retrieval_endpoint(
         top_k=top_k,
         final_k=final_k,
         stored_name=stored_name,
+        rewrite_result=rewrite_result,
+    )
+    logger.info(
+        "search_api_call %s",
+        json.dumps(
+            {
+                "endpoint": normalized_endpoint,
+                "timeout_sec": DEFAULT_EXTERNAL_SEARCH_TIMEOUT_SEC,
+                "payload": payload,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
     )
     request = urllib_request.Request(
         normalized_endpoint,
@@ -3915,6 +4244,7 @@ def resolve_retrieval_for_chat(payload: ChatRequest, rewrite_result: RewriteResu
                 top_k=payload.top_k,
                 final_k=payload.final_k,
                 stored_name=payload.stored_name,
+                rewrite_result=rewrite_result,
             )
             return retrieval, search_api_endpoint, None
         except HTTPException as exc:
@@ -4080,12 +4410,22 @@ def execute_query_rewrite_phase(payload: ChatRequest) -> tuple[RewriteResult, in
 def execute_search_phase(
     payload: ChatRequest,
     rewrite_result: RewriteResult,
+    retrieval_query_override: str | None = None,
 ) -> tuple[dict[str, object], int, str, str]:
     search_started_at = time.perf_counter()
     search_api_endpoint = (payload.search_api_endpoint or DEFAULT_EXTERNAL_SEARCH_API_ENDPOINT).strip()
     action = "search"
     try:
-        search_result = execute_search_for_chat(payload, rewrite_result)
+        if retrieval_query_override:
+            temporary_rewrite_result = rewrite_result.model_copy(
+                update={
+                    "rewritten_query": retrieval_query_override,
+                    "search_queries": [retrieval_query_override, *rewrite_result.search_queries],
+                }
+            )
+            search_result = execute_search_for_chat(payload, temporary_rewrite_result)
+        else:
+            search_result = execute_search_for_chat(payload, rewrite_result)
     except HTTPException as exc:
         search_api_response_time_ms = round((time.perf_counter() - search_started_at) * 1000)
         raise SearchPhaseExecutionError(
@@ -4097,6 +4437,51 @@ def execute_search_phase(
 
     search_api_response_time_ms = round((time.perf_counter() - search_started_at) * 1000)
     return search_result, search_api_response_time_ms, action, search_api_endpoint
+
+
+def choose_retry_search_query(rewrite_result: RewriteResult, current_query: str) -> str | None:
+    current_normalized = normalize_chat_text(current_query).strip()
+    for candidate in rewrite_result.search_queries:
+        normalized_candidate = normalize_chat_text(candidate).strip()
+        if not normalized_candidate or normalized_candidate == current_normalized:
+            continue
+        return normalized_candidate
+    return None
+
+
+def maybe_retry_search_phase(
+    payload: ChatRequest,
+    rewrite_result: RewriteResult,
+    *,
+    search_result: dict[str, object],
+    insufficient_context: bool,
+    current_search_time_ms: int,
+) -> tuple[dict[str, object], int, str | None]:
+    search_api_endpoint = (payload.search_api_endpoint or DEFAULT_EXTERNAL_SEARCH_API_ENDPOINT).strip()
+    if not search_api_endpoint:
+        return search_result, current_search_time_ms, None
+    if not insufficient_context:
+        return search_result, current_search_time_ms, None
+
+    retry_query = choose_retry_search_query(rewrite_result, str(search_result.get("query") or rewrite_result.rewritten_query))
+    if not retry_query:
+        return search_result, current_search_time_ms, None
+
+    logger.info(
+        "chat_search_retry_started original_query=%s retry_query=%s",
+        rewrite_result.rewritten_query,
+        retry_query,
+    )
+    retry_result, retry_time_ms, _, _ = execute_search_phase(
+        payload,
+        rewrite_result,
+        retrieval_query_override=retry_query,
+    )
+    merged_time_ms = current_search_time_ms + retry_time_ms
+    retry_detail = f"Initial answer was insufficient. Retried search with alternate query: {retry_query}."
+    existing_detail = search_result.get("detail") if isinstance(search_result.get("detail"), str) else None
+    retry_result["detail"] = " ".join(part for part in [existing_detail, retry_detail] if part)
+    return retry_result, merged_time_ms, retry_query
 
 
 def generate_grounded_answer_stream(payload: ChatRequest) -> StreamingResponse:
@@ -4335,6 +4720,60 @@ def generate_grounded_answer_stream(payload: ChatRequest) -> StreamingResponse:
 
         response_text = streamed_response_text
         insufficient_context, answer = parse_chat_completion(response_text)
+        if insufficient_context:
+            yield format_sse_event("answer_replace", {"content": CHAT_RETRY_ANSWER_TEXT})
+            try:
+                retry_search_result, retried_search_time_ms, retry_query = maybe_retry_search_phase(
+                    payload,
+                    rewrite_result,
+                    search_result=search_result,
+                    insufficient_context=True,
+                    current_search_time_ms=search_api_response_time_ms,
+                )
+                retry_hits = retry_search_result["hits"]
+                if retry_hits:
+                    retry_messages = build_answer_generation_messages(
+                        original_query=original_query,
+                        rewritten_query=str(retry_search_result["query"] or rewrite_result.rewritten_query),
+                        hits=retry_hits,
+                    )
+                    retry_response_text, retry_answer_model_id = build_answer_chat_completion(payload, retry_messages)
+                    retry_insufficient_context, retry_answer = parse_chat_completion(retry_response_text)
+                    retry_retrieved_chunks = retry_search_result["retrieved_chunks"]
+                    retry_search_evaluation = evaluate_retrieved_chunks(retry_retrieved_chunks)
+                    completed_payload = {
+                        **base_payload,
+                        "answer": retry_answer,
+                        "insufficient_context": retry_insufficient_context,
+                        "search_query": retry_search_result["query"],
+                        "executed_search_queries": retry_search_result["executed_queries"],
+                        "top_k": retry_search_result["top_k"],
+                        "hit_count": retry_search_result["hit_count"],
+                        "collection_name": retry_search_result["collection_name"],
+                        "embedding_provider": retry_search_result["embedding_provider"],
+                        "embedding_model": retry_search_result["embedding_model"],
+                        "rag_endpoint": retry_search_result["rag_endpoint"],
+                        "search_api_response_time_ms": retried_search_time_ms,
+                        "need_more_context": retry_search_evaluation.need_more_context,
+                        "search_evaluation": serialize_search_evaluation(retry_search_evaluation),
+                        "retrieved_chunks": retry_retrieved_chunks,
+                        "citations": build_chat_citations(retry_hits),
+                        "hits": retry_hits,
+                        "chat_model": retry_answer_model_id,
+                        "answer_model": retry_answer_model_id,
+                        "detail": retry_search_result.get("detail"),
+                    }
+                    if retry_query:
+                        completed_payload["answer"] = retry_answer
+                    yield format_sse_event("done", completed_payload)
+                    return
+            except (HTTPException, SearchPhaseExecutionError) as exc:
+                logger.warning(
+                    "chat_search_retry_failed query=%s rewrite_query=%s detail=%s",
+                    original_query,
+                    rewrite_result.rewritten_query,
+                    exc.detail if isinstance(exc, HTTPException) else exc.cause.detail,
+                )
         completed_payload = {
             **base_payload,
             "answer": answer,
@@ -4418,44 +4857,45 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
     search_evaluation = evaluate_retrieved_chunks(retrieved_chunks)
 
     if not hits:
-        return {
-            "status": "answered",
-            "query": original_query,
-            "interpreted_query": rewrite_result.rewritten_query,
-            "rewritten_query": rewrite_result.rewritten_query,
-            "search_queries": rewrite_result.search_queries,
-            "retrieved_chunks": retrieved_chunks,
-            "normalized_conversation": rewrite_result.normalized_conversation,
-            "last_customer_message": rewrite_result.last_customer_message,
-            "validation_reasons": rewrite_result.validation_reasons,
-            "rewrite_source": rewrite_result.rewrite_source,
-            "query_rewrite_model": rewrite_result.query_rewrite_model,
-            "intent": rewrite_result.intent,
-            "question_type": rewrite_result.question_type,
-            "entities": rewrite_result.entities,
-            "routing_hints": rewrite_result.routing_hints,
-            "search_query": search_result["query"],
-            "executed_search_queries": search_result["executed_queries"],
-            "top_k": search_result["top_k"],
-            "hit_count": 0,
-            "collection_name": search_result["collection_name"],
-            "embedding_provider": search_result["embedding_provider"],
-            "embedding_model": search_result["embedding_model"],
-            "rag_endpoint": search_result["rag_endpoint"],
-            "search_api_endpoint": search_api_endpoint or None,
-            "action": action,
-            "query_rewrite_time_ms": query_rewrite_time_ms,
-            "search_api_response_time_ms": search_api_response_time_ms,
-            "need_more_context": search_evaluation.need_more_context,
-            "search_evaluation": serialize_search_evaluation(search_evaluation),
-            "answer": "문서에서 충분한 근거를 찾지 못했습니다.",
-            "insufficient_context": True,
-            "citations": [],
-            "hits": [],
-            "chat_model": None,
-            "answer_model": answer_model_id,
-            "detail": search_result_detail,
-        }
+        if not hits:
+            return {
+                "status": "answered",
+                "query": original_query,
+                "interpreted_query": rewrite_result.rewritten_query,
+                "rewritten_query": rewrite_result.rewritten_query,
+                "search_queries": rewrite_result.search_queries,
+                "retrieved_chunks": retrieved_chunks,
+                "normalized_conversation": rewrite_result.normalized_conversation,
+                "last_customer_message": rewrite_result.last_customer_message,
+                "validation_reasons": rewrite_result.validation_reasons,
+                "rewrite_source": rewrite_result.rewrite_source,
+                "query_rewrite_model": rewrite_result.query_rewrite_model,
+                "intent": rewrite_result.intent,
+                "question_type": rewrite_result.question_type,
+                "entities": rewrite_result.entities,
+                "routing_hints": rewrite_result.routing_hints,
+                "search_query": search_result["query"],
+                "executed_search_queries": search_result["executed_queries"],
+                "top_k": search_result["top_k"],
+                "hit_count": 0,
+                "collection_name": search_result["collection_name"],
+                "embedding_provider": search_result["embedding_provider"],
+                "embedding_model": search_result["embedding_model"],
+                "rag_endpoint": search_result["rag_endpoint"],
+                "search_api_endpoint": search_api_endpoint or None,
+                "action": action,
+                "query_rewrite_time_ms": query_rewrite_time_ms,
+                "search_api_response_time_ms": search_api_response_time_ms,
+                "need_more_context": search_evaluation.need_more_context,
+                "search_evaluation": serialize_search_evaluation(search_evaluation),
+                "answer": "문서에서 충분한 근거를 찾지 못했습니다.",
+                "insufficient_context": True,
+                "citations": [],
+                "hits": [],
+                "chat_model": None,
+                "answer_model": answer_model_id,
+                "detail": search_result_detail,
+            }
 
     messages = build_answer_generation_messages(
         original_query=original_query,
@@ -4467,6 +4907,41 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         messages,
     )
     insufficient_context, answer = parse_chat_completion(response_text)
+    if insufficient_context:
+        try:
+            retry_search_result, search_api_response_time_ms, retry_query = maybe_retry_search_phase(
+                payload,
+                rewrite_result,
+                search_result=search_result,
+                insufficient_context=True,
+                current_search_time_ms=search_api_response_time_ms,
+            )
+            retry_hits = retry_search_result["hits"]
+            if retry_hits:
+                retry_retrieved_chunks = retry_search_result["retrieved_chunks"]
+                retry_search_evaluation = evaluate_retrieved_chunks(retry_retrieved_chunks)
+                retry_messages = build_answer_generation_messages(
+                    original_query=original_query,
+                    rewritten_query=str(retry_search_result["query"] or rewrite_result.rewritten_query),
+                    hits=retry_hits,
+                )
+                retry_response_text, answer_model_id = build_answer_chat_completion(
+                    payload,
+                    retry_messages,
+                )
+                insufficient_context, answer = parse_chat_completion(retry_response_text)
+                search_result = retry_search_result
+                hits = retry_hits
+                retrieved_chunks = retry_retrieved_chunks
+                search_result_detail = retry_search_result.get("detail") if isinstance(retry_search_result.get("detail"), str) else search_result_detail
+                search_evaluation = retry_search_evaluation
+        except (HTTPException, SearchPhaseExecutionError) as exc:
+            logger.warning(
+                "chat_search_retry_failed query=%s rewrite_query=%s detail=%s",
+                original_query,
+                rewrite_result.rewritten_query,
+                exc.detail if isinstance(exc, HTTPException) else exc.cause.detail,
+            )
 
     return {
         "status": "answered",

@@ -9,7 +9,6 @@ Users can:
 - Search indexed chunks based on uploaded documents
 - Generate grounded answers from retrieved chunks on `/chat`
 - Inspect retrieved source chunks and citations on `/chat`
-- View evaluation page skeleton for later RAGAS integration
 
 ## Scope
 This is an MVP focused on core functionality only.
@@ -22,7 +21,6 @@ Included:
 - Embedding + vector search
 - Retrieval + grounded answer UI
 - Source citation
-- Evaluation page skeleton
 
 Excluded:
 - OCR
@@ -30,18 +28,18 @@ Excluded:
 - Production-grade embedding model integration
 - Authentication
 - Monitoring dashboard
+- Evaluation page
+- RAGAS integration
 
 ## Main Pages
 - `/upload` : upload documents
 - `/chat` : run retrieval queries and inspect source chunks
-- `/evaluation` : evaluation page skeleton
 
 ## Tech Stack
 - Frontend: Next.js 15 + React 19 + TypeScript + Tailwind CSS
 - Backend: FastAPI + Uvicorn
 - Parsing: Docling, PyMuPDF, python-docx, antiword, openpyxl, xlrd
 - Vector store: Chroma
-- Evaluation: RAGAS
 
 ## Core Flow
 Upload → Parse → Chunk → Embed → Store → Retrieve
@@ -81,6 +79,13 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - `/chat` Question 바로 아래에서 `LLM Question` (`rewritten_query`)을 확인할 수 있다
 - External RAG API request/response schema is not finalized yet, so `/chat` avoids depending on request tuning controls in the main UI
 - Current backend can still return retrieval-backed answers and citations while the external contract is pending
+- Query rewrite quality was strengthened for long consultation transcripts so the last customer intent is prioritized over greeting, identity-check, and counselor guidance text
+- Statistical and numeric queries now preserve target, year, and metric terms such as `평균`, `인당`, `비율`, `건수`, `금액`, and `진료비`, instead of drifting into coverage or claim wording
+- Query rewrite runtime still loads only `docs/query-rewrite-spec.md` section `11. LLM System Prompt`, and that block was updated together with the document body
+- `/chat` now enriches rewrite output with `question_type`, `entities`, and `routing_hints` more consistently for statistical queries
+- Search API payload is now aligned to the documented `/api/search` spec and uses spec-safe fields such as `filters.year`, normalized `chunk_types`, `return_format=json`, and `keyword_vector_weight=0.3`
+- Backend `app.log` now records sanitized `llm_call` and `search_api_call` entries so runtime endpoint/model/payload usage can be traced without exposing API keys
+- When answer generation returns `Insufficient context`, `/chat` can retry the Search API once with an alternate rewritten query candidate, and streaming UI temporarily shows `재 시도 중입니다.`
 - Upload list supports file-level delete of upload + index
 - Upload list shows per-file indexing status and chunk count
 - Upload list now refreshes immediately even when parse/chunk/index fails after upload
@@ -101,10 +106,11 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - `Docling(md)` parse 성공 시 upload list에서 `markdown_path`를 함께 확인할 수 있다
 - 2026-04-03 기준 현재 서버와 RAG 서버의 핵심 소스/문서 해시가 일치함을 확인했다
 - 2026-04-09 기준 GitHub `main`, 현재 서버, RAG 서버 핵심 소스/문서 동기화를 다시 맞췄다
+- 2026-04-21 기준 query rewrite 통계형 질의 보강, `/api/search` 스펙 정합화, `llm_call`/`search_api_call` 로깅, `Insufficient context` 1회 재시도 흐름을 문서/코드에 함께 반영했다
 - Parse success/failure history UI는 구조상 노출되며, duplicate upload와 과거 실패 이력이 함께 보일 수 있다
 - RAG 서버 테스트용 upload/parse/chunk/index 데이터는 2026-03-29 기준 초기화 완료 상태다
 - Retrieval-backed answer generation is connected in the current backend
-- Retrieval question-set based answer quality review and evaluation execution are deferred behind external RAG contract definition
+- Retrieval question-set based answer quality review is deferred behind external RAG contract definition
 - Current PDF garbled detection can still miss cases where both the parsed text and the reference extraction are broken in the same way
 
 ## Screen Test Rule

@@ -332,6 +332,27 @@ export default function ChatPage() {
           continue;
         }
 
+        if (eventName === "answer_replace" && parsedData && typeof parsedData === "object") {
+          const content = (parsedData as { content?: unknown }).content;
+          if (typeof content === "string") {
+            if (answerFlushTimer !== null) {
+              window.clearTimeout(answerFlushTimer);
+              answerFlushTimer = null;
+            }
+            pendingAnswerChunk = "";
+            streamedAnswer = content;
+            startTransition(() => {
+              setStreamingAnswer(content);
+              setResult((previous) => ({
+                ...(previous ?? {}),
+                answer: content,
+                insufficient_context: false,
+              }));
+            });
+          }
+          continue;
+        }
+
         if (eventName === "error" && parsedData && typeof parsedData === "object") {
           const detail = (parsedData as { detail?: unknown }).detail;
           throw new Error(typeof detail === "string" && detail ? detail : "Chat stream failed.");

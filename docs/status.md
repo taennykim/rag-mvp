@@ -26,6 +26,13 @@
 - 2026-04-14 기준 `Step 6` Search Result Evaluation rule-based 1차 구현을 추가했고, `/chat` 응답에 `need_more_context`와 `search_evaluation`을 포함하도록 반영했다.
 - 2026-04-14 기준 query rewrite 운영 스펙을 `docs/query-rewrite-spec.md`로 분리했고, backend prompt가 이 문서를 읽어 `rewritten_query` 기준에 반영하도록 연결했다.
 - 2026-04-20 기준 query rewrite system prompt는 `docs/query-rewrite-spec.md` 전체가 아니라 `11. LLM System Prompt` 블록만 로딩하도록 정리했다.
+- 2026-04-21 기준 query rewrite는 긴 상담 대화에서도 마지막 고객의 실질 질문을 우선 해석하고, 통계/수치형 질의의 연도/지표/측정 대상을 보존하도록 보강했다.
+- 2026-04-21 기준 `docs/query-rewrite-spec.md` 본문과 `11. LLM System Prompt` 블록을 함께 수정해 실제 runtime prompt와 문서 규칙이 다시 일치하도록 정리했다.
+- 2026-04-21 기준 Standalone Search Query validation에 통계/수치형 의미 보존 규칙을 추가해 `평균`, `인당`, `비율`, `건수`, `금액`, `진료비`, 연도 표현이 rewrite에서 사라지거나 약관/청구/보장 질의로 오염되는 경우를 더 강하게 걸러내도록 보강했다.
+- 2026-04-21 기준 rewrite 결과의 `question_type`, `entities`, `routing_hints`를 통계형 질의에 맞게 더 안정적으로 채우고, `year`, `metric`, `procedure`, `target`, `topic`, `statistics_table/statistics_report` 계열 힌트를 Search 단계로 넘기도록 정리했다.
+- 2026-04-21 기준 외부 Search API payload는 `docs/retrieval_api_design.md` / `docs/external-retrieval-api.md` 스펙 기준으로만 구성하도록 재정렬했고, `/api/search`에는 비스펙 필드 대신 `filters.year`, 정규화된 `chunk_types`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하도록 수정했다.
+- 2026-04-21 기준 backend `app.log`에 API key를 제외한 `llm_call`, `search_api_call` 로그를 남겨 실제 사용된 endpoint/model/payload를 추적할 수 있게 했다.
+- 2026-04-21 기준 answer generation 결과가 `Insufficient context`이면 Search API를 1회 더 호출하는 재시도 흐름을 추가했고, stream 응답 중에는 `재 시도 중입니다.`를 answer 영역에 먼저 표시하도록 반영했다.
 - 2026-04-14 기준 `/chat` main UI는 `rewritten_query`만 노출하도록 단순화했고, 내부 Search 후보와 rerank 기준도 `rewritten_query` 우선으로 정리했다.
 - 2026-04-15 기준 query rewrite에서 모호한 마지막 고객 발화를 최근 고객 발화 묶음으로 보강하고, `종신보험` 계열 문의의 보장 축 복원 규칙을 추가했다.
 - 2026-04-15 기준 개발자 제공 임시 Search API `http://10.160.98.123:8000/api/search`를 `/chat` 외부 검색 endpoint로 사용할 수 있도록 `/api/search` payload와 `results` 응답 normalization을 반영했다.
@@ -77,7 +84,7 @@
   - 2026-04-08 기준 RAG 서버 frontend를 `next build + next start`로 다시 올리고 `/upload` 응답 `200`을 확인했다
   - 2026-04-08 기준 RAG 서버 backend를 `.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000`으로 다시 올리고 `/health` 응답 `200`을 확인했다
 - frontend:
-  - `/upload`, `/chat`, `/evaluation` 페이지 구성 완료
+  - `/upload`, `/chat` 페이지 구성 완료
   - `/` -> `/upload` redirect 완료
   - `/upload`에서 파일 업로드, default file 업로드, parsing test, parsing quality check 가능
   - `/upload` 목록에서 파일별 indexing 상태와 chunk 수 표시 가능
@@ -189,6 +196,7 @@
   - 2026-04-07 기준 RAG 서버 `default-files`로 대표 문서 3건을 다시 업로드하고 `chunk_count=103` 상태까지 복구 완료
   - 2026-04-09 기준 GitHub `main`, 현재 서버, RAG 서버 핵심 소스/문서 해시 재일치 확인 완료
   - 2026-04-20 기준 현재 서버와 RAG 서버 대상 파일 해시 재일치 및 GitHub `main` push 완료
+  - 2026-04-21 기준 RAG 서버 backend를 다시 재기동했고 `127.0.0.1:8000/health` 응답 `200`을 재확인했다.
 
 ## 4. 현재 동작 기준
 - frontend 실행 기준:
@@ -294,7 +302,6 @@
   - `Docling` vs fallback parser 비교 결과를 문서화
 - 3차 우선순위:
   - 답변에 표시할 source / chunk reference / section_header / page_number 형식 고정
-  - evaluation dataset 초안 작성 및 `/evaluation` 실제 결과 화면 연결
 
 ## 8. 이슈 및 메모
 - `Docling` 설치 시 모델/torch 의존성 때문에 설치 시간이 길고 용량 사용량이 크다.

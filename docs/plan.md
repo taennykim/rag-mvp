@@ -15,7 +15,6 @@
 8. top 3 retrieval과 source 반환
 9. grounded answer 생성
 10. chat UI 연결
-11. RAGAS 평가 데이터와 결과 UI 추가
 
 ## 3. 현재 진행 상태
 - 현재 단계: external RAG contract 확정 전 `/chat` shell 정리 진행중 / PDF garbled text 감지와 parser 기본 정책 정리는 반영했고 false negative 보정이 남아 있음
@@ -42,6 +41,11 @@
 - 현재 단계: RAG 서버에서 호출 검증을 통과한 `gpt-4.1-mini`를 Query Rewrite LLM 선택지에 추가함
 - 현재 단계: Query Rewrite LLM과 Answer LLM 선택 옵션을 `Default`, `GPT-4.1 mini`, `GPT-4o`, `Custom` 동일 목록으로 통일했고, 각 selector는 독립 동작으로 유지함
 - 현재 단계: Query Rewrite LLM과 Answer LLM 모두 `Custom` 옵션을 지원하고, `LLM endpoint`, `LLM model name`, optional `API Key`, `Temperature`, `Top-K`, `Max Tokens`를 받아 OpenAI-compatible endpoint로 호출할 수 있게 정리함
+- 현재 단계: 긴 상담 대화에서도 마지막 고객 질문을 우선 복원하고, 통계/수치형 질의의 연도/지표/측정 대상이 rewrite에서 유지되도록 query rewrite 규칙과 validation을 보강함
+- 현재 단계: rewrite 결과의 `question_type`, `entities`, `routing_hints`를 통계형 질의 기준으로 더 안정적으로 채우도록 enrichment를 보강함
+- 현재 단계: `/api/search` payload는 `retrieval_api_design.md` 스펙에 맞춰 `filters.year`, 정규화된 `chunk_types`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하도록 정리함
+- 현재 단계: backend `app.log`에 API key를 제외한 `llm_call`, `search_api_call` 로그를 남기도록 정리함
+- 현재 단계: answer generation이 `Insufficient context`를 반환하면 Search API를 1회 재호출하는 retry 흐름과 stream용 `재 시도 중입니다.` 표시를 반영함
 - 현재 단계: `/chat` Custom 입력 라벨 `Custom model name`을 `LLM model name`으로 통일했고 validation/에러 문구도 동일 용어로 맞춤
 - 현재 단계: `/chat` Evidence 섹션은 데이터 유지 상태로 화면에서만 숨기도록 처리함
 - 현재 단계: `/chat` answer 출력은 `stream=true` 기반 SSE(`meta/delta/done`)로 실시간 렌더링하도록 반영함
@@ -128,12 +132,12 @@
   - garbled detection false negative 보정
   - retrieval 질문 세트 기준 `/chat` answer/citation 품질 기록
   - `PDF` 기준 `Docling` vs `PyMuPDF` 품질 비교
-  - evaluation dataset / RAGAS / evaluation UI
 - 다음 우선 작업:
-  - 고객사 custom Query Rewrite / Answer endpoint가 준비되면 실제 `LLM endpoint` / `LLM model name` / `API Key` / `Temperature` / `Top-K` / `Max Tokens` 조합으로 호출 검증을 진행한다
+  - 고객사 custom Query Rewrite / Answer endpoint가 준비되면 실제 `LLM endpoint` / `LLM model name` / `API Key` 조합으로 호출 검증을 진행한다
   - RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI, 단계별 응답시간, 외부 Search API 결과 표시를 확인한다
   - RAG 서버 브라우저에서 Query Rewrite LLM / Answer LLM의 `Custom` 선택 시 조건부 입력창 노출과 validation 메시지를 확인한다
   - Query Rewrite LLM 기본값 `gpt-4o-mini` 기준 브라우저 동작을 확인한다
+  - 통계형 질의에서 Search API 재시도가 실제 recall 개선으로 이어지는지 케이스별로 기록한다
   - parser 운영 정책은 `Legacy auto` 기본, `Docling` 비교 검증용, `Docling(md)` Markdown 산출물 생성용으로 유지한다
   - `Docling` PDF 변환 장시간 실행 원인을 추가 확인하되, 현재 PDF 기본 parser 정책은 `Legacy auto / PyMuPDF 우선`으로 유지한다
   - RAG 서버 UI 확인 전에는 먼저 frontend build 유무와 `3000/8000` runtime 상태를 다시 점검한다
