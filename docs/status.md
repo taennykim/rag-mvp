@@ -30,7 +30,7 @@
 - 2026-04-21 기준 `docs/query-rewrite-spec.md` 본문과 `11. LLM System Prompt` 블록을 함께 수정해 실제 runtime prompt와 문서 규칙이 다시 일치하도록 정리했다.
 - 2026-04-21 기준 Standalone Search Query validation에 통계/수치형 의미 보존 규칙을 추가해 `평균`, `인당`, `비율`, `건수`, `금액`, `진료비`, 연도 표현이 rewrite에서 사라지거나 약관/청구/보장 질의로 오염되는 경우를 더 강하게 걸러내도록 보강했다.
 - 2026-04-21 기준 rewrite 결과의 `question_type`, `entities`, `routing_hints`를 통계형 질의에 맞게 더 안정적으로 채우고, `year`, `metric`, `procedure`, `target`, `topic`, `statistics_table/statistics_report` 계열 힌트를 Search 단계로 넘기도록 정리했다.
-- 2026-04-21 기준 외부 Search API payload는 `docs/retrieval_api_design.md` / `docs/external-retrieval-api.md` 스펙 기준으로만 구성하도록 재정렬했고, `/api/search`에는 `filters.year`, `filters.document_type`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하도록 수정했다.
+- 2026-04-21 기준 외부 Search API payload는 `docs/retrieval_api_design.md` / `docs/external-retrieval-api.md` 스펙 기준으로만 구성하도록 재정렬했고, `/api/search`에는 `filters.document_type`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하도록 수정했다.
 - 2026-04-22 기준 query rewrite 결과와 metadata / question_type / document_hint rule을 함께 사용해 Search API `filters.document_type`을 `policy`, `calculation_guide`, `business_guide`, `statistics_table` enum으로 정규화하도록 반영했다.
 - 2026-04-22 기준 외부 Search API 응답에 `results`와 `hits`가 함께 있을 때 `/chat`은 최종 반환 리스트인 `results`를 우선 사용하도록 보정했고, `final_k=10`이면 answer generation과 `Reference context` 모두 10개 기준으로 맞추도록 정리했다.
 - 2026-04-22 기준 외부 Search API 요청도 `docs/retrieval_api_design.md` 계약에 맞춰 `top_k`와 `final_k`를 분리해 보내도록 수정했고, 현재 `/chat` 기본값은 `top_k=30`, `final_k=10`으로 맞췄다. 내부 candidate size 규칙 `max(20, 2 * request.top_k)`는 Search API 내부 구현에 맡기도록 정리했다.

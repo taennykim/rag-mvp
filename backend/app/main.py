@@ -4449,13 +4449,8 @@ def build_external_search_payload(
     stored_name: str | None,
     rewrite_result: RewriteResult | None = None,
 ) -> dict[str, object]:
-    entities = dict(rewrite_result.entities) if rewrite_result else {}
-    routing_hints = dict(rewrite_result.routing_hints) if rewrite_result else {}
     document_type_filters = list(rewrite_result.document_type_filters) if rewrite_result else []
-    year = (entities.get("year") or routing_hints.get("year") or "").strip()
     filters: dict[str, object] = {}
-    if year:
-        filters["year"] = [year]
     if document_type_filters:
         filters["document_type"] = document_type_filters
 

@@ -137,7 +137,8 @@ class AnswerContextMetadataTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(payload["filters"], {"year": ["2024"], "document_type": ["statistics_table"]})
+        self.assertEqual(payload["filters"], {"document_type": ["statistics_table"]})
+        self.assertNotIn("year", payload["filters"])
         self.assertNotIn("chunk_types", payload)
 
 

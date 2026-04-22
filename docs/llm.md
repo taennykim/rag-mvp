@@ -38,7 +38,7 @@
 - `/chat` Search API endpoint는 backend 고정값 `http://10.160.98.123:8000/api/search`를 사용하고 화면에서는 입력받지 않는다.
 - `/chat` Search API 호출 시 `top_k=30`, `final_k=10` 기준을 사용한다.
 - `/chat` answer generation은 외부 Search API 응답의 최종 `results` 리스트를 context 기준으로 사용하므로, `final_k=10`이면 10개 context를 모두 조합해 답변한다.
-- `/chat` Search API payload는 현재 `filters.year`, `filters.document_type`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하며 `chunk_types`는 보내지 않는다.
+- `/chat` Search API payload는 현재 `filters.document_type`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하며 `chunk_types`와 `filters.year`는 보내지 않는다.
 - `filters.document_type`은 query rewrite 결과와 metadata / question_type / document_hint rule을 함께 사용해 `policy`, `calculation_guide`, `business_guide`, `statistics_table` enum으로 정규화한다.
 - `/chat`은 answer 생성 시 `stream=true`로 SSE `delta`를 받아 `Response` 영역에 실시간으로 누적 출력할 수 있다.
 - `/chat`은 query rewrite 결과도 SSE `rewrite_delta/rewrite_done`로 받아 `LLM Question` 영역에 실시간으로 표시할 수 있다.
