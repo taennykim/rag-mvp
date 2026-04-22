@@ -191,8 +191,16 @@
 - [x] query rewrite validation에 연도/수치 키워드 의미 보존 규칙 추가
 - [x] rewrite 결과의 `question_type` / `entities` / `routing_hints` 보강
 - [x] `/api/search` payload를 `retrieval_api_design.md` 스펙 기준 필드만 사용하도록 정리
+- [x] query rewrite 결과 기준 `filters.document_type`을 `retrieval_api_design.md` enum으로 정규화해 `/api/search` payload에 반영
+- [x] `/chat` Search API 호출 기본값 `top_k=30`, `final_k=10` 반영
+- [x] 외부 Search API 응답에서 `results`를 answer/citation/context 기준으로 우선 사용해 `final_k=10`을 실제 answer generation에 반영
+- [x] `/chat` 외부 Search API 요청을 `retrieval_api_design.md` 기준 `top_k` / `final_k` 계약에 맞춰 재정렬
 - [x] `llm_call` / `search_api_call` 로그 추가(API key 비노출)
 - [x] `Insufficient context` 응답 시 Search API 1회 재시도와 stream `재 시도 중입니다.` 표시 추가
+- [x] Search hit / `retrieved_chunks` / answer prompt에 `document_name`, `header_path`, `content` metadata 포함 및 fallback 처리
+- [x] answer prompt metadata-aware context formatting 테스트 추가
+- [x] Search hit / `retrieved_chunks`에 `rrf_score` 유지 및 `Reference context` 정렬 반영
+- [x] 상품명/보험명 mismatch 문서를 Answer prompt 직전에 제외하는 필터 추가
 - [ ] Step 7. Need More Context 분기 (`추후 개발`)
 - [ ] Step 8. Lookup API 호출 (`추후 개발`)
 - [ ] Step 9. Expanded Context 병합 (`추후 개발`)

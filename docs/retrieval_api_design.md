@@ -43,8 +43,8 @@
 | 파라미터 | 타입 | 필수 | 예시 | 설명 |
 |---|---|---|---|---|
 | query | string | Y | `"신한유니버설종신보험 월대체공제 기준"` | 사용자 질의 |
-| top_k | integer | N | `20` | 1차 후보 chunk 개수 |
-| final_k | integer | N | `5` | 최종 반환 chunk 개수, rerank 적용 여부와 무관하게 적용 |
+| top_k | integer | N | `30` | 1차 후보 chunk 개수 |
+| final_k | integer | N | `10` | 최종 반환 chunk 개수, rerank 적용 여부와 무관하게 적용 |
 | use_rerank | boolean | N | `true` | rerank 적용 여부 |
 | document_ids | array[string] | N | `["doc_1001"]` | 특정 문서 범위 제한, 이전 검색 결과에서 특정 문서가 유력해졌을 때 사용 |
 | filters | object | N | `{"document_type":["policy"]}` | metadata 필터 |
@@ -267,6 +267,7 @@
 | calculation_guide | 보험료/해약환급금 산출방법서 |
 | business_guide | 업무처리/가이드 문서 |
 | statistics_table | 표/통계형 문서 |
+| case_law | 판례 |
 
 #### metadata 운용 원칙
 

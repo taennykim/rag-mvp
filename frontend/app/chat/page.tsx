@@ -5,16 +5,21 @@ import { startTransition, useDeferredValue, useState } from "react";
 type RetrievalHit = {
   id: string;
   text: string;
+  content?: string;
   distance?: number;
+  rrf_score?: number;
   rerank_score?: number;
+  score?: number;
   document_id?: string;
   stored_name?: string;
   matched_queries?: string[];
   source?: string;
   original_name?: string;
+  document_name?: string;
   chunk_index?: number;
   page_number?: number;
   section_header?: string;
+  header_path?: string;
   preview?: string;
 };
 
@@ -88,6 +93,7 @@ function buildEvidenceMetaParts(item: {
   chunk_index?: number;
   page_number?: number;
   section_header?: string;
+  header_path?: string;
 }) {
   const parts: string[] = [];
   if (typeof item.chunk_index === "number") {
@@ -96,8 +102,9 @@ function buildEvidenceMetaParts(item: {
   if (typeof item.page_number === "number") {
     parts.push(`page ${item.page_number}`);
   }
-  if (item.section_header?.trim()) {
-    parts.push(item.section_header.trim());
+  const sectionLabel = item.header_path?.trim() || item.section_header?.trim();
+  if (sectionLabel) {
+    parts.push(sectionLabel);
   }
   return parts;
 }
@@ -445,7 +452,8 @@ export default function ChatPage() {
         body: JSON.stringify({
           query,
           action: "search",
-          final_k: 5,
+          top_k: 30,
+          final_k: 10,
           query_rewrite_model: queryRewriteModel || null,
           query_rewrite_base_url: isCustomQueryRewriteModel ? queryRewriteBaseUrl.trim() : null,
           query_rewrite_custom_model: isCustomQueryRewriteModel ? queryRewriteCustomModel.trim() : null,
@@ -502,7 +510,7 @@ export default function ChatPage() {
   }
 
   function renderHitLabel(hit: RetrievalHit) {
-    return hit.source ?? hit.original_name ?? "Unknown source";
+    return hit.document_name ?? hit.source ?? hit.original_name ?? "Unknown source";
   }
 
   const answerState = isStreamingAnswer ? "Streaming" : formatAnswerState(result);
@@ -746,7 +754,9 @@ export default function ChatPage() {
                               <span key={part}>{part}</span>
                             ))}
                             {typeof hit.distance === "number" ? <span>distance {hit.distance.toFixed(4)}</span> : null}
+                            {typeof hit.rrf_score === "number" ? <span>rrf {hit.rrf_score.toFixed(4)}</span> : null}
                             {typeof hit.rerank_score === "number" ? <span>rerank {hit.rerank_score.toFixed(4)}</span> : null}
+                            {typeof hit.score === "number" ? <span>score {hit.score.toFixed(4)}</span> : null}
                           </div>
                         </div>
                       </div>

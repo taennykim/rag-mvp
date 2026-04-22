@@ -149,7 +149,8 @@ DEFAULT_QUERY_REWRITE_MODEL = "gpt-4o-mini"
 DEFAULT_ANSWER_MODEL = "gpt-4o"
 CUSTOM_QUERY_REWRITE_MODEL = "custom"
 AZURE_OPENAI_EMBEDDING_BATCH_SIZE = 32
-DEFAULT_CHAT_TOP_K = 5
+DEFAULT_CHAT_TOP_K = 30
+DEFAULT_CHAT_FINAL_K = 10
 DEFAULT_CHAT_TEMPERATURE = 0.0
 DEFAULT_CHAT_TOP_P = 0.9
 DEFAULT_CHAT_MAX_TOKENS = 700
@@ -164,6 +165,10 @@ QUERY_REWRITE_SPEC_PATH = BASE_DIR.parent / "docs" / "query-rewrite-spec.md"
 ANSWER_GENERATION_SPEC_PATH = BASE_DIR.parent / "docs" / "answer-generation-spec.md"
 SEARCH_EVAL_MIN_TOP_CHUNK_TEXT_LENGTH = 180
 SEARCH_EVAL_MULTI_HIT_SAME_DOCUMENT_THRESHOLD = 2
+UNKNOWN_DOCUMENT_NAME = "Unknown document"
+UNKNOWN_HEADER_PATH = "Unknown section"
+EMPTY_CONTENT_PLACEHOLDER = "[no content]"
+UNKNOWN_RRF_SCORE: float | None = None
 SEARCH_EVAL_CONTEXT_KEYWORDS: tuple[str, ...] = (
     "단,",
     "예외",
@@ -216,8 +221,39 @@ POLICY_OR_CLAIM_KEYWORDS: tuple[str, ...] = (
 )
 STATISTICS_DOCUMENT_HINTS: tuple[str, ...] = ("statistics_table", "statistics_report")
 STATISTICS_ROUTING_CHUNK_TYPES: tuple[str, ...] = ("statistics_table", "statistics_report")
+SEARCH_DOCUMENT_TYPES: tuple[str, ...] = (
+    "policy",
+    "calculation_guide",
+    "business_guide",
+    "statistics_table",
+)
+DOCUMENT_HINT_TO_DOCUMENT_TYPE: dict[str, str] = {
+    "terms": "policy",
+    "pricing_method": "calculation_guide",
+    "change_process": "business_guide",
+    "statistics_table": "statistics_table",
+    "statistics_report": "statistics_table",
+}
 YEAR_TOKEN_PATTERN = re.compile(r"(?<!\\d)((?:19|20)\\d{2})\\s*년?")
 PROCEDURE_TOKEN_PATTERN = re.compile(r"([0-9A-Za-z가-힣]+(?:\\s*[0-9A-Za-z가-힣]+){0,2}\\s*수술)")
+PRODUCT_QUERY_CANDIDATE_PATTERN = re.compile(r"([0-9A-Za-z가-힣()_-]{4,80}?)(?:에서|의|은|는|이|가|도|를|을|과|와|로|으로)")
+PRODUCT_SUFFIX_CANDIDATE_PATTERN = re.compile(r"([0-9A-Za-z가-힣()_-]{4,80}?(?:보험|공제|플랜|케어))")
+QUOTED_PRODUCT_PATTERN = re.compile(r"[\"'“”‘’]([^\"'“”‘’]{4,80})[\"'“”‘’]")
+PRODUCT_DOC_STOPWORDS: tuple[str, ...] = (
+    "약관",
+    "보통약관",
+    "특별약관",
+    "산출방법서",
+    "사업방법서",
+    "상품요약서",
+    "요약서",
+    "안내",
+    "청약서",
+    "상품설명서",
+    "설명서",
+    "template",
+    "sample",
+)
 
 
 def load_runtime_env_file() -> None:
@@ -891,6 +927,39 @@ def normalize_external_search_chunk_types(raw_chunk_types: list[str]) -> list[st
         seen.add(chunk_type)
         unique_chunk_types.append(chunk_type)
     return unique_chunk_types
+
+
+def normalize_search_document_type(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    lowered = value.strip().lower()
+    if not lowered:
+        return None
+
+    alias_map = {
+        "policy": "policy",
+        "terms": "policy",
+        "약관": "policy",
+        "규정": "policy",
+        "calculation_guide": "calculation_guide",
+        "pricing_method": "calculation_guide",
+        "산출방법서": "calculation_guide",
+        "보험료/해약환급금 산출방법서": "calculation_guide",
+        "business_guide": "business_guide",
+        "change_process": "business_guide",
+        "업무가이드": "business_guide",
+        "업무처리": "business_guide",
+        "guide": "business_guide",
+        "statistics_table": "statistics_table",
+        "statistics_report": "statistics_table",
+        "statistics": "statistics_table",
+        "통계": "statistics_table",
+    }
+    normalized = alias_map.get(lowered, lowered)
+    if normalized in SEARCH_DOCUMENT_TYPES:
+        return normalized
+    return None
 
 
 def validate_standalone_search_query(
@@ -2129,7 +2198,7 @@ class ChatMetadata(BaseModel):
 class ChatRequest(BaseModel):
     query: str
     top_k: int = DEFAULT_CHAT_TOP_K
-    final_k: int = DEFAULT_CHAT_TOP_K
+    final_k: int = DEFAULT_CHAT_FINAL_K
     stored_name: str | None = None
     document_id: str | None = None
     section_hint: str | None = None
@@ -2152,6 +2221,7 @@ class RewriteResult(BaseModel):
     original_query: str
     rewritten_query: str
     search_queries: list[str] = Field(default_factory=list)
+    document_type_filters: list[str] = Field(default_factory=list)
     query_rewrite_model: str | None = None
     intent: str | None = None
     question_type: str | None = None
@@ -2187,6 +2257,15 @@ class SearchPhaseExecutionError(Exception):
         self.action = action
         self.search_api_endpoint = search_api_endpoint
         self.response_time_ms = response_time_ms
+
+
+def resolve_chat_search_limits(payload: ChatRequest) -> tuple[int, int]:
+    requested_top_k = max(1, int(payload.top_k or 0))
+    requested_final_k = max(1, int(payload.final_k or 0))
+
+    resolved_final_k = max(DEFAULT_CHAT_FINAL_K, requested_final_k)
+    resolved_top_k = max(DEFAULT_CHAT_TOP_K, requested_top_k, resolved_final_k)
+    return resolved_top_k, resolved_final_k
 
 
 def serialize_search_evaluation(result: SearchEvaluationResult) -> dict[str, object]:
@@ -3076,9 +3155,12 @@ def build_retrieval_hits(result: dict[str, object]) -> list[dict[str, object]]:
             {
                 "id": item_id,
                 "text": document,
+                "contents": document,
+                "score": metadata.get("score"),
                 "distance": distance,
                 "stored_name": metadata.get("stored_name"),
                 "original_name": metadata.get("original_name"),
+                "document_name": metadata.get("original_name") or metadata.get("source") or metadata.get("stored_name"),
                 "source": metadata.get("source"),
                 "chunk_index": metadata.get("chunk_index"),
                 "text_length": metadata.get("text_length"),
@@ -3086,6 +3168,7 @@ def build_retrieval_hits(result: dict[str, object]) -> list[dict[str, object]]:
                 "end_char": metadata.get("end_char"),
                 "page_number": metadata.get("page_number"),
                 "section_header": metadata.get("section_header"),
+                "header_path": metadata.get("section_header"),
                 "preview": metadata.get("preview"),
             }
         )
@@ -3094,6 +3177,10 @@ def build_retrieval_hits(result: dict[str, object]) -> list[dict[str, object]]:
 
 
 def normalize_retrieval_score(hit: dict[str, object]) -> float | None:
+    rrf_score = hit.get("rrf_score")
+    if isinstance(rrf_score, (int, float)):
+        return float(rrf_score)
+
     rerank_score = hit.get("rerank_score")
     if isinstance(rerank_score, (int, float)):
         return float(rerank_score)
@@ -3109,6 +3196,161 @@ def normalize_retrieval_score(hit: dict[str, object]) -> float | None:
     return None
 
 
+def normalize_product_comparison_text(text: str) -> str:
+    normalized = normalize_chat_text(text)
+    if not normalized:
+        return ""
+
+    normalized = re.sub(r"\.[A-Za-z0-9]+$", "", normalized)
+    for token in PRODUCT_DOC_STOPWORDS:
+        normalized = normalized.replace(token, " ")
+    normalized = re.sub(r"[_\-\[\]\(\)]+", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return re.sub(r"[^0-9A-Za-z가-힣]+", "", normalized).lower()
+
+
+def is_strong_product_candidate(text: str) -> bool:
+    normalized = normalize_chat_text(text)
+    if len(normalized) < 5:
+        return False
+    return contains_insurance_product_clues(normalized)
+
+
+def extract_product_name_candidates(*texts: str) -> list[str]:
+    raw_candidates: list[str] = []
+    for text in texts:
+        normalized = normalize_chat_text(text)
+        if not normalized:
+            continue
+
+        for pattern in (QUOTED_PRODUCT_PATTERN, PRODUCT_QUERY_CANDIDATE_PATTERN, PRODUCT_SUFFIX_CANDIDATE_PATTERN):
+            raw_candidates.extend(match.group(1).strip() for match in pattern.finditer(normalized) if match.group(1).strip())
+
+    unique_candidates: list[str] = []
+    seen: set[str] = set()
+    for candidate in raw_candidates:
+        normalized_candidate = normalize_product_comparison_text(candidate)
+        if not normalized_candidate or normalized_candidate in seen:
+            continue
+        if not is_strong_product_candidate(candidate):
+            continue
+        seen.add(normalized_candidate)
+        unique_candidates.append(candidate.strip())
+    return unique_candidates
+
+
+def build_similarity_ratio(left: str, right: str) -> float:
+    left_ngrams = build_character_ngrams(left)
+    right_ngrams = build_character_ngrams(right)
+    if not left_ngrams or not right_ngrams:
+        return 0.0
+    union = left_ngrams | right_ngrams
+    if not union:
+        return 0.0
+    return len(left_ngrams & right_ngrams) / len(union)
+
+
+def should_exclude_hit_for_product_mismatch(
+    *,
+    product_candidates: list[str],
+    document_name: str,
+) -> bool:
+    if not product_candidates:
+        return False
+
+    normalized_document_name = normalize_product_comparison_text(document_name)
+    if not normalized_document_name or not contains_insurance_product_clues(document_name):
+        return False
+
+    for candidate in product_candidates:
+        normalized_candidate = normalize_product_comparison_text(candidate)
+        if not normalized_candidate:
+            continue
+        if normalized_candidate in normalized_document_name or normalized_document_name in normalized_candidate:
+            return False
+        if build_similarity_ratio(normalized_candidate, normalized_document_name) >= 0.2:
+            return False
+
+    return True
+
+
+def get_hit_rrf_score(hit: dict[str, object]) -> float | None:
+    rrf_score = hit.get("rrf_score")
+    if isinstance(rrf_score, (int, float)):
+        return float(rrf_score)
+
+    scores = hit.get("scores")
+    if isinstance(scores, dict) and isinstance(scores.get("rrf_score"), (int, float)):
+        return float(scores["rrf_score"])
+
+    return UNKNOWN_RRF_SCORE
+
+
+def sort_hits_for_output(hits: list[dict[str, object]]) -> list[dict[str, object]]:
+    indexed_hits = [(index, hit) for index, hit in enumerate(hits) if isinstance(hit, dict)]
+
+    def key(item: tuple[int, dict[str, object]]) -> tuple[int, float, int, float, int, float, int]:
+        index, hit = item
+        rrf_score = get_hit_rrf_score(hit)
+        rerank_score = hit.get("rerank_score")
+        score = hit.get("score")
+        return (
+            0 if isinstance(rrf_score, (int, float)) else 1,
+            -float(rrf_score) if isinstance(rrf_score, (int, float)) else 0.0,
+            0 if isinstance(rerank_score, (int, float)) else 1,
+            -float(rerank_score) if isinstance(rerank_score, (int, float)) else 0.0,
+            0 if isinstance(score, (int, float)) else 1,
+            -float(score) if isinstance(score, (int, float)) else 0.0,
+            index,
+        )
+
+    return [hit for _, hit in sorted(indexed_hits, key=key)]
+
+
+def filter_hits_for_answer_generation(
+    *,
+    original_query: str,
+    rewritten_query: str,
+    hits: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    product_candidates = extract_product_name_candidates(original_query, rewritten_query)
+    if not product_candidates:
+        return hits
+
+    filtered_hits = [
+        hit for hit in hits
+        if not should_exclude_hit_for_product_mismatch(
+            product_candidates=product_candidates,
+            document_name=get_hit_document_name(hit),
+        )
+    ]
+    return filtered_hits
+
+
+def get_hit_document_name(hit: dict[str, object]) -> str:
+    return str(
+        hit.get("document_name")
+        or hit.get("original_name")
+        or hit.get("source")
+        or hit.get("stored_name")
+        or UNKNOWN_DOCUMENT_NAME
+    ).strip() or UNKNOWN_DOCUMENT_NAME
+
+
+def get_hit_header_path(hit: dict[str, object]) -> str:
+    return str(
+        hit.get("header_path")
+        or hit.get("section_header")
+        or hit.get("section")
+        or UNKNOWN_HEADER_PATH
+    ).strip() or UNKNOWN_HEADER_PATH
+
+
+def get_hit_contents(hit: dict[str, object]) -> str:
+    text = normalize_chat_text(str(hit.get("contents") or hit.get("text") or hit.get("content") or ""))
+    return text or EMPTY_CONTENT_PLACEHOLDER
+
+
 def build_standardized_retrieved_chunks(hits: list[dict[str, object]]) -> list[dict[str, object]]:
     standardized_chunks: list[dict[str, object]] = []
     seen_chunk_ids: set[str] = set()
@@ -3119,15 +3361,19 @@ def build_standardized_retrieved_chunks(hits: list[dict[str, object]]) -> list[d
             continue
         seen_chunk_ids.add(chunk_id)
 
-        text = normalize_chat_text(str(hit.get("text") or ""))
+        text = get_hit_contents(hit)
         if not text:
             continue
 
-        section = str(hit.get("section_header") or "").strip() or None
+        document_name = get_hit_document_name(hit)
+        header_path = get_hit_header_path(hit)
+        section = header_path
         document_id = (
             str(hit.get("stored_name") or "").strip()
+            or str(hit.get("document_id") or "").strip()
             or str(hit.get("source") or "").strip()
             or str(hit.get("original_name") or "").strip()
+            or document_name
             or None
         )
         score = normalize_retrieval_score(hit)
@@ -3138,6 +3384,9 @@ def build_standardized_retrieved_chunks(hits: list[dict[str, object]]) -> list[d
             "score": score,
             "section": section,
             "text": text,
+            "document_name": document_name,
+            "header_path": header_path,
+            "contents": text,
             "rank": rank,
         }
 
@@ -3145,6 +3394,14 @@ def build_standardized_retrieved_chunks(hits: list[dict[str, object]]) -> list[d
             value = hit.get(source_key)
             if value:
                 standardized_chunk[source_key] = value
+
+        rrf_score = get_hit_rrf_score(hit)
+        if isinstance(rrf_score, (int, float)):
+            standardized_chunk["rrf_score"] = float(rrf_score)
+
+        scores = hit.get("scores")
+        if isinstance(scores, dict):
+            standardized_chunk["scores"] = dict(scores)
 
         for numeric_key in ("distance", "rerank_score", "chunk_index", "page_number", "start_char", "end_char"):
             value = hit.get(numeric_key)
@@ -3260,9 +3517,11 @@ def build_lexical_fallback_hits(
                 hit = {
                     "id": f"{path.name}:{int(chunk.get('chunk_index', 0))}",
                     "text": str(chunk.get("text") or ""),
+                    "contents": str(chunk.get("text") or ""),
                     "distance": 0.0,
                     "stored_name": path.name,
                     "original_name": chunking_result.get("original_name"),
+                    "document_name": chunking_result.get("original_name") or path.name,
                     "source": chunk.get("source") or chunking_result.get("original_name"),
                     "chunk_index": chunk.get("chunk_index"),
                     "text_length": chunk.get("text_length"),
@@ -3270,6 +3529,7 @@ def build_lexical_fallback_hits(
                     "end_char": chunk.get("end_char"),
                     "page_number": chunk.get("page_number"),
                     "section_header": chunk.get("section_header"),
+                    "header_path": chunk.get("section_header"),
                     "preview": chunk.get("preview"),
                 }
                 score = score_hit(query_tokens, hit)
@@ -3290,7 +3550,7 @@ def build_lexical_fallback_hits(
                     matched_queries.append(query)
                 existing_hit["matched_queries"] = matched_queries
 
-    hits = rerank_hits(rerank_query.strip() or filtered_queries[0], list(aggregated_hits.values()), top_k)
+    hits = sort_hits_for_output(rerank_hits(rerank_query.strip() or filtered_queries[0], list(aggregated_hits.values()), top_k))
     return {
         "status": "retrieved",
         "query": rerank_query.strip() or filtered_queries[0],
@@ -3339,7 +3599,7 @@ def retrieve_chunks(payload: RetrieveRequest) -> dict[str, object]:
         where=where,
         include=["documents", "metadatas", "distances"],
     )
-    hits = rerank_hits(query, build_retrieval_hits(result), top_k)
+    hits = sort_hits_for_output(rerank_hits(query, build_retrieval_hits(result), top_k))
     retrieved_chunks = build_standardized_retrieved_chunks(hits)
 
     return {
@@ -3444,7 +3704,7 @@ def retrieve_chunks_for_queries(
                 hit_copy["matched_queries"] = matched_queries
                 aggregated_hits[hit_id] = hit_copy
 
-    hits = rerank_hits(rerank_query.strip() or filtered_queries[0], list(aggregated_hits.values()), top_k)
+    hits = sort_hits_for_output(rerank_hits(rerank_query.strip() or filtered_queries[0], list(aggregated_hits.values()), top_k))
     return {
         "status": "retrieved",
         "query": rerank_query.strip() or filtered_queries[0],
@@ -3480,23 +3740,14 @@ def build_chat_citations(hits: list[dict[str, object]]) -> list[dict[str, object
 def format_chat_context(hits: list[dict[str, object]]) -> str:
     sections: list[str] = []
     for index, hit in enumerate(hits, start=1):
-        source = str(hit.get("source") or hit.get("original_name") or "Unknown source")
-        chunk_index = hit.get("chunk_index")
-        page_number = hit.get("page_number")
-        section_header = hit.get("section_header")
-        text = str(hit.get("text") or "").strip()
-        metadata_parts = [f"source={source}"]
-        if chunk_index is not None:
-            metadata_parts.append(f"chunk={chunk_index}")
-        if page_number is not None:
-            metadata_parts.append(f"page={page_number}")
-        if isinstance(section_header, str) and section_header.strip():
-            metadata_parts.append(f"section={section_header.strip()}")
-
+        document_name = get_hit_document_name(hit)
+        header_path = get_hit_header_path(hit)
+        text = get_hit_contents(hit)
         sections.append(
             f"[Context {index}]\n"
-            f"{', '.join(metadata_parts)}\n"
-            f"{text}"
+            f"document_name={document_name}\n"
+            f"header_path={header_path}\n"
+            f"content={text}"
         )
     return "\n\n".join(sections)
 
@@ -3580,6 +3831,39 @@ def infer_document_hint(
     return infer_document_hint_from_rules(combined_text)
 
 
+def infer_document_type_filters(
+    payload: ChatRequest,
+    *,
+    entities: dict[str, str],
+    routing_hints: dict[str, str],
+    question_type: str | None,
+    document_hint: str | None,
+) -> list[str]:
+    raw_candidates: list[str] = [
+        payload.metadata.document_type if payload.metadata and payload.metadata.document_type else "",
+        entities.get("document_type", ""),
+        routing_hints.get("document_type", ""),
+        routing_hints.get("preferred_document_type", ""),
+    ]
+
+    mapped_document_type = DOCUMENT_HINT_TO_DOCUMENT_TYPE.get(document_hint or "")
+    if mapped_document_type:
+        raw_candidates.append(mapped_document_type)
+
+    if question_type in {"statistics", "numeric"}:
+        raw_candidates.append("statistics_table")
+
+    normalized_candidates: list[str] = []
+    seen: set[str] = set()
+    for candidate in raw_candidates:
+        normalized = normalize_search_document_type(candidate)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        normalized_candidates.append(normalized)
+    return normalized_candidates
+
+
 def build_query_rewrite_seed_query(trimmed_query: str, last_customer_message: str | None, normalized_conversation: list[dict[str, str]] | None = None) -> str:
     if normalized_conversation:
         focused_customer_text = build_customer_rewrite_focus_text(normalized_conversation, last_customer_message)
@@ -3604,6 +3888,7 @@ def build_query_rewrite_messages(
         "You rewrite financial customer-service conversations into one retrieval-friendly standalone Korean question.\n"
         "Preserve the original meaning and the user's actual search intent.\n"
         "Base the rewrite on the latest meaningful customer utterance.\n"
+        "If the original conversation or question is in Korean, respond in Korean.\n"
         "Remove greetings, counselor guidance, and identity-verification details.\n"
         "If the latest customer question is statistical or numeric, keep it statistical or numeric.\n"
         "Preserve the measured target, reference year, and metric such as 평균, 비율, 건수, 금액, 진료비, 수술비, 인당.\n"
@@ -3645,6 +3930,7 @@ def build_query_rewrite_messages(
         "- question_type should be one of statistics, numeric, documents, period, definition, conditions, comparison, or general when possible.\n"
         "- For statistical queries, fill entities such as year, metric, target, procedure, or topic when possible.\n"
         "- For statistical queries, routing_hints should prefer statistics_table or statistics_report.\n"
+        "- When the target document family is clear, include routing_hints.document_type using one of policy, calculation_guide, business_guide, statistics_table.\n"
         "- For policy or terms questions, routing_hints may include terms, pricing_method, change_process, or general.\n"
         "- Return valid JSON only with no extra text.\n\n"
         f"Input:\n{json.dumps({'seed_query': seed_query, 'original_query': original_query, 'last_customer_message': last_customer_message, 'conversation_context': context_lines, 'metadata': metadata, 'domain_focus_hint': domain_focus}, ensure_ascii=False)}"
@@ -3664,6 +3950,7 @@ def build_standalone_query_rewrite_messages(
     fallback_system_prompt = (
         "You rewrite one Korean user question into one concise retrieval-friendly Korean question.\n"
         "Keep the original intent.\n"
+        "If the original question is in Korean, respond in Korean.\n"
         "If the question is statistical or numeric, preserve the target, year, and metric.\n"
         "Do not convert statistical questions into coverage, claimability, terms, or exemption questions.\n"
         "Do not include personal information.\n"
@@ -3694,6 +3981,7 @@ def build_standalone_query_rewrite_messages(
         "- question_type should be one of statistics, numeric, documents, period, definition, conditions, comparison, or general when possible.\n"
         "- For statistical queries, fill entities such as year, metric, target, procedure, or topic when possible.\n"
         "- For statistical queries, routing_hints should prefer statistics_table or statistics_report.\n"
+        "- When the target document family is clear, include routing_hints.document_type using one of policy, calculation_guide, business_guide, statistics_table.\n"
         "- Keep it short and retrieval-friendly.\n"
         "- Return valid JSON only.\n\n"
         f"Input:\n{json.dumps({'seed_query': seed_query, 'original_query': original_query, 'metadata': metadata}, ensure_ascii=False)}"
@@ -3928,6 +4216,16 @@ def enrich_rewrite_result(payload: ChatRequest, rewrite_result: RewriteResult) -
     if document_hint:
         routing_hints["document_hint"] = document_hint
 
+    document_type_filters = infer_document_type_filters(
+        payload,
+        entities=entities,
+        routing_hints=routing_hints,
+        question_type=question_type,
+        document_hint=document_hint,
+    )
+    if document_type_filters:
+        routing_hints["document_type"] = ",".join(document_type_filters)
+
     search_queries.extend(get_document_hint_expansions(document_hint))
     if question_type == "statistics":
         search_queries.extend(get_statistics_query_expansions(rewrite_result.rewritten_query, entities))
@@ -3947,6 +4245,7 @@ def enrich_rewrite_result(payload: ChatRequest, rewrite_result: RewriteResult) -
         original_query=rewrite_result.original_query,
         rewritten_query=rewrite_result.rewritten_query,
         search_queries=unique_queries or [rewrite_result.rewritten_query],
+        document_type_filters=document_type_filters,
         query_rewrite_model=rewrite_result.query_rewrite_model,
         intent=rewrite_result.intent,
         question_type=question_type,
@@ -4048,18 +4347,34 @@ def validate_retrieval_response(payload: object) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=502, detail="RAG retrieval response must be a JSON object.")
 
-    hits = payload.get("hits")
-    if not isinstance(hits, list):
-        hits = payload.get("results")
-    if not isinstance(hits, list):
+    raw_results = payload.get("results")
+    raw_hits = payload.get("hits")
+    results = raw_results if isinstance(raw_results, list) else None
+    hits = raw_hits if isinstance(raw_hits, list) else None
+
+    selected_items = results if results is not None else hits
+    if selected_items is None:
         raise HTTPException(status_code=502, detail="RAG retrieval response is missing hits or results.")
 
-    standardized_hits = [normalize_external_search_hit(item) for item in hits if isinstance(item, dict)]
+    if results is not None and hits is not None and len(results) != len(hits):
+        logger.info(
+            "search_api_response_normalized source=results results_count=%s hits_count=%s",
+            len(results),
+            len(hits),
+        )
+
+    standardized_hits = [
+        normalize_external_search_hit(item, original_rank=index + 1)
+        for index, item in enumerate(selected_items)
+        if isinstance(item, dict)
+    ]
+    standardized_hits = sort_hits_for_output(standardized_hits)
+    returned_count = len(standardized_hits)
     return {
         "status": str(payload.get("status") or "retrieved"),
         "query": str(payload.get("query") or ""),
-        "top_k": int(payload.get("top_k") or 0),
-        "hit_count": int(payload.get("hit_count") or len(hits)),
+        "top_k": returned_count or int(payload.get("final_k") or payload.get("top_k") or 0),
+        "hit_count": returned_count or int(payload.get("hit_count") or 0),
         "retrieved_chunks": build_standardized_retrieved_chunks(standardized_hits),
         "collection_name": str(payload.get("collection_name") or ""),
         "embedding_provider": payload.get("embedding_provider"),
@@ -4068,35 +4383,51 @@ def validate_retrieval_response(payload: object) -> dict[str, object]:
     }
 
 
-def normalize_external_search_hit(hit: dict[str, object]) -> dict[str, object]:
+def normalize_external_search_hit(hit: dict[str, object], *, original_rank: int | None = None) -> dict[str, object]:
     metadata = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
     scores = hit.get("scores") if isinstance(hit.get("scores"), dict) else {}
 
     normalized_hit: dict[str, object] = dict(hit)
     normalized_hit["id"] = str(hit.get("id") or hit.get("chunk_id") or "").strip()
-    normalized_hit["text"] = normalize_chat_text(str(hit.get("text") or hit.get("content") or ""))
-    normalized_hit["source"] = str(
+    contents = get_hit_contents(hit)
+    document_name = str(
         hit.get("source")
         or hit.get("document_name")
         or metadata.get("source_file")
         or hit.get("document_id")
-        or ""
-    ).strip()
-    normalized_hit["stored_name"] = str(hit.get("stored_name") or hit.get("document_id") or "").strip()
-    normalized_hit["original_name"] = str(hit.get("original_name") or hit.get("document_name") or "").strip()
-    normalized_hit["section_header"] = str(
-        hit.get("section_header")
+        or UNKNOWN_DOCUMENT_NAME
+    ).strip() or UNKNOWN_DOCUMENT_NAME
+    header_path = str(
+        hit.get("header_path")
+        or hit.get("section_header")
         or hit.get("section")
         or metadata.get("header_path")
-        or ""
-    ).strip()
+        or UNKNOWN_HEADER_PATH
+    ).strip() or UNKNOWN_HEADER_PATH
+    normalized_hit["text"] = contents
+    normalized_hit["contents"] = contents
+    normalized_hit["source"] = document_name
+    normalized_hit["stored_name"] = str(hit.get("stored_name") or hit.get("document_id") or "").strip()
+    normalized_hit["original_name"] = str(hit.get("original_name") or hit.get("document_name") or document_name).strip()
+    normalized_hit["document_name"] = document_name
+    normalized_hit["section_header"] = header_path
+    normalized_hit["header_path"] = header_path
+    normalized_hit["scores"] = dict(scores) if scores else {}
+    if original_rank is not None:
+        normalized_hit["original_rank"] = original_rank
+
+    if isinstance(scores.get("rrf_score"), (int, float)):
+        normalized_hit["rrf_score"] = scores["rrf_score"]
 
     if isinstance(hit.get("score"), (int, float)):
-        normalized_hit["rerank_score"] = hit["score"]
-    elif isinstance(scores.get("rerank_score"), (int, float)):
+        normalized_hit["score"] = hit["score"]
+    elif isinstance(scores.get("score"), (int, float)):
+        normalized_hit["score"] = scores["score"]
+
+    if isinstance(scores.get("rerank_score"), (int, float)):
         normalized_hit["rerank_score"] = scores["rerank_score"]
-    elif isinstance(scores.get("rrf_score"), (int, float)):
-        normalized_hit["rerank_score"] = scores["rrf_score"]
+    elif isinstance(hit.get("score"), (int, float)):
+        normalized_hit["rerank_score"] = hit["score"]
     elif isinstance(scores.get("vector_score"), (int, float)):
         normalized_hit["rerank_score"] = scores["vector_score"]
 
@@ -4120,21 +4451,27 @@ def build_external_search_payload(
 ) -> dict[str, object]:
     entities = dict(rewrite_result.entities) if rewrite_result else {}
     routing_hints = dict(rewrite_result.routing_hints) if rewrite_result else {}
+    document_type_filters = list(rewrite_result.document_type_filters) if rewrite_result else []
     year = (entities.get("year") or routing_hints.get("year") or "").strip()
-    chunk_types = normalize_external_search_chunk_types([
-        item.strip()
-        for item in (routing_hints.get("chunk_types") or "").split(",")
-        if item and item.strip()
-    ])
     filters: dict[str, object] = {}
     if year:
         filters["year"] = [year]
+    if document_type_filters:
+        filters["document_type"] = document_type_filters
 
     if endpoint.rstrip("/").endswith("/api/search"):
+        # `docs/retrieval_api_design.md` defines request.top_k as the
+        # intermediate candidate count after RRF and request.final_k as the
+        # final returned result count. Keep that contract in the outbound
+        # request and leave the API's internal candidate expansion
+        # (`max(20, 2 * request.top_k)`) to the Search API implementation.
+        requested_top_k = max(1, top_k)
+        requested_final_k = max(1, final_k)
+        external_top_k = max(requested_top_k, requested_final_k)
         payload: dict[str, object] = {
             "query": query,
-            "top_k": max(20, top_k),
-            "final_k": max(1, min(final_k, top_k)),
+            "top_k": external_top_k,
+            "final_k": min(requested_final_k, external_top_k),
             "use_rerank": False,
             "include_source_metadata": True,
             "include_scores": True,
@@ -4143,8 +4480,6 @@ def build_external_search_payload(
         }
         if filters:
             payload["filters"] = filters
-        if chunk_types:
-            payload["chunk_types"] = chunk_types
         return payload
 
     payload = {
@@ -4156,8 +4491,6 @@ def build_external_search_payload(
     }
     if filters:
         payload["filters"] = filters
-    if chunk_types:
-        payload["chunk_types"] = chunk_types
     return payload
 
 
@@ -4234,6 +4567,7 @@ def should_fallback_to_internal_retrieval(exc: HTTPException) -> bool:
 def resolve_retrieval_for_chat(payload: ChatRequest, rewrite_result: RewriteResult) -> tuple[dict[str, object], str, str | None]:
     retrieval_query = rewrite_result.rewritten_query
     search_api_endpoint = (payload.search_api_endpoint or DEFAULT_EXTERNAL_SEARCH_API_ENDPOINT).strip()
+    resolved_top_k, resolved_final_k = resolve_chat_search_limits(payload)
     fallback_detail: str | None = None
     if search_api_endpoint:
         try:
@@ -4241,8 +4575,8 @@ def resolve_retrieval_for_chat(payload: ChatRequest, rewrite_result: RewriteResu
                 search_api_endpoint,
                 question=payload.query.strip(),
                 query=retrieval_query,
-                top_k=payload.top_k,
-                final_k=payload.final_k,
+                top_k=resolved_top_k,
+                final_k=resolved_final_k,
                 stored_name=payload.stored_name,
                 rewrite_result=rewrite_result,
             )
@@ -4263,7 +4597,7 @@ def resolve_retrieval_for_chat(payload: ChatRequest, rewrite_result: RewriteResu
 
     retrieval = retrieve_chunks_for_queries(
         queries=build_query_candidates_for_chat(payload, rewrite_result),
-        top_k=payload.top_k,
+        top_k=resolved_top_k,
         stored_name=payload.stored_name,
         rerank_query=retrieval_query,
     )
@@ -4271,19 +4605,30 @@ def resolve_retrieval_for_chat(payload: ChatRequest, rewrite_result: RewriteResu
 
 
 def execute_search_for_chat(payload: ChatRequest, rewrite_result: RewriteResult) -> dict[str, object]:
+    resolved_top_k, resolved_final_k = resolve_chat_search_limits(payload)
+    logger.info(
+        "chat_search_limits incoming_top_k=%s incoming_final_k=%s resolved_top_k=%s resolved_final_k=%s",
+        payload.top_k,
+        payload.final_k,
+        resolved_top_k,
+        resolved_final_k,
+    )
     retrieval, rag_endpoint, detail = resolve_retrieval_for_chat(payload, rewrite_result)
     hits = retrieval.get("hits")
     if not isinstance(hits, list):
         hits = []
+    hits = sort_hits_for_output([hit for hit in hits if isinstance(hit, dict)])
 
     retrieved_chunks = retrieval.get("retrieved_chunks")
     if not isinstance(retrieved_chunks, list):
-        retrieved_chunks = build_standardized_retrieved_chunks([hit for hit in hits if isinstance(hit, dict)])
+        retrieved_chunks = build_standardized_retrieved_chunks(hits)
+    else:
+        retrieved_chunks = build_standardized_retrieved_chunks(hits)
 
     return {
         "query": str(retrieval.get("query") or rewrite_result.rewritten_query),
         "executed_queries": retrieval.get("executed_queries") if isinstance(retrieval.get("executed_queries"), list) else [],
-        "top_k": int(retrieval.get("top_k") or payload.final_k),
+        "top_k": int(retrieval.get("top_k") or resolved_top_k or resolved_final_k),
         "hit_count": int(retrieval.get("hit_count") or len(hits)),
         "collection_name": retrieval.get("collection_name"),
         "embedding_provider": retrieval.get("embedding_provider"),
@@ -4293,6 +4638,8 @@ def execute_search_for_chat(payload: ChatRequest, rewrite_result: RewriteResult)
         "hits": hits,
         "retrieved_chunks": retrieved_chunks,
     }
+
+
 def evaluate_retrieved_chunks(retrieved_chunks: list[dict[str, object]]) -> SearchEvaluationResult:
     if not retrieved_chunks:
         return SearchEvaluationResult(
@@ -4356,9 +4703,14 @@ def build_answer_generation_messages(
         "You answer questions using only the provided document context.\n"
         "Do not use outside knowledge.\n"
         "If the context is insufficient, say so.\n"
-        "Respond in Korean.\n"
+        "If the original question is in Korean, answer in Korean.\n"
+        "Use each context item's document_name, header_path, and content together when judging evidence.\n"
+        "Use document titles and section paths as part of your grounding, not just the content body.\n"
         "When the context includes conditional requirements, keep common requirements and conditional requirements separate.\n"
         "Never present conditional requirements as unconditional facts.\n"
+        "If multiple documents or sections conflict, explicitly describe the difference or separate common points from conditional differences.\n"
+        "If information is conditional, explain it as conditional.\n"
+        "Do not guess anything not stated in the metadata or content.\n"
         "Use this exact format:\n"
         "STATUS: grounded or insufficient\n"
         "ANSWER: <final answer>"
@@ -4374,14 +4726,40 @@ def build_answer_generation_messages(
         "- If the context does not support a clear answer, return STATUS: insufficient.\n"
         "- Keep the answer concise and factual.\n"
         "- Do not mention information not present in the context.\n"
+        "- Review document_name, header_path, and content for every context item before answering.\n"
+        "- Use document titles and section locations as explicit grounding signals when comparing evidence.\n"
         "- If the document lists items that apply only in certain cases, separate them into '공통 서류' and '조건부 추가 서류'.\n"
         "- If the user's question is broad and the required documents vary by condition, explicitly say that additional documents depend on case.\n"
-        "- Do not merge multiple scenario-specific document lists into one unconditional checklist."
+        "- If different documents or sections disagree, name the difference and distinguish common points from conditional or document-specific points.\n"
+        "- Do not merge multiple scenario-specific document lists into one unconditional checklist.\n"
+        "- Do not infer missing facts from partial metadata; if metadata or content is missing, use only what is present."
     )
     return [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
+
+
+def select_hits_for_answer_prompt(
+    payload: ChatRequest,
+    rewrite_result: RewriteResult,
+    hits: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    # Exclude only clear product mismatches based on the user query/rewrite and each hit's document_name.
+    selected_hits = filter_hits_for_answer_generation(
+        original_query=payload.query.strip(),
+        rewritten_query=rewrite_result.rewritten_query,
+        hits=hits,
+    )
+    if len(selected_hits) != len(hits):
+        logger.info(
+            "answer_context_product_filter original_query=%s rewritten_query=%s original_hit_count=%s filtered_hit_count=%s",
+            payload.query.strip(),
+            rewrite_result.rewritten_query,
+            len(hits),
+            len(selected_hits),
+        )
+    return selected_hits
 
 
 def format_sse_event(event: str, payload: dict[str, object]) -> str:
@@ -4605,10 +4983,56 @@ def generate_grounded_answer_stream(payload: ChatRequest) -> StreamingResponse:
 
         return build_sse_response(empty_events())
 
+    answer_context_hits = select_hits_for_answer_prompt(payload, rewrite_result, hits)
+    if not answer_context_hits:
+        empty_answer_payload = {
+            "status": "answered",
+            "query": original_query,
+            "interpreted_query": rewrite_result.rewritten_query,
+            "rewritten_query": rewrite_result.rewritten_query,
+            "search_queries": rewrite_result.search_queries,
+            "retrieved_chunks": retrieved_chunks,
+            "normalized_conversation": rewrite_result.normalized_conversation,
+            "last_customer_message": rewrite_result.last_customer_message,
+            "validation_reasons": rewrite_result.validation_reasons,
+            "rewrite_source": rewrite_result.rewrite_source,
+            "query_rewrite_model": rewrite_result.query_rewrite_model,
+            "intent": rewrite_result.intent,
+            "question_type": rewrite_result.question_type,
+            "entities": rewrite_result.entities,
+            "routing_hints": rewrite_result.routing_hints,
+            "search_query": search_result["query"],
+            "executed_search_queries": search_result["executed_queries"],
+            "top_k": search_result["top_k"],
+            "hit_count": search_result["hit_count"],
+            "collection_name": search_result["collection_name"],
+            "embedding_provider": search_result["embedding_provider"],
+            "embedding_model": search_result["embedding_model"],
+            "rag_endpoint": search_result["rag_endpoint"],
+            "search_api_endpoint": search_api_endpoint or None,
+            "action": action,
+            "query_rewrite_time_ms": query_rewrite_time_ms,
+            "search_api_response_time_ms": search_api_response_time_ms,
+            "need_more_context": True,
+            "search_evaluation": serialize_search_evaluation(search_evaluation),
+            "answer": "질문과 일치하는 상품 문맥을 찾지 못했습니다.",
+            "insufficient_context": True,
+            "citations": build_chat_citations(hits),
+            "hits": hits,
+            "chat_model": None,
+            "answer_model": answer_model_id,
+            "detail": search_result_detail,
+        }
+
+        def filtered_empty_events():
+            yield format_sse_event("done", empty_answer_payload)
+
+        return build_sse_response(filtered_empty_events())
+
     messages = build_answer_generation_messages(
         original_query=original_query,
         rewritten_query=rewrite_result.rewritten_query,
-        hits=hits,
+        hits=answer_context_hits,
     )
 
     def stream_events():
@@ -4732,15 +5156,41 @@ def generate_grounded_answer_stream(payload: ChatRequest) -> StreamingResponse:
                 )
                 retry_hits = retry_search_result["hits"]
                 if retry_hits:
+                    retry_retrieved_chunks = retry_search_result["retrieved_chunks"]
+                    retry_search_evaluation = evaluate_retrieved_chunks(retry_retrieved_chunks)
+                    retry_answer_context_hits = select_hits_for_answer_prompt(payload, rewrite_result, retry_hits)
+                    if not retry_answer_context_hits:
+                        completed_payload = {
+                            **base_payload,
+                            "answer": "질문과 일치하는 상품 문맥을 찾지 못했습니다.",
+                            "insufficient_context": True,
+                            "search_query": retry_search_result["query"],
+                            "executed_search_queries": retry_search_result["executed_queries"],
+                            "top_k": retry_search_result["top_k"],
+                            "hit_count": retry_search_result["hit_count"],
+                            "collection_name": retry_search_result["collection_name"],
+                            "embedding_provider": retry_search_result["embedding_provider"],
+                            "embedding_model": retry_search_result["embedding_model"],
+                            "rag_endpoint": retry_search_result["rag_endpoint"],
+                            "search_api_response_time_ms": retried_search_time_ms,
+                            "need_more_context": True,
+                            "search_evaluation": serialize_search_evaluation(retry_search_evaluation),
+                            "retrieved_chunks": retry_retrieved_chunks,
+                            "citations": build_chat_citations(retry_hits),
+                            "hits": retry_hits,
+                            "chat_model": answer_model_id,
+                            "answer_model": answer_model_id,
+                            "detail": retry_search_result.get("detail"),
+                        }
+                        yield format_sse_event("done", completed_payload)
+                        return
                     retry_messages = build_answer_generation_messages(
                         original_query=original_query,
                         rewritten_query=str(retry_search_result["query"] or rewrite_result.rewritten_query),
-                        hits=retry_hits,
+                        hits=retry_answer_context_hits,
                     )
                     retry_response_text, retry_answer_model_id = build_answer_chat_completion(payload, retry_messages)
                     retry_insufficient_context, retry_answer = parse_chat_completion(retry_response_text)
-                    retry_retrieved_chunks = retry_search_result["retrieved_chunks"]
-                    retry_search_evaluation = evaluate_retrieved_chunks(retry_retrieved_chunks)
                     completed_payload = {
                         **base_payload,
                         "answer": retry_answer,
@@ -4897,10 +5347,51 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
                 "detail": search_result_detail,
             }
 
+    answer_context_hits = select_hits_for_answer_prompt(payload, rewrite_result, hits)
+    if not answer_context_hits:
+        return {
+            "status": "answered",
+            "query": original_query,
+            "interpreted_query": rewrite_result.rewritten_query,
+            "rewritten_query": rewrite_result.rewritten_query,
+            "search_queries": rewrite_result.search_queries,
+            "retrieved_chunks": retrieved_chunks,
+            "normalized_conversation": rewrite_result.normalized_conversation,
+            "last_customer_message": rewrite_result.last_customer_message,
+            "validation_reasons": rewrite_result.validation_reasons,
+            "rewrite_source": rewrite_result.rewrite_source,
+            "query_rewrite_model": rewrite_result.query_rewrite_model,
+            "intent": rewrite_result.intent,
+            "question_type": rewrite_result.question_type,
+            "entities": rewrite_result.entities,
+            "routing_hints": rewrite_result.routing_hints,
+            "search_query": search_result["query"],
+            "executed_search_queries": search_result["executed_queries"],
+            "top_k": search_result["top_k"],
+            "hit_count": search_result["hit_count"],
+            "collection_name": search_result["collection_name"],
+            "embedding_provider": search_result["embedding_provider"],
+            "embedding_model": search_result["embedding_model"],
+            "rag_endpoint": search_result["rag_endpoint"],
+            "search_api_endpoint": search_api_endpoint or None,
+            "action": action,
+            "query_rewrite_time_ms": query_rewrite_time_ms,
+            "search_api_response_time_ms": search_api_response_time_ms,
+            "need_more_context": True,
+            "search_evaluation": serialize_search_evaluation(search_evaluation),
+            "answer": "질문과 일치하는 상품 문맥을 찾지 못했습니다.",
+            "insufficient_context": True,
+            "citations": build_chat_citations(hits),
+            "hits": hits,
+            "chat_model": None,
+            "answer_model": answer_model_id,
+            "detail": search_result_detail,
+        }
+
     messages = build_answer_generation_messages(
         original_query=original_query,
         rewritten_query=rewrite_result.rewritten_query,
-        hits=hits,
+        hits=answer_context_hits,
     )
     response_text, answer_model_id = build_answer_chat_completion(
         payload,
@@ -4920,21 +5411,31 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
             if retry_hits:
                 retry_retrieved_chunks = retry_search_result["retrieved_chunks"]
                 retry_search_evaluation = evaluate_retrieved_chunks(retry_retrieved_chunks)
-                retry_messages = build_answer_generation_messages(
-                    original_query=original_query,
-                    rewritten_query=str(retry_search_result["query"] or rewrite_result.rewritten_query),
-                    hits=retry_hits,
-                )
-                retry_response_text, answer_model_id = build_answer_chat_completion(
-                    payload,
-                    retry_messages,
-                )
-                insufficient_context, answer = parse_chat_completion(retry_response_text)
-                search_result = retry_search_result
-                hits = retry_hits
-                retrieved_chunks = retry_retrieved_chunks
-                search_result_detail = retry_search_result.get("detail") if isinstance(retry_search_result.get("detail"), str) else search_result_detail
-                search_evaluation = retry_search_evaluation
+                retry_answer_context_hits = select_hits_for_answer_prompt(payload, rewrite_result, retry_hits)
+                if not retry_answer_context_hits:
+                    search_result = retry_search_result
+                    hits = retry_hits
+                    retrieved_chunks = retry_retrieved_chunks
+                    search_result_detail = retry_search_result.get("detail") if isinstance(retry_search_result.get("detail"), str) else search_result_detail
+                    search_evaluation = retry_search_evaluation
+                    insufficient_context = True
+                    answer = "질문과 일치하는 상품 문맥을 찾지 못했습니다."
+                else:
+                    retry_messages = build_answer_generation_messages(
+                        original_query=original_query,
+                        rewritten_query=str(retry_search_result["query"] or rewrite_result.rewritten_query),
+                        hits=retry_answer_context_hits,
+                    )
+                    retry_response_text, answer_model_id = build_answer_chat_completion(
+                        payload,
+                        retry_messages,
+                    )
+                    insufficient_context, answer = parse_chat_completion(retry_response_text)
+                    search_result = retry_search_result
+                    hits = retry_hits
+                    retrieved_chunks = retry_retrieved_chunks
+                    search_result_detail = retry_search_result.get("detail") if isinstance(retry_search_result.get("detail"), str) else search_result_detail
+                    search_evaluation = retry_search_evaluation
         except (HTTPException, SearchPhaseExecutionError) as exc:
             logger.warning(
                 "chat_search_retry_failed query=%s rewrite_query=%s detail=%s",

@@ -15,6 +15,7 @@
 - backend `POST /chat`에 Input 정규화 + structured rewrite 단계를 추가했다.
 - backend query rewrite system prompt는 `docs/query-rewrite-spec.md` 전체가 아니라 `11. LLM System Prompt` 블록만 로딩해 사용한다.
 - `docs/query-rewrite-spec.md` 본문과 `11. LLM System Prompt` 블록은 함께 유지하며, 현재 runtime prompt는 그중 `11`번 블록만 사용한다.
+- query rewrite / answer generation system prompt에는 `원본 질문이 한국어면 한국어로 응답한다` 규칙을 명시적으로 포함한다.
 - backend answer generation user prompt는 `docs/answer-generation-spec.md` 문서를 함께 읽어 답변 기준으로 반영한다.
 - backend `POST /chat`은 `conversation_context`가 비어 있어도 `Question` 멀티라인의 `고객:` / `상담사:` prefix를 파싱해 대화 입력으로 재구성할 수 있다.
 - backend `POST /chat`은 rewrite 결과에 대해 Standalone Search Query 검증을 수행하고 `rewrite_source`, `validation_reasons`로 fallback trace를 함께 반환한다.
@@ -35,8 +36,10 @@
 - Answer 기본 모델은 UI 기본값 `gpt-4o`이며, backend에서도 `answer_model`이 비어 있고 `AZURE_OPENAI_ANSWER_DEPLOYMENT`가 없으면 `gpt-4o`를 사용한다.
 - RAG 서버에서 `gpt-4.1-mini` Azure OpenAI deployment 직접 호출이 성공했음을 확인했다.
 - `/chat` Search API endpoint는 backend 고정값 `http://10.160.98.123:8000/api/search`를 사용하고 화면에서는 입력받지 않는다.
-- `/chat` Search API 호출 시 `final_k=5` 고정값을 사용한다.
-- `/chat` Search API payload는 스펙에 맞춰 `filters.year`, 정규화된 `chunk_types`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하도록 정리했다.
+- `/chat` Search API 호출 시 `top_k=30`, `final_k=10` 기준을 사용한다.
+- `/chat` answer generation은 외부 Search API 응답의 최종 `results` 리스트를 context 기준으로 사용하므로, `final_k=10`이면 10개 context를 모두 조합해 답변한다.
+- `/chat` Search API payload는 현재 `filters.year`, `filters.document_type`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하며 `chunk_types`는 보내지 않는다.
+- `filters.document_type`은 query rewrite 결과와 metadata / question_type / document_hint rule을 함께 사용해 `policy`, `calculation_guide`, `business_guide`, `statistics_table` enum으로 정규화한다.
 - `/chat`은 answer 생성 시 `stream=true`로 SSE `delta`를 받아 `Response` 영역에 실시간으로 누적 출력할 수 있다.
 - `/chat`은 query rewrite 결과도 SSE `rewrite_delta/rewrite_done`로 받아 `LLM Question` 영역에 실시간으로 표시할 수 있다.
 - `/chat` SSE `delta`는 `STATUS/ANSWER` 템플릿 라인을 제외하고 `ANSWER` 본문 증분만 전달한다.

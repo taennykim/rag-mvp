@@ -43,7 +43,14 @@
 - 현재 단계: Query Rewrite LLM과 Answer LLM 모두 `Custom` 옵션을 지원하고, `LLM endpoint`, `LLM model name`, optional `API Key`, `Temperature`, `Top-K`, `Max Tokens`를 받아 OpenAI-compatible endpoint로 호출할 수 있게 정리함
 - 현재 단계: 긴 상담 대화에서도 마지막 고객 질문을 우선 복원하고, 통계/수치형 질의의 연도/지표/측정 대상이 rewrite에서 유지되도록 query rewrite 규칙과 validation을 보강함
 - 현재 단계: rewrite 결과의 `question_type`, `entities`, `routing_hints`를 통계형 질의 기준으로 더 안정적으로 채우도록 enrichment를 보강함
-- 현재 단계: `/api/search` payload는 `retrieval_api_design.md` 스펙에 맞춰 `filters.year`, 정규화된 `chunk_types`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하도록 정리함
+- 현재 단계: `/api/search` payload는 `retrieval_api_design.md` 스펙에 맞춰 `filters.year`, `filters.document_type`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하고 `chunk_types`는 보내지 않도록 정리함
+- 현재 단계: query rewrite 결과와 metadata / question_type / document_hint rule을 함께 사용해 Search API `filters.document_type`을 `policy`, `calculation_guide`, `business_guide`, `statistics_table`로 정규화하도록 반영함
+- 현재 단계: `/chat` Search API 호출 시 `top_k=30`, `final_k=10` 기준으로 조정했고, external payload는 `docs/retrieval_api_design.md` 계약대로 `top_k=max(payload.top_k, payload.final_k)`, `final_k<=top_k` 규칙을 유지하도록 정리함
+- 현재 단계: 외부 Search 응답에 `results`와 `hits`가 함께 올 때 `/chat` answer/citation/context 기준을 `results` 우선으로 정리해 `final_k=10`이면 최종 10개 context를 answer generation에 그대로 사용하도록 보정함
+- 현재 단계: Search API hit 표준화와 answer context formatting을 수정해 상위 10개 context 각각의 `document_name`, `header_path`, `content`가 answer prompt에 모두 포함되도록 반영함
+- 현재 단계: metadata 누락 시 fallback 문자열을 사용하고, answer prompt 규칙에 문서 제목/섹션 경로 기반 판단, 충돌 명시, 조건부 설명, 비추측 규칙을 추가함
+- 현재 단계: Search API `scores.rrf_score`를 내부 `hits` / `retrieved_chunks`에 유지하고, `Reference context` 표시 순서를 `rrf_score desc -> rerank_score desc -> score desc -> 기존 순서`로 정렬하도록 반영함
+- 현재 단계: 질의/rewritten_query에서 상품명·보험명 후보를 추출해 `document_name`과 비교하고, 명백히 다른 상품 문서는 Answer prompt 직전에만 제외하도록 반영함
 - 현재 단계: backend `app.log`에 API key를 제외한 `llm_call`, `search_api_call` 로그를 남기도록 정리함
 - 현재 단계: answer generation이 `Insufficient context`를 반환하면 Search API를 1회 재호출하는 retry 흐름과 stream용 `재 시도 중입니다.` 표시를 반영함
 - 현재 단계: `/chat` Custom 입력 라벨 `Custom model name`을 `LLM model name`으로 통일했고 validation/에러 문구도 동일 용어로 맞춤
@@ -117,6 +124,7 @@
   - backend `/chat` Standalone Search Query 검증 규칙과 fallback(`last_customer_message` -> `last_customer_message + metadata` -> LLM retry 1회) 반영 완료
   - backend `/chat` Step 4 Search API 호출 계층 분리 완료
   - backend `/chat` 임시 외부 Search API `/api/search` 연동 payload와 `results` 응답 표준화 반영 완료
+  - backend `/chat` query rewrite 기반 `filters.document_type` 정규화 및 Search API payload 반영 완료
   - backend/frontend `/chat` 단계별 응답시간 표시 반영 완료
   - backend/frontend `/chat` Query Rewrite LLM 선택 UI 및 요청 필드 반영 완료
   - backend/frontend `/chat` Query Rewrite LLM 기본값 `gpt-4o-mini` 반영 완료
@@ -124,7 +132,13 @@
   - backend/frontend `/chat` Query Rewrite LLM `Custom` 옵션과 OpenAI-compatible custom rewrite 호출 분기 반영 완료
   - backend/frontend `/chat` Answer LLM `Custom` 옵션과 OpenAI-compatible custom answer 호출 분기 반영 완료
   - backend/frontend `/chat` Search/Lookup 고정 endpoint와 Search `final_k` 반영, Lookup 버튼 hidden UI 반영 완료
+  - backend `/chat`이 외부 Search API 응답의 `results`를 answer/citation/context 기준으로 우선 사용하도록 보정 완료
   - backend `/retrieve`, `/chat`이 `retrieved_chunks` 표준 포맷(`document_id`, `chunk_id`, `score`, `section`, `text`, `rank`)을 함께 반환하도록 반영 완료
+  - backend `/chat` Search hit / `retrieved_chunks` / answer prompt에 `document_name`, `header_path`, `content`를 함께 유지하도록 반영 완료
+  - answer generation용 metadata-aware context formatting 및 fallback 처리 완료
+  - metadata 전달 회귀 방지용 backend 테스트 추가 완료
+  - Search 결과 `rrf_score` 보존 및 backend 정렬 반영 완료
+  - 상품명/보험명 mismatch Answer context 필터 추가 완료
   - backend `/chat` Step 6 Search Result Evaluation rule-based 1차 구현 완료
   - frontend `/chat`에서 `LLM Question`에 `rewritten_query`만 표시하도록 정리 완료
 - 미완료:

@@ -30,7 +30,15 @@
 - 2026-04-21 기준 `docs/query-rewrite-spec.md` 본문과 `11. LLM System Prompt` 블록을 함께 수정해 실제 runtime prompt와 문서 규칙이 다시 일치하도록 정리했다.
 - 2026-04-21 기준 Standalone Search Query validation에 통계/수치형 의미 보존 규칙을 추가해 `평균`, `인당`, `비율`, `건수`, `금액`, `진료비`, 연도 표현이 rewrite에서 사라지거나 약관/청구/보장 질의로 오염되는 경우를 더 강하게 걸러내도록 보강했다.
 - 2026-04-21 기준 rewrite 결과의 `question_type`, `entities`, `routing_hints`를 통계형 질의에 맞게 더 안정적으로 채우고, `year`, `metric`, `procedure`, `target`, `topic`, `statistics_table/statistics_report` 계열 힌트를 Search 단계로 넘기도록 정리했다.
-- 2026-04-21 기준 외부 Search API payload는 `docs/retrieval_api_design.md` / `docs/external-retrieval-api.md` 스펙 기준으로만 구성하도록 재정렬했고, `/api/search`에는 비스펙 필드 대신 `filters.year`, 정규화된 `chunk_types`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하도록 수정했다.
+- 2026-04-21 기준 외부 Search API payload는 `docs/retrieval_api_design.md` / `docs/external-retrieval-api.md` 스펙 기준으로만 구성하도록 재정렬했고, `/api/search`에는 `filters.year`, `filters.document_type`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하도록 수정했다.
+- 2026-04-22 기준 query rewrite 결과와 metadata / question_type / document_hint rule을 함께 사용해 Search API `filters.document_type`을 `policy`, `calculation_guide`, `business_guide`, `statistics_table` enum으로 정규화하도록 반영했다.
+- 2026-04-22 기준 외부 Search API 응답에 `results`와 `hits`가 함께 있을 때 `/chat`은 최종 반환 리스트인 `results`를 우선 사용하도록 보정했고, `final_k=10`이면 answer generation과 `Reference context` 모두 10개 기준으로 맞추도록 정리했다.
+- 2026-04-22 기준 외부 Search API 요청도 `docs/retrieval_api_design.md` 계약에 맞춰 `top_k`와 `final_k`를 분리해 보내도록 수정했고, 현재 `/chat` 기본값은 `top_k=30`, `final_k=10`으로 맞췄다. 내부 candidate size 규칙 `max(20, 2 * request.top_k)`는 Search API 내부 구현에 맡기도록 정리했다.
+- 2026-04-22 기준 Search API hit 표준화와 `retrieved_chunks` 표준화를 수정해 `document_name`, `header_path`, `contents`를 answer generation까지 유지하도록 반영했다.
+- 2026-04-22 기준 answer generation context formatting을 `[Context N] document_name=... header_path=... content=...` 형식으로 바꿨고, metadata 누락 시 fallback 문자열을 사용하도록 보강했다.
+- 2026-04-22 기준 answer prompt에 문서 제목/섹션 위치 기반 판단, 문서 간 충돌 명시, 조건부 정보 분리, metadata/content 밖 비추측 규칙을 추가했다.
+- 2026-04-22 기준 Search API `scores.rrf_score`를 내부 `hits` / `retrieved_chunks`에 유지하고, backend가 `rrf_score desc -> rerank_score desc -> score desc -> 기존 순서`로 정렬한 결과를 frontend `Reference context`에 그대로 사용하도록 반영했다.
+- 2026-04-22 기준 질의/rewritten_query에서 상품명·보험명 후보를 추출해 `document_name`과 비교하고, 명백히 다른 상품 문서는 Answer prompt 직전에만 제외하도록 반영했다.
 - 2026-04-21 기준 backend `app.log`에 API key를 제외한 `llm_call`, `search_api_call` 로그를 남겨 실제 사용된 endpoint/model/payload를 추적할 수 있게 했다.
 - 2026-04-21 기준 answer generation 결과가 `Insufficient context`이면 Search API를 1회 더 호출하는 재시도 흐름을 추가했고, stream 응답 중에는 `재 시도 중입니다.`를 answer 영역에 먼저 표시하도록 반영했다.
 - 2026-04-14 기준 `/chat` main UI는 `rewritten_query`만 노출하도록 단순화했고, 내부 Search 후보와 rerank 기준도 `rewritten_query` 우선으로 정리했다.
@@ -65,7 +73,9 @@
 - 2026-04-20 기준 Query Rewrite/Answer LLM selector에 `gpt-5.4`, `gpt-5.4-mini` Azure deployment 선택지를 추가했다.
 - 2026-04-20 기준 Azure `gpt-5.*` deployment 호출 시 `max_tokens` 대신 `max_completion_tokens`를 사용하도록 backend request payload를 분기했다.
 - 2026-04-20 기준 모든 LLM 호출은 preset/custom 구분 없이 `temperature=0`, `top_p=0.9`, `max_tokens=700` 고정값을 사용하도록 정리했고, `/chat` 화면의 LLM 파라미터 입력 필드는 제거했다.
-- 2026-04-20 기준 `/chat` 화면의 `Search final_k` 입력도 제거하고 backend 기본값 `5`를 사용하도록 단순화했다.
+- 2026-04-20 기준 `/chat` 화면의 `Search final_k` 입력도 제거하고 backend 기본값으로만 사용하도록 단순화했다.
+- 2026-04-22 기준 `/chat` Search API 호출 시 `top_k=30`, `final_k=10` 기준으로 조정했다.
+- 2026-04-22 기준 RAG 서버 frontend/backend를 다시 재기동했고 `127.0.0.1:8000/health`, `127.0.0.1:3000/chat`, `127.0.0.1:3000/upload` 응답 `200`을 재확인했다.
 - 2026-04-20 기준 query rewrite 실패 분석을 위해 rewrite 전용 timeout `15초`, 응답 preview 로그(`query_rewrite_invalid_response`)를 추가했다.
 - 2026-04-20 기준 현재 서버, RAG 서버, GitHub `main`의 대상 파일 해시를 다시 일치시켰고 GitHub `main` 최신 커밋을 `597947e`로 반영했다.
 
@@ -124,7 +134,10 @@
   - `/retrieve`, `/chat` 응답에 `retrieved_chunks` 표준 포맷을 추가했고 `document_id`, `chunk_id`, `score`, `section`, `text`, `rank` 기준으로 normalize 하도록 반영 완료
   - `POST /chat` Search API 호출 계층을 `execute_search_for_chat`으로 분리 완료
   - `POST /chat` 임시 외부 Search API `/api/search` 호출 시 `rewritten_query`를 `query`로 보내고 개발자 제공 curl 파라미터를 적용하도록 반영 완료
+  - `POST /chat` 외부 Search API `/api/search` payload에 query rewrite 기반 `filters.document_type` 반영 완료
   - `POST /chat` 외부 Search API의 `results[].content` 응답을 내부 `hits` / `retrieved_chunks` 표준 포맷으로 변환하도록 반영 완료
+  - `POST /chat` Search hit / `retrieved_chunks`에 `document_name`, `header_path`, `contents`를 함께 유지하도록 반영 완료
+  - `POST /chat` Search hit / `retrieved_chunks`에 `rrf_score` 유지 및 정렬 반영 완료
   - `POST /chat` Search Result Evaluation rule-based 1차 구현 완료
   - `POST /chat` 응답에 `query_rewrite_time_ms`, `search_api_response_time_ms` 추가 완료
   - `POST /chat` 요청/응답에 query rewrite LLM 선택 trace 추가 완료
@@ -165,6 +178,9 @@
   - `/chat` query preprocessing에 `question_type` / `document_hint` 기반 search query expansion 추가 완료
   - query routing 규칙을 `backend/app/query_routing.py`로 분리 완료
   - retrieval context만 사용하는 answer prompt 흐름 추가 완료
+  - answer generation context를 metadata-aware 포맷(`[Context N] document_name / header_path / content`)으로 반영 완료
+  - 상품명/보험명 mismatch Answer context 필터 추가 완료
+  - metadata 누락 fallback 및 answer prompt 회귀 방지 테스트 추가 완료
   - Azure OpenAI chat deployment `gpt-4o` 사용 가능 확인 완료
   - 조건부 항목을 공통 항목처럼 말하지 않도록 answer prompt 보정 완료
 - 검증:
