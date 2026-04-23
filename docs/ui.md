@@ -26,7 +26,7 @@
   - `Answer LLM` 선택
   - Query Rewrite LLM 선택 옵션(`Default`, `GPT-5.4`, `GPT-5.4 mini`, `GPT-4.1 mini`, `GPT-4o mini`, `GPT-4o`, `Custom`)
   - Answer LLM 선택 옵션(`Default`, `GPT-5.4`, `GPT-5.4 mini`, `GPT-4.1 mini`, `GPT-4o mini`, `GPT-4o`, `Custom`)
-  - 모든 LLM 호출은 `temperature=0`, `top_p=0.9`, `max_tokens=700` 기본값을 사용
+  - 모든 LLM 호출은 `temperature=0.3`, `top_p=0.9`, `max_tokens=700` 기본값을 사용
   - 화면에서는 LLM 파라미터 입력 필드를 노출하지 않음
   - `LLM Question` 표시
   - `LLM Question` 실시간 stream 출력
@@ -56,6 +56,7 @@
 - 하단 `Parsing test result` 패널은 preview 중심으로 단순화했다.
 - `/chat`은 외부 RAG 연동 스키마가 확정되기 전까지 schema-light shell로 유지한다.
 - `/chat` main form은 질문, Query Rewrite LLM 선택, Answer LLM 선택, `Get response` 버튼만 노출하고 endpoint 값은 backend 고정값을 사용한다.
+- `/chat` 상단 header는 Chat content column과 왼쪽 정렬이 맞도록 폭을 조정했다.
 - `/chat` Query Rewrite LLM과 Answer LLM selector는 서로 독립적으로 동작한다.
 - Query Rewrite LLM 기본값은 `gpt-4o-mini`다.
 - Answer LLM 기본값은 `gpt-4o`다.
@@ -69,6 +70,7 @@
 - `/chat` Reference context 카드는 실제 retrieval hit 순서를 유지하며 preview, full text, `distance`, `rerank_score`, `matched_queries`를 함께 보여준다.
 - `/chat` preview / citation / raw chunk 블록은 긴 텍스트가 잘리지 않도록 overflow를 정리했다.
 - 실제 화면 확인 기준은 RAG 서버 frontend `127.0.0.1:3000`이다.
+- 브라우저/IDE port forwarding UI가 `127.0.0.1:3001`처럼 표시될 수 있어도 RAG 서버 runtime 기준은 `3000/8000`이다.
 
 ## 4. 이슈 및 문제
 - `Uploaded file list`의 parse success/failure history, preview, quality 표시 UI는 구현이 진행됐지만 최종 화면 검증이 아직 남아 있다.

@@ -30,7 +30,7 @@
 - Query Rewrite LLM selector 옵션은 `Default`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-4.1-mini`, `gpt-4o-mini`, `gpt-4o`, `Custom`이다.
 - Answer LLM selector 옵션은 `Default`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-4.1-mini`, `gpt-4o-mini`, `gpt-4o`, `Custom`이다.
 - UI에서 `gpt-5.4`, `gpt-5.4-mini`, `gpt-4.1-mini`, `gpt-4o-mini`, `gpt-4o`를 명시적으로 선택할 수 있다.
-- UI에서는 모델 선택과 custom endpoint 정보만 입력받고, 모든 LLM 호출은 `temperature=0`, `top_p=0.9`, `max_tokens=700` 기본값을 사용한다.
+- UI에서는 모델 선택과 custom endpoint 정보만 입력받고, 모든 LLM 호출은 `temperature=0.3`, `top_p=0.9`, `max_tokens=700` 기본값을 사용한다.
 - `/chat` Custom 입력 라벨은 `Custom model name`에서 `LLM model name`으로 통일했다.
 - 두 selector는 서로 독립 동작이며, Query Rewrite 기본 모델은 `gpt-4o-mini`다.
 - Answer 기본 모델은 UI 기본값 `gpt-4o`이며, backend에서도 `answer_model`이 비어 있고 `AZURE_OPENAI_ANSWER_DEPLOYMENT`가 없으면 `gpt-4o`를 사용한다.
@@ -38,8 +38,8 @@
 - `/chat` Search API endpoint는 backend 고정값 `http://10.160.98.123:8000/api/search`를 사용하고 화면에서는 입력받지 않는다.
 - `/chat` Search API 호출 시 `top_k=30`, `final_k=10` 기준을 사용한다.
 - `/chat` answer generation은 외부 Search API 응답의 최종 `results` 리스트를 context 기준으로 사용하므로, `final_k=10`이면 10개 context를 모두 조합해 답변한다.
-- `/chat` Search API payload는 현재 `filters.document_type`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하며 `chunk_types`와 `filters.year`는 보내지 않는다.
-- `filters.document_type`은 query rewrite 결과와 metadata / question_type / document_hint rule을 함께 사용해 `policy`, `calculation_guide`, `business_guide`, `statistics_table` enum으로 정규화한다.
+- `/chat` Search API payload는 현재 `return_format=json`, `keyword_vector_weight=0.3`를 사용하며 `filters.document_type`, `chunk_types`, `filters.year`는 보내지 않는다.
+- document type 추론은 query rewrite trace/routing hint로만 유지하고 Search API filter로는 사용하지 않는다.
 - `/chat`은 answer 생성 시 `stream=true`로 SSE `delta`를 받아 `Response` 영역에 실시간으로 누적 출력할 수 있다.
 - `/chat`은 query rewrite 결과도 SSE `rewrite_delta/rewrite_done`로 받아 `LLM Question` 영역에 실시간으로 표시할 수 있다.
 - `/chat` SSE `delta`는 `STATUS/ANSWER` 템플릿 라인을 제외하고 `ANSWER` 본문 증분만 전달한다.
@@ -48,6 +48,7 @@
 - `/chat`은 현재 Search API만 사용하고 Lookup 경로는 사용하지 않는다.
 - backend는 `llm_call`, `search_api_call` 로그를 `app.log`에 남기며, endpoint/model/payload 추적은 가능하지만 API key는 기록하지 않는다.
 - answer generation이 `Insufficient context`를 반환하면 Search API를 1회 재호출할 수 있고, stream 모드에서는 `재 시도 중입니다.`를 먼저 표시한다.
+- 상품명/보험명 mismatch 필터는 Answer prompt 직전에만 적용되며, 업무/처리 문서의 키워드를 상품명으로 오판하지 않도록 추가 보강이 필요하다.
 - backend `POST /chat`은 retrieval hit 원본과 별도로 `retrieved_chunks` 표준 포맷을 함께 반환해 이후 평가/분기 단계에서 재사용할 수 있게 정리했다.
 - frontend `/chat`에 answer panel, citation slot, optional debug context 표시를 추가했다.
 - `AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o` runtime config를 사용하도록 정리했다.

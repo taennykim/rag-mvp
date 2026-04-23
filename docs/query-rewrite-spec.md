@@ -94,7 +94,7 @@
   - 측정 대상
   - 기준 연도 또는 기간
   - 지표
-- Search API `filters.document_type`를 함께 좁힐 수 있을 정도로 문서 계열이 명확하면, runtime `routing_hints.document_type`에 아래 값 중 하나를 남길 수 있어야 한다.
+- 문서 계열이 명확하면 runtime `routing_hints.document_type`에 아래 값 중 하나를 남길 수 있어야 한다. 현재 이 값은 trace/routing hint로만 유지하며 Search API `filters.document_type`으로는 보내지 않는다.
   - `policy`
   - `calculation_guide`
   - `business_guide`
@@ -245,4 +245,4 @@
 - 프롬프트에서 예시는 보험, 은행, 카드, 증권 사례를 함께 포함해 특정 업권으로 과도하게 쏠리지 않도록 한다.
 - 후속 Search API 입력값으로 바로 연결할 수 있도록 불필요한 머리말, 라벨, JSON 형식 출력은 허용하지 않는다.
 - 구현 시에는 본 문서 전체를 직접 system prompt로 넣기보다, `11. LLM System Prompt` 블록만 로딩해서 사용하는 것을 권장한다.
-- runtime은 rewrite 결과와 rule-based 보정을 함께 사용해 `filters.document_type`을 `docs/retrieval_api_design.md`의 enum(`policy`, `calculation_guide`, `business_guide`, `statistics_table`)으로 정규화한다.
+- runtime은 rewrite 결과와 rule-based 보정을 함께 사용해 document type hint를 `docs/retrieval_api_design.md`의 enum(`policy`, `calculation_guide`, `business_guide`, `statistics_table`)으로 정규화할 수 있다. 2026-04-23 기준 이 값은 Search API filter가 아니라 trace/routing hint로만 사용한다.

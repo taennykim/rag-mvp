@@ -192,6 +192,7 @@
 - [x] rewrite 결과의 `question_type` / `entities` / `routing_hints` 보강
 - [x] `/api/search` payload를 `retrieval_api_design.md` 스펙 기준 필드만 사용하도록 정리
 - [x] query rewrite 결과 기준 `filters.document_type`을 `retrieval_api_design.md` enum으로 정규화해 `/api/search` payload에 반영
+- [x] 2026-04-23 기준 `/chat` Search API payload에서 `filters.document_type`을 비활성화하고, document type은 rewrite trace/routing hint로만 유지
 - [x] `/chat` Search API 호출 기본값 `top_k=30`, `final_k=10` 반영
 - [x] 외부 Search API 응답에서 `results`를 answer/citation/context 기준으로 우선 사용해 `final_k=10`을 실제 answer generation에 반영
 - [x] `/chat` 외부 Search API 요청을 `retrieval_api_design.md` 기준 `top_k` / `final_k` 계약에 맞춰 재정렬
@@ -201,6 +202,9 @@
 - [x] answer prompt metadata-aware context formatting 테스트 추가
 - [x] Search hit / `retrieved_chunks`에 `rrf_score` 유지 및 `Reference context` 정렬 반영
 - [x] 상품명/보험명 mismatch 문서를 Answer prompt 직전에 제외하는 필터 추가
+- [ ] 상품명/보험명 mismatch 필터가 `법인계약건` 같은 업무/처리 유형 문서를 상품명처럼 오판하지 않도록 business/process 문서 예외와 filtered-empty fallback 추가
+- [ ] `009-300197_제지급_우편.docx`의 미성년 계약자/법정대리인 chunk가 상위 context에 안정적으로 올라오도록 rerank/boost 규칙 검토
+- [ ] 신한큐브종합건강상해보험 해약환급금 산출식 질의에서 판매약관만 반복 검색하지 않고 산출방법서 계열 문서를 찾도록 retrieval 보강
 - [ ] Step 7. Need More Context 분기 (`추후 개발`)
 - [ ] Step 8. Lookup API 호출 (`추후 개발`)
 - [ ] Step 9. Expanded Context 병합 (`추후 개발`)

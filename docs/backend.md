@@ -146,7 +146,7 @@
   - SSE `delta`는 LLM 원문 전체가 아니라 `ANSWER` 본문 증분만 전달하고, 최종 `done`에서 파싱된 정답 본문을 확정한다.
   - stream 체감 품질을 위해 backend는 매우 짧은 token 단위를 내부 버퍼로 묶어 `delta` 이벤트 수를 줄여 전송한다.
   - `query_rewrite_model=custom`이면 Query Rewrite만 custom OpenAI-compatible endpoint로 호출한다.
-  - 모든 LLM 호출은 `temperature=0`, `top_p=0.9`, `max_tokens=700` 기본값을 사용한다.
+  - 모든 LLM 호출은 `temperature=0.3`, `top_p=0.9`, `max_tokens=700` 기본값을 사용한다.
   - custom rewrite는 `LLM endpoint + /chat/completions`, `model`, `messages`, `temperature`, `top_p`, `max_tokens`, optional `Authorization: Bearer <api_key>` 형식을 지원한다.
   - `answer_model=custom`이면 Answer generation도 custom OpenAI-compatible endpoint로 호출한다.
   - custom answer도 `LLM endpoint + /chat/completions`, `model`, `messages`, `temperature`, `top_p`, `max_tokens`, optional `Authorization: Bearer <api_key>` 형식을 지원한다.
@@ -154,7 +154,7 @@
   - Search API 호출 계층은 `execute_search_for_chat`으로 분리해 내부/외부 검색 결과를 공통 trace로 정리한다.
   - Search API는 고정 endpoint `http://10.160.98.123:8000/api/search`를 사용하고 `rewritten_query`를 `query`에 넣어 `docs/retrieval_api_design.md` 계약대로 `top_k=max(payload.top_k, payload.final_k)`를 적용하며, 현재 `/chat` 기본값은 `top_k=30`, `final_k=10`이다. `final_k=min(payload.final_k, top_k)`, `use_rerank=false`, `include_source_metadata=true`, `include_scores=true`, `keyword_vector_weight=0.3`, `return_format=json`으로 호출한다.
   - 통계형 질의의 연도 정보는 query rewrite와 query text 보존에 사용하고, 현재 `/api/search` 요청의 `filters`에는 넣지 않는다.
-  - Search API는 `chunk_types` 필드를 지원하지만, 현재 `/chat` 호출 로직에서는 `chunk_types`를 보내지 않고 `filters.document_type`와 질의문 자체로 검색 범위를 조정한다.
+  - Search API는 `chunk_types`와 `filters.document_type` 필드를 지원하지만, 현재 `/chat` 호출 로직에서는 둘 다 보내지 않고 질의문 자체로 검색 범위를 조정한다.
   - 임시 외부 Search API의 `results[].content`, `document_name`, `metadata.header_path`, `scores` 응답은 내부 `hits` / `retrieved_chunks` 표준 포맷으로 normalize한다.
   - Search hit 표준화 시 `document_name`, `header_path`, `contents`, `scores.rrf_score`를 내부 hit와 `retrieved_chunks`에 함께 유지하고, 누락되면 fallback 문자열(`Unknown document`, `Unknown section`, `[no content]`) 또는 score fallback 정렬 규칙을 사용한다.
   - 외부 Search API 응답에 `results`와 `hits`가 모두 있으면, `/chat`은 intermediate 후보가 아니라 최종 반환 리스트인 `results`를 answer/citation/context 기준으로 우선 사용한다.
@@ -166,6 +166,7 @@
   - answer generation context는 `[Context N] document_name=... header_path=... content=...` 형식으로 10개 hit 전체를 prompt에 포함한다.
   - answer prompt는 문서 제목과 섹션 위치를 근거로 사용하고, 문서/섹션 간 충돌 시 차이와 조건을 명시하도록 보강했다.
   - Answer prompt 직전에는 질의/rewritten_query에서 추출한 상품명·보험명 후보와 `document_name`을 비교해, 명백히 다른 상품 문서는 answer context에서만 제외한다.
+  - 상품명·보험명 mismatch 필터는 업무/처리 문서 키워드를 상품명처럼 오판하지 않도록 추가 보강이 필요하다.
   - answer generation 결과가 `Insufficient context`이면 rewrite 결과의 대체 검색 후보로 Search API를 1회 더 호출할 수 있고, stream 모드에서는 `answer_replace` 이벤트로 `재 시도 중입니다.`를 먼저 보낸다.
   - 응답에는 `interpreted_query`, `rewritten_query`, `search_queries`, `search_query`, `executed_search_queries`, `intent`, `entities`, `routing_hints`, `need_more_context`, `search_evaluation`, 단계별 소요시간, 실제 사용한 `rag_endpoint`를 포함한다.
 

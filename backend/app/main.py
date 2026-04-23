@@ -151,7 +151,7 @@ CUSTOM_QUERY_REWRITE_MODEL = "custom"
 AZURE_OPENAI_EMBEDDING_BATCH_SIZE = 32
 DEFAULT_CHAT_TOP_K = 30
 DEFAULT_CHAT_FINAL_K = 10
-DEFAULT_CHAT_TEMPERATURE = 0.0
+DEFAULT_CHAT_TEMPERATURE = 0.3
 DEFAULT_CHAT_TOP_P = 0.9
 DEFAULT_CHAT_MAX_TOKENS = 700
 DEFAULT_QUERY_REWRITE_TIMEOUT_SEC = 120
@@ -4449,10 +4449,9 @@ def build_external_search_payload(
     stored_name: str | None,
     rewrite_result: RewriteResult | None = None,
 ) -> dict[str, object]:
-    document_type_filters = list(rewrite_result.document_type_filters) if rewrite_result else []
+    # Keep document type hints in the rewrite trace only. Do not constrain
+    # Search API recall with filters.document_type.
     filters: dict[str, object] = {}
-    if document_type_filters:
-        filters["document_type"] = document_type_filters
 
     if endpoint.rstrip("/").endswith("/api/search"):
         # `docs/retrieval_api_design.md` defines request.top_k as the

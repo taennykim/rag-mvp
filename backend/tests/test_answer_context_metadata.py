@@ -120,7 +120,7 @@ class AnswerContextMetadataTests(unittest.TestCase):
         self.assertIn(f"document_name={UNKNOWN_DOCUMENT_NAME}", user_prompt)
         self.assertIn(f"header_path={UNKNOWN_HEADER_PATH}", user_prompt)
 
-    def test_build_external_search_payload_omits_chunk_types(self) -> None:
+    def test_build_external_search_payload_omits_document_type_and_chunk_types(self) -> None:
         payload = build_external_search_payload(
             "http://example.com/api/search",
             question="통계 질의",
@@ -137,8 +137,7 @@ class AnswerContextMetadataTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(payload["filters"], {"document_type": ["statistics_table"]})
-        self.assertNotIn("year", payload["filters"])
+        self.assertNotIn("filters", payload)
         self.assertNotIn("chunk_types", payload)
 
 

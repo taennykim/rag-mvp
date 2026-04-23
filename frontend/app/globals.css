@@ -122,6 +122,10 @@ a {
   margin: 0 auto;
 }
 
+body:has(.chat-page) .header {
+  max-width: 1395px;
+}
+
 .card {
   border-radius: 28px;
   padding: 28px;
