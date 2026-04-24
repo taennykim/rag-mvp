@@ -30,8 +30,8 @@
 - 2026-04-21 기준 `docs/query-rewrite-spec.md` 본문과 `11. LLM System Prompt` 블록을 함께 수정해 실제 runtime prompt와 문서 규칙이 다시 일치하도록 정리했다.
 - 2026-04-21 기준 Standalone Search Query validation에 통계/수치형 의미 보존 규칙을 추가해 `평균`, `인당`, `비율`, `건수`, `금액`, `진료비`, 연도 표현이 rewrite에서 사라지거나 약관/청구/보장 질의로 오염되는 경우를 더 강하게 걸러내도록 보강했다.
 - 2026-04-21 기준 rewrite 결과의 `question_type`, `entities`, `routing_hints`를 통계형 질의에 맞게 더 안정적으로 채우고, `year`, `metric`, `procedure`, `target`, `topic`, `statistics_table/statistics_report` 계열 힌트를 Search 단계로 넘기도록 정리했다.
-- 2026-04-21 기준 외부 Search API payload는 `docs/retrieval_api_design.md` / `docs/external-retrieval-api.md` 스펙 기준으로만 구성하도록 재정렬했고, `/api/search`에는 `filters.document_type`, `return_format=json`, `keyword_vector_weight=0.3`를 사용하도록 수정했다.
-- 2026-04-22 기준 query rewrite 결과와 metadata / question_type / document_hint rule을 함께 사용해 Search API `filters.document_type`을 `policy`, `calculation_guide`, `business_guide`, `statistics_table` enum으로 정규화하도록 반영했다.
+- 2026-04-21 기준 외부 Search API payload는 `docs/retrieval_api_design.md` / `docs/external-retrieval-api.md` 스펙 기준으로만 구성하도록 재정렬했고, `/api/search`에는 `return_format=json`과 query rewrite validated `keyword_vector_weight`를 사용하도록 정리했다.
+- 2026-04-22 기준 query rewrite 결과와 metadata / question_type / document_hint rule은 내부 trace와 routing hint 보강에 사용하며, external Search API `filters.document_type`에는 반영하지 않도록 정책을 정리했다.
 - 2026-04-22 기준 외부 Search API 응답에 `results`와 `hits`가 함께 있을 때 `/chat`은 최종 반환 리스트인 `results`를 우선 사용하도록 보정했고, `final_k=10`이면 answer generation과 `Reference context` 모두 10개 기준으로 맞추도록 정리했다.
 - 2026-04-22 기준 외부 Search API 요청도 `docs/retrieval_api_design.md` 계약에 맞춰 `top_k`와 `final_k`를 분리해 보내도록 수정했고, 현재 `/chat` 기본값은 `top_k=30`, `final_k=10`으로 맞췄다. 내부 candidate size 규칙 `max(20, 2 * request.top_k)`는 Search API 내부 구현에 맡기도록 정리했다.
 - 2026-04-22 기준 Search API hit 표준화와 `retrieved_chunks` 표준화를 수정해 `document_name`, `header_path`, `contents`를 answer generation까지 유지하도록 반영했다.
@@ -40,7 +40,7 @@
 - 2026-04-22 기준 Search API `scores.rrf_score`를 내부 `hits` / `retrieved_chunks`에 유지하고, backend가 `rrf_score desc -> rerank_score desc -> score desc -> 기존 순서`로 정렬한 결과를 frontend `Reference context`에 그대로 사용하도록 반영했다.
 - 2026-04-22 기준 질의/rewritten_query에서 상품명·보험명 후보를 추출해 `document_name`과 비교하고, 명백히 다른 상품 문서는 Answer prompt 직전에만 제외하도록 반영했다.
 - 2026-04-23 기준 `/chat` Search API payload에서 `filters.document_type`을 비활성화했다. document type 추론은 rewrite trace/routing hint에는 남지만 Search API recall 제약에는 사용하지 않는다.
-- 2026-04-23 기준 `/chat` Search API payload는 `return_format=json`, `keyword_vector_weight=0.3`, `top_k=30`, `final_k=10`을 유지하고 `filters.document_type`, `chunk_types`, `filters.year`는 보내지 않는다.
+- 2026-04-23 기준 `/chat` Search API payload는 `query`, `top_k=30`, `final_k=10`, 조건부 `filters.product_name_tokens`, `return_format=json`, query rewrite validated `keyword_vector_weight`를 사용하고 `filters.document_type`, `chunk_types`, `filters.year`는 보내지 않는다.
 - 2026-04-23 기준 backend 기본 LLM 호출 temperature를 `0.3`으로 변경했고, `top_p=0.9`, `max_tokens=700` 기준은 유지한다.
 - 2026-04-23 기준 `/chat` 상단 `Uploaded Insurance documents` header 폭을 Chat content column에 맞춰 조정했다.
 - 2026-04-23 기준 RAG 서버 frontend/backend를 `3000/8000` 기준으로 재기동/확인했다. 브라우저 port forwarding UI가 `3001`을 표시할 수 있지만 서버 runtime 기준은 `127.0.0.1:3000`, `127.0.0.1:8000`이다.
@@ -142,8 +142,7 @@
   - `/retrieve`, `/chat` 응답에 `retrieved_chunks` 표준 포맷을 추가했고 `document_id`, `chunk_id`, `score`, `section`, `text`, `rank` 기준으로 normalize 하도록 반영 완료
   - `POST /chat` Search API 호출 계층을 `execute_search_for_chat`으로 분리 완료
   - `POST /chat` 임시 외부 Search API `/api/search` 호출 시 `rewritten_query`를 `query`로 보내고 개발자 제공 curl 파라미터를 적용하도록 반영 완료
-  - `POST /chat` 외부 Search API `/api/search` payload에 query rewrite 기반 `filters.document_type` 반영 완료
-  - 2026-04-23 기준 `POST /chat` 외부 Search API `/api/search` payload에서 `filters.document_type` 비활성화 완료
+  - `POST /chat` 외부 Search API `/api/search` payload는 query rewrite 결과에서 조건부 `filters.product_name_tokens`와 `keyword_vector_weight`만 반영하도록 정리 완료
   - `POST /chat` 외부 Search API의 `results[].content` 응답을 내부 `hits` / `retrieved_chunks` 표준 포맷으로 변환하도록 반영 완료
   - `POST /chat` Search hit / `retrieved_chunks`에 `document_name`, `header_path`, `contents`를 함께 유지하도록 반영 완료
   - `POST /chat` Search hit / `retrieved_chunks`에 `rrf_score` 유지 및 정렬 반영 완료

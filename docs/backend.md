@@ -152,9 +152,9 @@
   - custom answer도 `LLM endpoint + /chat/completions`, `model`, `messages`, `temperature`, `top_p`, `max_tokens`, optional `Authorization: Bearer <api_key>` 형식을 지원한다.
   - backend는 `llm_call`, `search_api_call` 구조 로그를 `app.log`에 남기며, API key는 기록하지 않는다.
   - Search API 호출 계층은 `execute_search_for_chat`으로 분리해 내부/외부 검색 결과를 공통 trace로 정리한다.
-  - Search API는 고정 endpoint `http://10.160.98.123:8000/api/search`를 사용하고 `rewritten_query`를 `query`에 넣어 `docs/retrieval_api_design.md` 계약대로 `top_k=max(payload.top_k, payload.final_k)`를 적용하며, 현재 `/chat` 기본값은 `top_k=30`, `final_k=10`이다. `final_k=min(payload.final_k, top_k)`, `use_rerank=false`, `include_source_metadata=true`, `include_scores=true`, `keyword_vector_weight=0.3`, `return_format=json`으로 호출한다.
+  - Search API는 고정 endpoint `http://10.160.98.123:8000/api/search`를 사용하고 `rewritten_query`를 `query`에 넣어 `docs/retrieval_api_design.md` 계약대로 `top_k=max(payload.top_k, payload.final_k)`를 적용하며, 현재 `/chat` 기본값은 `top_k=30`, `final_k=10`이다. `/chat` outbound payload는 `query`, `top_k`, `final_k`, 조건부 `filters.product_name_tokens`, `return_format=json`, query rewrite validated `keyword_vector_weight`만 포함한다.
   - 통계형 질의의 연도 정보는 query rewrite와 query text 보존에 사용하고, 현재 `/api/search` 요청의 `filters`에는 넣지 않는다.
-  - Search API는 `chunk_types`와 `filters.document_type` 필드를 지원하지만, 현재 `/chat` 호출 로직에서는 둘 다 보내지 않고 질의문 자체로 검색 범위를 조정한다.
+  - Search API는 `chunk_types`와 `filters.document_type` 필드를 지원할 수 있지만, 현재 `/chat` 호출 로직에서는 `filters.document_type`, `filters.year`, `chunk_types`를 보내지 않고 질의문과 조건부 `filters.product_name_tokens`로만 검색 범위를 조정한다.
   - 임시 외부 Search API의 `results[].content`, `document_name`, `metadata.header_path`, `scores` 응답은 내부 `hits` / `retrieved_chunks` 표준 포맷으로 normalize한다.
   - Search hit 표준화 시 `document_name`, `header_path`, `contents`, `scores.rrf_score`를 내부 hit와 `retrieved_chunks`에 함께 유지하고, 누락되면 fallback 문자열(`Unknown document`, `Unknown section`, `[no content]`) 또는 score fallback 정렬 규칙을 사용한다.
   - 외부 Search API 응답에 `results`와 `hits`가 모두 있으면, `/chat`은 intermediate 후보가 아니라 최종 반환 리스트인 `results`를 answer/citation/context 기준으로 우선 사용한다.

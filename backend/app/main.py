@@ -152,6 +152,7 @@ AZURE_OPENAI_EMBEDDING_BATCH_SIZE = 32
 DEFAULT_CHAT_TOP_K = 30
 DEFAULT_CHAT_FINAL_K = 10
 DEFAULT_CHAT_TEMPERATURE = 0.3
+DEFAULT_SEARCH_KEYWORD_VECTOR_WEIGHT = 0.3
 DEFAULT_CHAT_TOP_P = 0.9
 DEFAULT_CHAT_MAX_TOKENS = 700
 DEFAULT_QUERY_REWRITE_TIMEOUT_SEC = 120
@@ -2226,7 +2227,7 @@ class RewriteResult(BaseModel):
     intent: str | None = None
     question_type: str | None = None
     entities: dict[str, str] = Field(default_factory=dict)
-    routing_hints: dict[str, str] = Field(default_factory=dict)
+    routing_hints: dict[str, object] = Field(default_factory=dict)
     normalized_conversation: list[dict[str, str]] = Field(default_factory=list)
     last_customer_message: str | None = None
     validation_reasons: list[str] = Field(default_factory=list)
@@ -3239,6 +3240,66 @@ def extract_product_name_candidates(*texts: str) -> list[str]:
     return unique_candidates
 
 
+def normalize_search_filter_value(raw_value: object) -> str | None:
+    if not isinstance(raw_value, str):
+        return None
+    normalized = normalize_chat_text(raw_value)
+    if not normalized:
+        return None
+    if normalized.strip().lower() in {"unknown", "null", "none", "n/a"}:
+        return None
+    return normalized
+
+
+def normalize_keyword_vector_weight(raw_value: object) -> float:
+    if isinstance(raw_value, bool) or raw_value is None:
+        return DEFAULT_SEARCH_KEYWORD_VECTOR_WEIGHT
+    if isinstance(raw_value, (int, float)):
+        value = float(raw_value)
+    elif isinstance(raw_value, str):
+        try:
+            value = float(raw_value.strip())
+        except ValueError:
+            return DEFAULT_SEARCH_KEYWORD_VECTOR_WEIGHT
+    else:
+        return DEFAULT_SEARCH_KEYWORD_VECTOR_WEIGHT
+
+    if 0.0 <= value <= 1.0:
+        return value
+    return DEFAULT_SEARCH_KEYWORD_VECTOR_WEIGHT
+
+
+def resolve_search_product_name_filter(payload: ChatRequest, rewrite_result: RewriteResult | None) -> str | None:
+    if rewrite_result is not None:
+        for key in ("product_name", "insurance_name", "product", "insurance_product_name"):
+            value = normalize_search_filter_value(rewrite_result.entities.get(key))
+            if value:
+                return value
+        for key in ("product_name", "insurance_name", "product"):
+            value = normalize_search_filter_value(rewrite_result.routing_hints.get(key))
+            if value:
+                return value
+
+        extracted_candidates = extract_product_name_candidates(
+            rewrite_result.original_query,
+            rewrite_result.rewritten_query,
+            rewrite_result.last_customer_message or "",
+        )
+        if extracted_candidates:
+            return extracted_candidates[0]
+
+    extracted_candidates = extract_product_name_candidates(payload.query)
+    if extracted_candidates:
+        return extracted_candidates[0]
+    return None
+
+
+def resolve_search_keyword_vector_weight(rewrite_result: RewriteResult | None) -> float:
+    if rewrite_result is None:
+        return DEFAULT_SEARCH_KEYWORD_VECTOR_WEIGHT
+    return normalize_keyword_vector_weight(rewrite_result.routing_hints.get("keyword_vector_weight"))
+
+
 def build_similarity_ratio(left: str, right: str) -> float:
     left_ngrams = build_character_ngrams(left)
     right_ngrams = build_character_ngrams(right)
@@ -3817,7 +3878,7 @@ def infer_document_hint(
     query: str,
     metadata: ChatMetadata | None,
     entities: dict[str, str],
-    routing_hints: dict[str, str],
+    routing_hints: dict[str, object],
 ) -> str | None:
     combined_text = " ".join(
         [
@@ -3835,7 +3896,7 @@ def infer_document_type_filters(
     payload: ChatRequest,
     *,
     entities: dict[str, str],
-    routing_hints: dict[str, str],
+    routing_hints: dict[str, object],
     question_type: str | None,
     document_hint: str | None,
 ) -> list[str]:
@@ -3907,7 +3968,8 @@ def build_query_rewrite_messages(
         '  "intent": string,\n'
         '  "question_type": string,\n'
         '  "entities": object,\n'
-        '  "routing_hints": object\n'
+        '  "routing_hints": object,\n'
+        '  "product_name": string\n'
         "}"
     )
     system_prompt_base = load_query_rewrite_system_prompt() or fallback_system_prompt
@@ -3932,6 +3994,11 @@ def build_query_rewrite_messages(
         "- For statistical queries, routing_hints should prefer statistics_table or statistics_report.\n"
         "- When the target document family is clear, include routing_hints.document_type using one of policy, calculation_guide, business_guide, statistics_table.\n"
         "- For policy or terms questions, routing_hints may include terms, pricing_method, change_process, or general.\n"
+        "- When the product or insurance name is explicit and reliable, include it in entities.product_name or top-level product_name.\n"
+        f"- routing_hints.keyword_vector_weight must be a number between 0.0 and 1.0. Use {DEFAULT_SEARCH_KEYWORD_VECTOR_WEIGHT} if uncertain.\n"
+        "- Prefer 0.6 to 0.8 for exact keyword, document title, clause, code, or required-document queries.\n"
+        "- Prefer 0.3 to 0.5 for semantic explanation, eligibility, condition, or exception queries.\n"
+        "- Prefer 0.4 to 0.6 for statistical or numeric queries.\n"
         "- Return valid JSON only with no extra text.\n\n"
         f"Input:\n{json.dumps({'seed_query': seed_query, 'original_query': original_query, 'last_customer_message': last_customer_message, 'conversation_context': context_lines, 'metadata': metadata, 'domain_focus_hint': domain_focus}, ensure_ascii=False)}"
     )
@@ -3966,7 +4033,8 @@ def build_standalone_query_rewrite_messages(
         '  "intent": string,\n'
         '  "question_type": string,\n'
         '  "entities": object,\n'
-        '  "routing_hints": object\n'
+        '  "routing_hints": object,\n'
+        '  "product_name": string\n'
         "}"
     )
     system_prompt_base = load_query_rewrite_system_prompt() or fallback_system_prompt
@@ -3982,6 +4050,8 @@ def build_standalone_query_rewrite_messages(
         "- For statistical queries, fill entities such as year, metric, target, procedure, or topic when possible.\n"
         "- For statistical queries, routing_hints should prefer statistics_table or statistics_report.\n"
         "- When the target document family is clear, include routing_hints.document_type using one of policy, calculation_guide, business_guide, statistics_table.\n"
+        "- When the product or insurance name is explicit and reliable, include it in entities.product_name or top-level product_name.\n"
+        f"- routing_hints.keyword_vector_weight must be a number between 0.0 and 1.0. Use {DEFAULT_SEARCH_KEYWORD_VECTOR_WEIGHT} if uncertain.\n"
         "- Keep it short and retrieval-friendly.\n"
         "- Return valid JSON only.\n\n"
         f"Input:\n{json.dumps({'seed_query': seed_query, 'original_query': original_query, 'metadata': metadata}, ensure_ascii=False)}"
@@ -3992,7 +4062,10 @@ def build_standalone_query_rewrite_messages(
     ]
 
 
-def parse_query_rewrite_response(response_payload: dict[str, object], fallback_query: str) -> tuple[str, list[str], str | None, str | None, dict[str, str], dict[str, str]]:
+def parse_query_rewrite_response(
+    response_payload: dict[str, object],
+    fallback_query: str,
+) -> tuple[str, list[str], str | None, str | None, dict[str, str], dict[str, object]]:
     rewritten_query = ensure_question_sentence(str(response_payload.get("rewritten_query") or "").strip() or fallback_query)
     raw_search_queries = response_payload.get("search_queries")
     search_queries: list[str] = []
@@ -4005,12 +4078,20 @@ def parse_query_rewrite_response(response_payload: dict[str, object], fallback_q
 
     raw_entities = response_payload.get("entities")
     entities = {str(key): str(value) for key, value in raw_entities.items()} if isinstance(raw_entities, dict) else {}
+    top_level_product_name = normalize_search_filter_value(response_payload.get("product_name"))
+    if top_level_product_name and "product_name" not in entities:
+        entities["product_name"] = top_level_product_name
     raw_routing_hints = response_payload.get("routing_hints")
-    routing_hints = (
-        {str(key): str(value) for key, value in raw_routing_hints.items()}
-        if isinstance(raw_routing_hints, dict)
-        else {}
-    )
+    routing_hints: dict[str, object] = {}
+    if isinstance(raw_routing_hints, dict):
+        for key, value in raw_routing_hints.items():
+            key_text = str(key)
+            if key_text == "keyword_vector_weight":
+                routing_hints[key_text] = normalize_keyword_vector_weight(value)
+            elif isinstance(value, str):
+                routing_hints[key_text] = value
+            elif value is not None:
+                routing_hints[key_text] = str(value)
     intent = response_payload.get("intent")
     if intent is not None:
         intent = str(intent).strip() or None
@@ -4052,7 +4133,7 @@ def retry_query_rewrite_once(
     normalized_conversation: list[dict[str, str]],
     metadata: dict[str, object],
     validation_reasons: list[str],
-) -> tuple[str, list[str], str | None, str | None, dict[str, str], dict[str, str]]:
+) -> tuple[str, list[str], str | None, str | None, dict[str, str], dict[str, object]]:
     messages = build_query_rewrite_messages(
         seed_query=seed_query,
         original_query=trimmed_query,
@@ -4202,8 +4283,21 @@ def enrich_rewrite_result(payload: ChatRequest, rewrite_result: RewriteResult) -
     for key, value in statistics_entities.items():
         entities.setdefault(key, value)
 
+    if "product_name" not in entities:
+        extracted_product_names = extract_product_name_candidates(
+            rewrite_result.original_query,
+            rewrite_result.rewritten_query,
+            rewrite_result.last_customer_message or "",
+        )
+        if extracted_product_names:
+            entities["product_name"] = extracted_product_names[0]
+
     if question_type and "question_type" not in entities:
         entities["question_type"] = question_type
+
+    routing_hints["keyword_vector_weight"] = normalize_keyword_vector_weight(
+        routing_hints.get("keyword_vector_weight")
+    )
 
     document_hint = infer_document_hint(payload.query, payload.metadata, entities, routing_hints)
     if question_type in {"statistics", "numeric"} and not document_hint:
@@ -4442,6 +4536,7 @@ def normalize_external_search_hit(hit: dict[str, object], *, original_rank: int 
 def build_external_search_payload(
     endpoint: str,
     *,
+    payload: ChatRequest,
     question: str,
     query: str,
     top_k: int,
@@ -4462,21 +4557,21 @@ def build_external_search_payload(
         requested_top_k = max(1, top_k)
         requested_final_k = max(1, final_k)
         external_top_k = max(requested_top_k, requested_final_k)
-        payload: dict[str, object] = {
+        product_name_filter = resolve_search_product_name_filter(payload, rewrite_result)
+        if product_name_filter:
+            filters["product_name_tokens"] = product_name_filter
+        search_payload: dict[str, object] = {
             "query": query,
             "top_k": external_top_k,
             "final_k": min(requested_final_k, external_top_k),
-            "use_rerank": False,
-            "include_source_metadata": True,
-            "include_scores": True,
-            "keyword_vector_weight": 0.3,
+            "keyword_vector_weight": resolve_search_keyword_vector_weight(rewrite_result),
             "return_format": "json",
         }
         if filters:
-            payload["filters"] = filters
-        return payload
+            search_payload["filters"] = filters
+        return search_payload
 
-    payload = {
+    legacy_payload = {
         "question": question,
         "query": query,
         "rewritten_query": query,
@@ -4484,13 +4579,14 @@ def build_external_search_payload(
         "stored_name": stored_name,
     }
     if filters:
-        payload["filters"] = filters
-    return payload
+        legacy_payload["filters"] = filters
+    return legacy_payload
 
 
 def call_rag_retrieval_endpoint(
     endpoint: str,
     *,
+    payload: ChatRequest,
     question: str,
     query: str,
     top_k: int,
@@ -4506,6 +4602,7 @@ def call_rag_retrieval_endpoint(
 
     payload = build_external_search_payload(
         normalized_endpoint,
+        payload=payload,
         question=question,
         query=query,
         top_k=top_k,
@@ -4567,6 +4664,7 @@ def resolve_retrieval_for_chat(payload: ChatRequest, rewrite_result: RewriteResu
         try:
             retrieval = call_rag_retrieval_endpoint(
                 search_api_endpoint,
+                payload=payload,
                 question=payload.query.strip(),
                 query=retrieval_query,
                 top_k=resolved_top_k,

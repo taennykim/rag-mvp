@@ -72,6 +72,8 @@
   - `통계`, `수치`, `평균`, `기준`, `연도`, `인당`, `비율`, `건수`, `금액`, `진료비`, `수술비`, `발생 건수` 등의 표현이 핵심 요청에 포함된다.
   - 이 경우 보장 여부 해석보다 통계 항목 복원이 우선이다.
 - 연도나 숫자 표현이 있으면 가능한 유지한다.
+- 상품명/보험명이 명확하면 `entities.product_name` 또는 top-level `product_name`으로 남길 수 있다.
+- Search API 가중치 조정이 필요하면 `routing_hints.keyword_vector_weight`에 `0.0 ~ 1.0` 범위의 number를 남긴다.
 
 ## 8. 도메인 보강 규칙
 ### 공통 금융 도메인
@@ -95,6 +97,24 @@
   - 기준 연도 또는 기간
   - 지표
 - 문서 계열이 명확하면 runtime `routing_hints.document_type`에 아래 값 중 하나를 남길 수 있어야 한다. 현재 이 값은 trace/routing hint로만 유지하며 Search API `filters.document_type`으로는 보내지 않는다.
+- 상품명/보험명이 명확하면 runtime은 이를 `entities.product_name` 또는 top-level `product_name`으로 유지하고, Search API 호출 시 `filters.product_name_tokens`로만 사용할 수 있다.
+- `routing_hints.keyword_vector_weight`는 Search API `keyword_vector_weight` 추천값이며, backend가 number 타입과 `0.0 ~ 1.0` 범위를 검증한 뒤 사용한다.
+- `routing_hints.document_type`은 내부 trace/routing hint 용도이며 Search API payload에는 반영하지 않는다.
+
+### 8.1 product_name 추출 기준
+- 우선순위 1: 대화나 질문에서 상품명/보험명이 명확하면 `entities.product_name`으로 남긴다.
+- 우선순위 2: JSON top-level `product_name`으로 남길 수 있다.
+- 상품명이 불명확하거나 추측이 필요한 경우에는 넣지 않는다.
+- 빈 문자열, `Unknown`, `null`, `None` 같은 placeholder 값은 넣지 않는다.
+
+### 8.2 keyword_vector_weight 추천 기준
+- 키워드/정확 문구 중심 질의: `0.6 ~ 0.8`
+  예: 상품명, 특약명, 제출서류, 필요서류, 구비서류, 코드명, 약관 조항
+- 의미 기반/설명형 질의: `0.3 ~ 0.5`
+  예: 보장 가능 여부, 조건 설명, 예외 여부
+- 통계/수치형 질의: `0.4 ~ 0.6`
+  예: 연도, 평균, 비율, 건수, 금액
+- 판단이 어려우면 기본값 `0.3`
   - `policy`
   - `calculation_guide`
   - `business_guide`
@@ -222,7 +242,9 @@
 - 통계/수치형 질문을 보장, 약관, 청구 가능 여부, 면책 질문으로 바꾸지 않습니다.
 - 보험/상품 문맥이 앞에 있어도 마지막 실질 질문이 통계형이면 불필요한 보장 문맥은 제거합니다.
 - 원본 대화나 질문이 한국어면 출력도 한국어로 생성합니다.
-- 출력은 한국어 검색문 1건만 생성합니다.
+- 상품명/보험명이 명확하면 `entities.product_name` 또는 top-level `product_name`으로 남깁니다.
+- `routing_hints.keyword_vector_weight`는 반드시 number 타입이며 `0.0 ~ 1.0` 범위를 사용합니다.
+- 판단이 어려우면 `routing_hints.keyword_vector_weight=0.3`을 사용합니다.
 - 반드시 `~알려 주세요`, `~보여 주세요`, `~가능한가요` 등 질문/요청문으로 끝냅니다.
 
 절대 하지 말 것
@@ -234,15 +256,34 @@
 - 통계/수치 질문을 보험 보장/약관/청구 가능 여부 질문으로 변형하지 않습니다.
 
 출력 형식
-- 검색문 텍스트 1건만 출력합니다.
+- JSON만 출력합니다.
 - 다른 텍스트는 일절 포함하지 않습니다.
-- 검색문은 독립적으로 검색 가능한 완결된 한 문장이어야 합니다.
+- `rewritten_query`는 독립적으로 검색 가능한 완결된 한 문장이어야 합니다.
 - 기본 형태는 `[상황 맥락], [상품/서비스명]에 대한 [최종 요청 내용]을 알려 주세요.` 이며, 자연스러운 문장을 위해 조사와 어순은 조정할 수 있습니다.
+- JSON schema 예시:
+
+```json
+{
+  "rewritten_query": "미성년 계약자가 제지급 요청 시 필요한 서류는 무엇인가?",
+  "search_queries": [
+    "미성년 계약자가 제지급 요청 시 필요한 서류는 무엇인가?"
+  ],
+  "intent": "documents",
+  "question_type": "documents",
+  "entities": {
+    "product_name": "상품명 또는 보험명"
+  },
+  "routing_hints": {
+    "keyword_vector_weight": 0.7
+  }
+}
 ```
 
 ## 12. 구현 메모
-- query rewrite prompt는 본 문서의 규칙을 그대로 따르되, 실제 모델 출력은 검색문 1건만 반환하도록 제한한다.
+- query rewrite prompt는 본 문서의 규칙을 그대로 따르되, 실제 모델 출력은 JSON만 반환하도록 제한한다.
 - 프롬프트에서 예시는 보험, 은행, 카드, 증권 사례를 함께 포함해 특정 업권으로 과도하게 쏠리지 않도록 한다.
 - 후속 Search API 입력값으로 바로 연결할 수 있도록 불필요한 머리말, 라벨, JSON 형식 출력은 허용하지 않는다.
 - 구현 시에는 본 문서 전체를 직접 system prompt로 넣기보다, `11. LLM System Prompt` 블록만 로딩해서 사용하는 것을 권장한다.
 - runtime은 rewrite 결과와 rule-based 보정을 함께 사용해 document type hint를 `docs/retrieval_api_design.md`의 enum(`policy`, `calculation_guide`, `business_guide`, `statistics_table`)으로 정규화할 수 있다. 2026-04-23 기준 이 값은 Search API filter가 아니라 trace/routing hint로만 사용한다.
+- runtime은 rewrite 결과의 `entities.product_name` 또는 top-level `product_name`을 Search API `filters.product_name_tokens`로만 사용할 수 있다.
+- runtime은 `routing_hints.keyword_vector_weight`를 검증해 Search API `keyword_vector_weight`로 전달하고, 유효하지 않으면 `0.3`으로 fallback 한다.

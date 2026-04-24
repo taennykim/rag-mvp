@@ -7,6 +7,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.main import (
+    ChatRequest,
     EMPTY_CONTENT_PLACEHOLDER,
     UNKNOWN_DOCUMENT_NAME,
     UNKNOWN_HEADER_PATH,
@@ -16,7 +17,9 @@ from app.main import (
     build_standardized_retrieved_chunks,
     filter_hits_for_answer_generation,
     format_chat_context,
+    normalize_keyword_vector_weight,
     normalize_external_search_hit,
+    parse_query_rewrite_response,
     sort_hits_for_output,
 )
 
@@ -123,6 +126,7 @@ class AnswerContextMetadataTests(unittest.TestCase):
     def test_build_external_search_payload_omits_document_type_and_chunk_types(self) -> None:
         payload = build_external_search_payload(
             "http://example.com/api/search",
+            payload=ChatRequest(query="2024년 보험 통계 알려줘"),
             question="통계 질의",
             query="2024년 보험 통계 알려줘",
             top_k=30,
@@ -139,6 +143,75 @@ class AnswerContextMetadataTests(unittest.TestCase):
 
         self.assertNotIn("filters", payload)
         self.assertNotIn("chunk_types", payload)
+        self.assertNotIn("use_rerank", payload)
+        self.assertNotIn("include_source_metadata", payload)
+        self.assertNotIn("include_scores", payload)
+
+    def test_build_external_search_payload_includes_product_name_tokens_filter_when_available(self) -> None:
+        payload = build_external_search_payload(
+            "http://example.com/api/search",
+            payload=ChatRequest(query="신한유니버설종신보험 해약환급금은 어떻게 계산돼?"),
+            question="질문",
+            query="신한유니버설종신보험 해약환급금은 어떻게 계산되나요?",
+            top_k=30,
+            final_k=10,
+            stored_name=None,
+            rewrite_result=RewriteResult(
+                original_query="신한유니버설종신보험 해약환급금은 어떻게 계산돼?",
+                rewritten_query="신한유니버설종신보험 해약환급금은 어떻게 계산되나요?",
+                entities={"product_name": "신한유니버설종신보험"},
+                routing_hints={"keyword_vector_weight": 0.7},
+            ),
+        )
+
+        self.assertEqual(payload["filters"], {"product_name_tokens": "신한유니버설종신보험"})
+        self.assertEqual(payload["keyword_vector_weight"], 0.7)
+
+    def test_build_external_search_payload_omits_empty_filters_when_product_name_tokens_missing(self) -> None:
+        payload = build_external_search_payload(
+            "http://example.com/api/search",
+            payload=ChatRequest(query="미성년 계약자가 제지급 요청 시 필요한 서류는 무엇인가?"),
+            question="질문",
+            query="미성년 계약자가 제지급 요청 시 필요한 서류는 무엇인가?",
+            top_k=30,
+            final_k=10,
+            stored_name=None,
+            rewrite_result=RewriteResult(
+                original_query="미성년 계약자가 제지급 요청 시 필요한 서류는 무엇인가?",
+                rewritten_query="미성년 계약자가 제지급 요청 시 필요한 서류는 무엇인가?",
+            ),
+        )
+
+        self.assertNotIn("filters", payload)
+
+    def test_parse_query_rewrite_response_promotes_top_level_product_name_and_numeric_weight(self) -> None:
+        (
+            rewritten_query,
+            search_queries,
+            _intent,
+            _question_type,
+            entities,
+            routing_hints,
+        ) = parse_query_rewrite_response(
+            {
+                "rewritten_query": "미성년 계약자가 제지급 요청 시 필요한 서류는 무엇인가?",
+                "product_name": "신한유니버설종신보험",
+                "routing_hints": {"keyword_vector_weight": "0.7"},
+            },
+            "fallback query",
+        )
+
+        self.assertEqual(rewritten_query, "미성년 계약자가 제지급 요청 시 필요한 서류는 무엇인가?")
+        self.assertEqual(search_queries[0], rewritten_query)
+        self.assertEqual(entities["product_name"], "신한유니버설종신보험")
+        self.assertEqual(routing_hints["keyword_vector_weight"], 0.7)
+
+    def test_normalize_keyword_vector_weight_falls_back_to_default_on_invalid_values(self) -> None:
+        self.assertEqual(normalize_keyword_vector_weight(None), 0.3)
+        self.assertEqual(normalize_keyword_vector_weight("abc"), 0.3)
+        self.assertEqual(normalize_keyword_vector_weight("1.2"), 0.3)
+        self.assertEqual(normalize_keyword_vector_weight(-0.1), 0.3)
+        self.assertEqual(normalize_keyword_vector_weight("0.3"), 0.3)
 
 
 if __name__ == "__main__":

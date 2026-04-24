@@ -47,7 +47,7 @@
 | final_k | integer | N | `10` | 최종 반환 chunk 개수, rerank 적용 여부와 무관하게 적용 |
 | use_rerank | boolean | N | `true` | rerank 적용 여부 |
 | document_ids | array[string] | N | `["doc_1001"]` | 특정 문서 범위 제한, 이전 검색 결과에서 특정 문서가 유력해졌을 때 사용 |
-| filters | object | N | `{"document_type":["policy"]}` | metadata 필터 |
+| filters | object | N | `{"product_name_tokens":"신한유니버설종신보험"}` | metadata 필터 |
 | chunk_types | array[string] | N | `["text","table","mixed"]` | 검색 대상 chunk 유형 제한 |
 | include_source_metadata | boolean | N | `true` | 출처 metadata 포함 여부 |
 | include_scores | boolean | N | `true` | BM25, vector, RRF, rerank score 포함 여부 |
@@ -104,6 +104,40 @@
 - `results[].scores.rrf_score`는 BM25/vector 후보 union 범위에서 weighted RRF 결합 이후 최종 후보 선정을 설명하는 기본 점수다.
 - UI 검색 결과 리스트와 상세 패널에는 `bm25_score`, `vector_score`, `rrf_score`, `rerank_score`를 함께 표시할 수 있어야 한다.
 - rerank를 사용하지 않는 경우에도 `rrf_score`는 항상 반환 가능해야 한다.
+
+### `/chat` payload 운영 원칙
+
+- `rag-mvp` backend `/chat`은 Search API 호출 시 본 문서 Request 표에 정의된 파라미터만 사용한다.
+- `/chat` outbound payload는 현재 `query`, `top_k`, `final_k`, `filters.product_name_tokens`, `return_format`, `keyword_vector_weight` subset만 사용한다.
+- `filters.document_type`, `filters.year`, `chunk_types`는 `/chat` Search API payload에 포함하지 않는다.
+- `filters.product_name_tokens`는 query rewrite 결과나 rule 기반 추출로 신뢰 가능한 상품명/보험명이 있을 때만 조건부로 보낸다.
+- `filters`에 넣을 값이 없으면 `/chat` payload에서는 `filters` 자체를 생략한다.
+- `keyword_vector_weight`는 query rewrite LLM이 추천한 값을 backend가 `0.0 ~ 1.0` 범위로 검증해 사용하고, 유효하지 않으면 `0.3`으로 fallback 한다.
+
+### `/chat` payload 예시
+
+```json
+{
+  "query": "미성년 계약자가 제지급 요청 시 필요한 서류는 무엇인가?",
+  "top_k": 30,
+  "final_k": 10,
+  "filters": {
+    "product_name_tokens": "상품명 또는 보험명"
+  },
+  "return_format": "json",
+  "keyword_vector_weight": 0.7
+}
+```
+
+```json
+{
+  "query": "미성년 계약자가 제지급 요청 시 필요한 서류는 무엇인가?",
+  "top_k": 30,
+  "final_k": 10,
+  "return_format": "json",
+  "keyword_vector_weight": 0.7
+}
+```
 
 ### 상세 로직
 
@@ -258,6 +292,7 @@
 | document_name | string | Y | `"약관_(무)신한유니버설종신보험_080312.md"` | 문서명 |
 | document_type | string | Y | `"policy"` | 문서 유형 |
 | embedding_model_id | string | N | `"bge-m3"` | ingest 시 문서/청크에 사용한 embedding model id |
+| product_name | string | N | `"약관_(무)신한유니버설종신보험"` | 상품명 |
 
 #### document_type 값
 
@@ -271,8 +306,9 @@
 
 #### metadata 운용 원칙
 
-- document metadata는 `document_id`, `document_name`, `document_type`, `embedding_model_id`만 유지한다.
+- document metadata는 `document_id`, `document_name`, `document_type`, `embedding_model_id`, `product_name`을 유지한다.
 - 문서 주제/별칭/키워드 같은 의미 요약형 필드는 retrieval filtering 기준으로 사용하지 않는다.
+- `product_name`은 Search API metadata filter와 후속 분석에 사용할 수 있는 정규화 대상 필드다.
 - `embedding_model_id`는 문서 검색용 힌트가 아니라 retrieval consistency 보장을 위한 strict metadata로 사용한다.
 
 ### 2. Chunk Metadata
