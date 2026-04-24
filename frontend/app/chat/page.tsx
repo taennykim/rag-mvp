@@ -518,6 +518,7 @@ export default function ChatPage() {
     ? streamingRewrittenQuery
     : result?.rewritten_query;
   const displayedAnswer = isStreamingAnswer ? streamingAnswer : result?.answer;
+  const answer = displayedAnswer ?? "아직 연결된 최종 응답 본문은 없습니다.";
   const showEvidenceSection = false;
 
   return (
@@ -693,7 +694,7 @@ export default function ChatPage() {
                   {result?.search_api_endpoint ? <span>Search: {result.search_api_endpoint}</span> : null}
                 </div>
                 <div className={`answer-body${result?.insufficient_context ? " warning" : ""}${isStreamingAnswer ? " streaming" : ""}`}>
-                  {displayedAnswer ?? "아직 연결된 최종 응답 본문은 없습니다."}
+                  <div data-testid="answer">{answer}</div>
                   {isStreamingAnswer ? <span className="stream-cursor" aria-hidden="true">▌</span> : null}
                 </div>
               </div>
