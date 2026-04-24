@@ -35,7 +35,7 @@
 - 현재 단계: 개발자 제공 임시 Search API `/api/search`를 `/chat` 외부 검색 endpoint로 사용할 수 있도록 payload와 `results` 응답 normalization을 반영함
 - 현재 단계: `/chat` 화면의 응답시간을 전체 Response time, Query rewrite time, API response time으로 세분화함
 - 현재 단계: `/chat` Question과 LLM Question 사이에 Query Rewrite LLM 선택 UI를 추가하고 backend 호출 모델 선택값을 연결함
-- 현재 단계: Query Rewrite LLM 기본값을 `gpt-4o-mini`로 변경함
+- 현재 단계: Query Rewrite LLM 기본값을 `gpt-4o`로 변경함
 - 현재 단계: 사용자 요청으로 특정 케이스(치조골 이식/수술특약/판결) 전용 query rewrite 규칙 보강은 적용하지 않고 원복함
 - 현재 단계: `/chat` Answer LLM UI 기본값을 `Default (GPT-4o)`로 고정했고 `DEFAULT_ANSWER_MODEL`도 `gpt-4o`로 정리함
 - 현재 단계: RAG 서버에서 호출 검증을 통과한 `gpt-4.1-mini`를 Query Rewrite LLM 선택지에 추가함

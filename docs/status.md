@@ -55,9 +55,9 @@
 - 2026-04-15 기준 RAG 서버 `/chat`에서 임시 외부 Search API 호출, `retrieved_chunks` 표준화, Answer 생성까지 end-to-end로 확인했다.
 - 2026-04-15 기준 `/chat` 화면의 응답시간을 전체 Response time, Query rewrite time, API response time으로 세분화했다.
 - 2026-04-15 기준 `/chat` Question과 LLM Question 사이에 Query Rewrite LLM 선택 UI를 추가했고, backend가 `query_rewrite_model`을 rewrite 호출에 적용하도록 반영했다.
-- 2026-04-16 기준 Query Rewrite LLM 기본값을 `gpt-4o-mini`로 변경했다.
+- 2026-04-16 기준 Query Rewrite LLM 기본값을 `gpt-4o`로 변경했다.
 - 2026-04-16 기준 RAG 서버에서 `gpt-4.1-mini` deployment 직접 호출 성공을 확인했고 Query Rewrite LLM 선택지에 추가했다.
-- 2026-04-17 기준 Query Rewrite LLM과 Answer LLM selector는 독립적으로 유지하되, 기본값은 Query Rewrite `gpt-4o-mini`, Answer `gpt-4o`로 분리 운영하도록 정리했다.
+- 2026-04-17 기준 Query Rewrite LLM과 Answer LLM selector는 독립적으로 유지하되, 기본값은 Query Rewrite `gpt-4o`, Answer `gpt-4o`로 분리 운영하도록 정리했다.
 - 2026-04-20 기준 `/chat`은 backend 고정값 `http://10.160.98.123:8000/api/search`만 사용하는 Search-only 흐름으로 정리했고, UI도 `Get response` 기준으로 단순화했다.
 - 2026-04-16 기준 Search API 연결 실패 시에도 `/chat`이 `rewritten_query`, 오류 메시지, insufficient-context 상태를 함께 반환하도록 보강했다.
 - 2026-04-16 기준 `/chat`은 Query Rewrite LLM과 별도로 Answer LLM도 선택할 수 있고, backend가 `answer_model`을 grounded answer 생성 deployment에 적용하도록 반영했다.

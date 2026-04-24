@@ -58,7 +58,7 @@
 - `/chat` main form은 질문, Query Rewrite LLM 선택, Answer LLM 선택, `Get response` 버튼만 노출하고 endpoint 값은 backend 고정값을 사용한다.
 - `/chat` 상단 header는 Chat content column과 왼쪽 정렬이 맞도록 폭을 조정했다.
 - `/chat` Query Rewrite LLM과 Answer LLM selector는 서로 독립적으로 동작한다.
-- Query Rewrite LLM 기본값은 `gpt-4o-mini`다.
+- Query Rewrite LLM 기본값은 `gpt-4o`다.
 - Answer LLM 기본값은 `gpt-4o`다.
 - `/chat`은 현재 Search API만 사용하고 Lookup 경로는 사용하지 않는다.
 - `/chat` Question은 단일 질문뿐 아니라 `고객:` / `상담사:` 멀티라인 입력도 허용하고, backend가 이를 `conversation_context`로 정규화한다.

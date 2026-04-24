@@ -196,7 +196,7 @@
 - query rewrite의 모호한 마지막 발화 판별, 최근 고객 발화 묶음 seed, 보험 도메인 보장 축 복원 규칙 보강 완료
 - query rewrite의 통계/수치형 의미 보존 규칙과 validation 보강 완료
 - query rewrite LLM 선택 요청 필드 및 응답 trace 반영 완료
-- query rewrite 기본 LLM을 `gpt-4o-mini`로 변경 완료
+- query rewrite 기본 LLM을 `gpt-4o`로 변경 완료
 - query rewrite / answer LLM Azure 선택지에 `gpt-5.4`, `gpt-5.4-mini` 추가 완료
 - query rewrite LLM 선택지에 RAG 서버 호출 검증을 통과한 `gpt-4.1-mini` 추가 완료
 - query rewrite LLM에 `Custom` 옵션과 OpenAI-compatible endpoint 입력값(`LLM endpoint`, `LLM model name`, optional `API Key`) 반영 완료

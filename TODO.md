@@ -241,7 +241,7 @@
 - [ ] RAG 서버 브라우저에서 Query Rewrite LLM 선택 UI 위치와 선택 모델 표시 확인
 - [ ] RAG 서버 브라우저에서 Answer 상단 단계별 응답시간 표시 확인
 - [ ] RAG 서버 브라우저에서 외부 Search API 결과가 Evidence / Reference context에 표시되는지 확인
-- [ ] Query Rewrite LLM 기본값 `gpt-4o-mini` 기준 브라우저 동작 확인
+- [ ] Query Rewrite LLM 기본값 `gpt-4o` 기준 브라우저 동작 확인
 - [x] frontend 의존성 설치
 - [x] backend 의존성 설치
 - [x] frontend 실행 확인

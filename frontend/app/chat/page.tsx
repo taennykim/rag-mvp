@@ -51,7 +51,7 @@ type ChatResponse = {
 const API_BASE_URL = "/api";
 const CUSTOM_LLM_MODEL = "custom";
 const DEFAULT_LLM_OPTION = "";
-const DEFAULT_QUERY_REWRITE_MODEL = "gpt-4o-mini";
+const DEFAULT_QUERY_REWRITE_MODEL = "gpt-4o";
 const DEFAULT_ANSWER_MODEL = "gpt-4o";
 const QUERY_REWRITE_MODEL_OPTIONS = [
   { label: "Default", value: DEFAULT_LLM_OPTION },
@@ -158,6 +158,7 @@ export default function ChatPage() {
   const deferredResult = useDeferredValue(result);
   const isCustomQueryRewriteModel = queryRewriteModel === CUSTOM_QUERY_REWRITE_MODEL;
   const isCustomAnswerModel = answerModel === CUSTOM_ANSWER_MODEL;
+  const resolvedQueryRewriteModel = queryRewriteModel || DEFAULT_QUERY_REWRITE_MODEL;
 
   async function consumeChatStream(response: Response, startedAt: number) {
     const streamReader = response.body?.getReader();
@@ -454,7 +455,7 @@ export default function ChatPage() {
           action: "search",
           top_k: 30,
           final_k: 10,
-          query_rewrite_model: queryRewriteModel || null,
+          query_rewrite_model: resolvedQueryRewriteModel,
           query_rewrite_base_url: isCustomQueryRewriteModel ? queryRewriteBaseUrl.trim() : null,
           query_rewrite_custom_model: isCustomQueryRewriteModel ? queryRewriteCustomModel.trim() : null,
           query_rewrite_api_key: isCustomQueryRewriteModel ? queryRewriteApiKey : null,
