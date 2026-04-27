@@ -83,7 +83,7 @@ Deliver a small, readable, end-to-end MVP before adding advanced features.
 - Statistical and numeric queries now preserve target, year, and metric terms such as `평균`, `인당`, `비율`, `건수`, `금액`, and `진료비`, instead of drifting into coverage or claim wording
 - Query rewrite runtime still loads only `docs/query-rewrite-spec.md` section `11. LLM System Prompt`, and that block was updated together with the document body
 - `/chat` now enriches rewrite output with `question_type`, `entities`, and `routing_hints` more consistently for statistical queries
-- Search API payload is now aligned to the documented `/api/search` spec subset and uses `query`, `top_k`, `final_k`, conditional `filters.product_name_tokens`, `return_format=json`, and query rewrite validated `keyword_vector_weight`; `/chat` no longer sends `filters.document_type`, `chunk_types`, or `filters.year`
+- Search API payload is now aligned to the documented `/api/search` spec subset and uses `query`, `top_k`, `final_k`, conditional `filters.product_name`, `return_format=json`, and query rewrite validated `keyword_vector_weight`; `/chat` no longer sends `filters.document_type`, `chunk_types`, or `filters.year`
 - `/chat` currently calls the Search API with `top_k=30`, `final_k=10`
 - `/chat` now uses the Search API `results` list as the final answer/citation context source, so when `final_k=10` is returned it combines all 10 contexts during answer generation instead of falling back to a shorter intermediate `hits` list
 - `/chat` keeps document type inference in rewrite trace only; it is not used as a Search API filter as of 2026-04-23

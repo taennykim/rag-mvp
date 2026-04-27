@@ -43,7 +43,7 @@
 - 현재 단계: Query Rewrite LLM과 Answer LLM 모두 `Custom` 옵션을 지원하고, `LLM endpoint`, `LLM model name`, optional `API Key`, `Temperature`, `Top-K`, `Max Tokens`를 받아 OpenAI-compatible endpoint로 호출할 수 있게 정리함
 - 현재 단계: 긴 상담 대화에서도 마지막 고객 질문을 우선 복원하고, 통계/수치형 질의의 연도/지표/측정 대상이 rewrite에서 유지되도록 query rewrite 규칙과 validation을 보강함
 - 현재 단계: rewrite 결과의 `question_type`, `entities`, `routing_hints`를 통계형 질의 기준으로 더 안정적으로 채우도록 enrichment를 보강함
-- 현재 단계: `/api/search` payload는 `retrieval_api_design.md` 스펙 subset에 맞춰 `query`, `top_k`, `final_k`, 조건부 `filters.product_name_tokens`, `return_format=json`, query rewrite 기반 `keyword_vector_weight`만 사용하도록 정리함
+- 현재 단계: `/api/search` payload는 `retrieval_api_design.md` 스펙 subset에 맞춰 `query`, `top_k`, `final_k`, 조건부 `filters.product_name`, `return_format=json`, query rewrite 기반 `keyword_vector_weight`만 사용하도록 정리함
 - 현재 단계: query rewrite 결과와 metadata / question_type / document_hint rule 기반 document type 추론은 trace/routing hint로만 유지하고 Search API filter로는 사용하지 않음
 - 현재 단계: `/chat` Search API 호출 시 `top_k=30`, `final_k=10` 기준으로 조정했고, external payload는 `docs/retrieval_api_design.md` 계약대로 `top_k=max(payload.top_k, payload.final_k)`, `final_k<=top_k` 규칙을 유지하도록 정리함
 - 현재 단계: 외부 Search 응답에 `results`와 `hits`가 함께 올 때 `/chat` answer/citation/context 기준을 `results` 우선으로 정리해 `final_k=10`이면 최종 10개 context를 answer generation에 그대로 사용하도록 보정함

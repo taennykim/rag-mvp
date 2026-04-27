@@ -47,7 +47,7 @@
 | final_k | integer | N | `10` | 최종 반환 chunk 개수, rerank 적용 여부와 무관하게 적용 |
 | use_rerank | boolean | N | `true` | rerank 적용 여부 |
 | document_ids | array[string] | N | `["doc_1001"]` | 특정 문서 범위 제한, 이전 검색 결과에서 특정 문서가 유력해졌을 때 사용 |
-| filters | object | N | `{"product_name_tokens":"신한유니버설종신보험"}` | metadata 필터 |
+| filters | object | N | `{"product_name":"신한유니버설종신보험"}` | metadata 필터 |
 | chunk_types | array[string] | N | `["text","table","mixed"]` | 검색 대상 chunk 유형 제한 |
 | include_source_metadata | boolean | N | `true` | 출처 metadata 포함 여부 |
 | include_scores | boolean | N | `true` | BM25, vector, RRF, rerank score 포함 여부 |
@@ -108,9 +108,9 @@
 ### `/chat` payload 운영 원칙
 
 - `rag-mvp` backend `/chat`은 Search API 호출 시 본 문서 Request 표에 정의된 파라미터만 사용한다.
-- `/chat` outbound payload는 현재 `query`, `top_k`, `final_k`, `filters.product_name_tokens`, `return_format`, `keyword_vector_weight` subset만 사용한다.
+- `/chat` outbound payload는 현재 `query`, `top_k`, `final_k`, `filters.product_name`, `return_format`, `keyword_vector_weight` subset만 사용한다.
 - `filters.document_type`, `filters.year`, `chunk_types`는 `/chat` Search API payload에 포함하지 않는다.
-- `filters.product_name_tokens`는 query rewrite 결과나 rule 기반 추출로 신뢰 가능한 상품명/보험명이 있을 때만 조건부로 보낸다.
+- `filters.product_name`은 query rewrite 결과나 rule 기반 추출로 신뢰 가능한 상품명/보험명이 있을 때만 조건부로 보낸다.
 - `filters`에 넣을 값이 없으면 `/chat` payload에서는 `filters` 자체를 생략한다.
 - `keyword_vector_weight`는 query rewrite LLM이 추천한 값을 backend가 `0.0 ~ 1.0` 범위로 검증해 사용하고, 유효하지 않으면 `0.3`으로 fallback 한다.
 
@@ -122,7 +122,7 @@
   "top_k": 30,
   "final_k": 10,
   "filters": {
-    "product_name_tokens": "상품명 또는 보험명"
+    "product_name": "상품명 또는 보험명"
   },
   "return_format": "json",
   "keyword_vector_weight": 0.7

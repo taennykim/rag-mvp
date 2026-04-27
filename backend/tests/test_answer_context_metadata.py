@@ -147,7 +147,7 @@ class AnswerContextMetadataTests(unittest.TestCase):
         self.assertNotIn("include_source_metadata", payload)
         self.assertNotIn("include_scores", payload)
 
-    def test_build_external_search_payload_includes_product_name_tokens_filter_when_available(self) -> None:
+    def test_build_external_search_payload_includes_product_name_filter_when_available(self) -> None:
         payload = build_external_search_payload(
             "http://example.com/api/search",
             payload=ChatRequest(query="신한유니버설종신보험 해약환급금은 어떻게 계산돼?"),
@@ -164,10 +164,10 @@ class AnswerContextMetadataTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(payload["filters"], {"product_name_tokens": "신한유니버설종신보험"})
+        self.assertEqual(payload["filters"], {"product_name": ["신한유니버설종신보험"]})
         self.assertEqual(payload["keyword_vector_weight"], 0.7)
 
-    def test_build_external_search_payload_omits_empty_filters_when_product_name_tokens_missing(self) -> None:
+    def test_build_external_search_payload_omits_empty_filters_when_product_name_missing(self) -> None:
         payload = build_external_search_payload(
             "http://example.com/api/search",
             payload=ChatRequest(query="미성년 계약자가 제지급 요청 시 필요한 서류는 무엇인가?"),

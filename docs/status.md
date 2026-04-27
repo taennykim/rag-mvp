@@ -40,7 +40,7 @@
 - 2026-04-22 기준 Search API `scores.rrf_score`를 내부 `hits` / `retrieved_chunks`에 유지하고, backend가 `rrf_score desc -> rerank_score desc -> score desc -> 기존 순서`로 정렬한 결과를 frontend `Reference context`에 그대로 사용하도록 반영했다.
 - 2026-04-22 기준 질의/rewritten_query에서 상품명·보험명 후보를 추출해 `document_name`과 비교하고, 명백히 다른 상품 문서는 Answer prompt 직전에만 제외하도록 반영했다.
 - 2026-04-23 기준 `/chat` Search API payload에서 `filters.document_type`을 비활성화했다. document type 추론은 rewrite trace/routing hint에는 남지만 Search API recall 제약에는 사용하지 않는다.
-- 2026-04-23 기준 `/chat` Search API payload는 `query`, `top_k=30`, `final_k=10`, 조건부 `filters.product_name_tokens`, `return_format=json`, query rewrite validated `keyword_vector_weight`를 사용하고 `filters.document_type`, `chunk_types`, `filters.year`는 보내지 않는다.
+- 2026-04-23 기준 `/chat` Search API payload는 `query`, `top_k=30`, `final_k=10`, 조건부 `filters.product_name`, `return_format=json`, query rewrite validated `keyword_vector_weight`를 사용하고 `filters.document_type`, `chunk_types`, `filters.year`는 보내지 않는다.
 - 2026-04-23 기준 backend 기본 LLM 호출 temperature를 `0.3`으로 변경했고, `top_p=0.9`, `max_tokens=700` 기준은 유지한다.
 - 2026-04-23 기준 `/chat` 상단 `Uploaded Insurance documents` header 폭을 Chat content column에 맞춰 조정했다.
 - 2026-04-23 기준 RAG 서버 frontend/backend를 `3000/8000` 기준으로 재기동/확인했다. 브라우저 port forwarding UI가 `3001`을 표시할 수 있지만 서버 runtime 기준은 `127.0.0.1:3000`, `127.0.0.1:8000`이다.
@@ -142,7 +142,7 @@
   - `/retrieve`, `/chat` 응답에 `retrieved_chunks` 표준 포맷을 추가했고 `document_id`, `chunk_id`, `score`, `section`, `text`, `rank` 기준으로 normalize 하도록 반영 완료
   - `POST /chat` Search API 호출 계층을 `execute_search_for_chat`으로 분리 완료
   - `POST /chat` 임시 외부 Search API `/api/search` 호출 시 `rewritten_query`를 `query`로 보내고 개발자 제공 curl 파라미터를 적용하도록 반영 완료
-  - `POST /chat` 외부 Search API `/api/search` payload는 query rewrite 결과에서 조건부 `filters.product_name_tokens`와 `keyword_vector_weight`만 반영하도록 정리 완료
+  - `POST /chat` 외부 Search API `/api/search` payload는 query rewrite 결과에서 조건부 `filters.product_name`와 `keyword_vector_weight`만 반영하도록 정리 완료
   - `POST /chat` 외부 Search API의 `results[].content` 응답을 내부 `hits` / `retrieved_chunks` 표준 포맷으로 변환하도록 반영 완료
   - `POST /chat` Search hit / `retrieved_chunks`에 `document_name`, `header_path`, `contents`를 함께 유지하도록 반영 완료
   - `POST /chat` Search hit / `retrieved_chunks`에 `rrf_score` 유지 및 정렬 반영 완료

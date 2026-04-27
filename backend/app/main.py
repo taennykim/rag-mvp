@@ -3269,16 +3269,16 @@ def normalize_keyword_vector_weight(raw_value: object) -> float:
     return DEFAULT_SEARCH_KEYWORD_VECTOR_WEIGHT
 
 
-def resolve_search_product_name_filter(payload: ChatRequest, rewrite_result: RewriteResult | None) -> str | None:
+def resolve_search_product_name_filter(payload: ChatRequest, rewrite_result: RewriteResult | None) -> list[str]:
     if rewrite_result is not None:
         for key in ("product_name", "insurance_name", "product", "insurance_product_name"):
             value = normalize_search_filter_value(rewrite_result.entities.get(key))
             if value:
-                return value
+                return [value]
         for key in ("product_name", "insurance_name", "product"):
             value = normalize_search_filter_value(rewrite_result.routing_hints.get(key))
             if value:
-                return value
+                return [value]
 
         extracted_candidates = extract_product_name_candidates(
             rewrite_result.original_query,
@@ -3286,12 +3286,12 @@ def resolve_search_product_name_filter(payload: ChatRequest, rewrite_result: Rew
             rewrite_result.last_customer_message or "",
         )
         if extracted_candidates:
-            return extracted_candidates[0]
+            return [extracted_candidates[0]]
 
     extracted_candidates = extract_product_name_candidates(payload.query)
     if extracted_candidates:
-        return extracted_candidates[0]
-    return None
+        return [extracted_candidates[0]]
+    return []
 
 
 def resolve_search_keyword_vector_weight(rewrite_result: RewriteResult | None) -> float:
@@ -4559,7 +4559,7 @@ def build_external_search_payload(
         external_top_k = max(requested_top_k, requested_final_k)
         product_name_filter = resolve_search_product_name_filter(payload, rewrite_result)
         if product_name_filter:
-            filters["product_name_tokens"] = product_name_filter
+            filters["product_name"] = product_name_filter
         search_payload: dict[str, object] = {
             "query": query,
             "top_k": external_top_k,

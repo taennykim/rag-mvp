@@ -97,7 +97,7 @@
   - 기준 연도 또는 기간
   - 지표
 - 문서 계열이 명확하면 runtime `routing_hints.document_type`에 아래 값 중 하나를 남길 수 있어야 한다. 현재 이 값은 trace/routing hint로만 유지하며 Search API `filters.document_type`으로는 보내지 않는다.
-- 상품명/보험명이 명확하면 runtime은 이를 `entities.product_name` 또는 top-level `product_name`으로 유지하고, Search API 호출 시 `filters.product_name_tokens`로만 사용할 수 있다.
+- 상품명/보험명이 명확하면 runtime은 이를 `entities.product_name` 또는 top-level `product_name`으로 유지하고, Search API 호출 시 `filters.product_name`으로만 사용할 수 있다.
 - `routing_hints.keyword_vector_weight`는 Search API `keyword_vector_weight` 추천값이며, backend가 number 타입과 `0.0 ~ 1.0` 범위를 검증한 뒤 사용한다.
 - `routing_hints.document_type`은 내부 trace/routing hint 용도이며 Search API payload에는 반영하지 않는다.
 
@@ -285,5 +285,5 @@
 - 후속 Search API 입력값으로 바로 연결할 수 있도록 불필요한 머리말, 라벨, JSON 형식 출력은 허용하지 않는다.
 - 구현 시에는 본 문서 전체를 직접 system prompt로 넣기보다, `11. LLM System Prompt` 블록만 로딩해서 사용하는 것을 권장한다.
 - runtime은 rewrite 결과와 rule-based 보정을 함께 사용해 document type hint를 `docs/retrieval_api_design.md`의 enum(`policy`, `calculation_guide`, `business_guide`, `statistics_table`)으로 정규화할 수 있다. 2026-04-23 기준 이 값은 Search API filter가 아니라 trace/routing hint로만 사용한다.
-- runtime은 rewrite 결과의 `entities.product_name` 또는 top-level `product_name`을 Search API `filters.product_name_tokens`로만 사용할 수 있다.
+- runtime은 rewrite 결과의 `entities.product_name` 또는 top-level `product_name`을 Search API `filters.product_name`으로만 사용할 수 있다.
 - runtime은 `routing_hints.keyword_vector_weight`를 검증해 Search API `keyword_vector_weight`로 전달하고, 유효하지 않으면 `0.3`으로 fallback 한다.
