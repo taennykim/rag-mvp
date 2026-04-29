@@ -15,11 +15,13 @@ from app.main import (
     build_answer_generation_messages,
     build_external_search_payload,
     build_standardized_retrieved_chunks,
+    extract_product_name_candidates,
     filter_hits_for_answer_generation,
     format_chat_context,
     normalize_keyword_vector_weight,
     normalize_external_search_hit,
     parse_query_rewrite_response,
+    resolve_search_product_name_filter,
     sort_hits_for_output,
 )
 
@@ -166,6 +168,26 @@ class AnswerContextMetadataTests(unittest.TestCase):
 
         self.assertEqual(payload["filters"], {"product_name": ["신한유니버설종신보험"]})
         self.assertEqual(payload["keyword_vector_weight"], 0.7)
+
+    def test_extract_product_name_candidates_prefers_full_product_name_over_truncated_fragment(self) -> None:
+        candidates = extract_product_name_candidates(
+            "신한진심을품은변액유니버설종신을 연금으로 전환시 연금액은 어떻게 산출이 되나요?"
+        )
+
+        self.assertGreaterEqual(len(candidates), 1)
+        self.assertEqual(candidates[0], "신한진심을품은변액유니버설종신")
+
+    def test_resolve_search_product_name_filter_uses_full_product_name_when_available(self) -> None:
+        query = "신한진심을품은변액유니버설종신을 연금으로 전환시 연금액은 어떻게 산출이 되나요?"
+        product_name_filter = resolve_search_product_name_filter(
+            ChatRequest(query=query),
+            RewriteResult(
+                original_query=query,
+                rewritten_query=query,
+            ),
+        )
+
+        self.assertEqual(product_name_filter, ["신한진심을품은변액유니버설종신"])
 
     def test_build_external_search_payload_omits_empty_filters_when_product_name_missing(self) -> None:
         payload = build_external_search_payload(

@@ -51,10 +51,10 @@ type ChatResponse = {
 const API_BASE_URL = "/api";
 const CUSTOM_LLM_MODEL = "custom";
 const DEFAULT_LLM_OPTION = "";
-const DEFAULT_QUERY_REWRITE_MODEL = "gpt-4o";
-const DEFAULT_ANSWER_MODEL = "gpt-4o";
+const DEFAULT_QUERY_REWRITE_MODEL = "gpt-5.4";
+const DEFAULT_ANSWER_MODEL = "gpt-5.4";
 const QUERY_REWRITE_MODEL_OPTIONS = [
-  { label: "Default", value: DEFAULT_LLM_OPTION },
+  { label: "Default (GPT-5.4)", value: DEFAULT_LLM_OPTION },
   { label: "GPT-5.4", value: "gpt-5.4" },
   { label: "GPT-5.4 mini", value: "gpt-5.4-mini" },
   { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
@@ -65,7 +65,7 @@ const QUERY_REWRITE_MODEL_OPTIONS = [
 const CUSTOM_QUERY_REWRITE_MODEL = CUSTOM_LLM_MODEL;
 const CUSTOM_ANSWER_MODEL = CUSTOM_LLM_MODEL;
 const ANSWER_MODEL_OPTIONS = [
-  { label: "Default", value: DEFAULT_LLM_OPTION },
+  { label: "Default (GPT-5.4)", value: DEFAULT_LLM_OPTION },
   { label: "GPT-5.4", value: "gpt-5.4" },
   { label: "GPT-5.4 mini", value: "gpt-5.4-mini" },
   { label: "GPT-4.1 mini", value: "gpt-4.1-mini" },
@@ -579,7 +579,7 @@ export default function ChatPage() {
                     className="default-file-select"
                     id="chat-query-rewrite-custom-model"
                     onChange={(event) => setQueryRewriteCustomModel(event.target.value)}
-                    placeholder="gpt-4o-mini"
+                    placeholder="gpt-5.4"
                     type="text"
                     value={queryRewriteCustomModel}
                   />
@@ -635,7 +635,7 @@ export default function ChatPage() {
                     className="default-file-select"
                     id="chat-answer-custom-model"
                     onChange={(event) => setAnswerCustomModel(event.target.value)}
-                    placeholder="gpt-4o"
+                    placeholder="gpt-5.4"
                     type="text"
                     value={answerCustomModel}
                   />

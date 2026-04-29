@@ -16,7 +16,7 @@ DEFAULT_RESULT_TSV_PATH = SCRIPT_DIR / "questions_result.tsv"
 DEFAULT_STANDARD_ANSWER_TSV_PATH = SCRIPT_DIR / "standard_answer.tsv"
 DEFAULT_OUTPUT_TSV_PATH = SCRIPT_DIR / f"{datetime.now().strftime('%Y%m%d_%H%M')}.tsv"
 
-DEFAULT_MODEL = "gpt-4o"
+DEFAULT_MODEL = "gpt-5.4"
 DEFAULT_TIMEOUT_SECONDS = 120
 DEFAULT_SLEEP_SECONDS = 0.2
 

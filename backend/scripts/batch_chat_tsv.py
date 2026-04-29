@@ -18,8 +18,8 @@ DEFAULT_TIMEOUT_SECONDS = 180
 DEFAULT_SLEEP_SECONDS = 0.2
 DEFAULT_TOP_K = 30
 DEFAULT_FINAL_K = 10
-DEFAULT_QUERY_REWRITE_MODEL = "gpt-4o"
-
+DEFAULT_QUERY_REWRITE_MODEL = "gpt-5.4"
+DEFAULT_ANSWER_MODEL = "gpt-5.4"
 
 REQUIRED_COLUMNS = ["no", "Question"]
 OUTPUT_COLUMNS = ["no", "Question", "Response", "Context"]
@@ -45,9 +45,9 @@ def build_chat_payload(
         "top_k": DEFAULT_TOP_K,
         "final_k": DEFAULT_FINAL_K,
         "query_rewrite_model": DEFAULT_QUERY_REWRITE_MODEL,
+        "answer_model": DEFAULT_ANSWER_MODEL,
         "stream": False,
     }
-
 
 def call_chat_api(
     api_url: str,

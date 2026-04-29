@@ -145,8 +145,8 @@ EMBEDDING_PROVIDER_HASH = "hash"
 EMBEDDING_PROVIDER_AZURE_OPENAI = "azure_openai"
 DEFAULT_AZURE_OPENAI_EMBEDDING_DEPLOYMENT = "text-embedding-3-small"
 DEFAULT_AZURE_OPENAI_API_VERSION = "2024-02-01"
-DEFAULT_QUERY_REWRITE_MODEL = "gpt-4o"
-DEFAULT_ANSWER_MODEL = "gpt-4o"
+DEFAULT_QUERY_REWRITE_MODEL = "gpt-5.4"
+DEFAULT_ANSWER_MODEL = "gpt-5.4"
 CUSTOM_QUERY_REWRITE_MODEL = "custom"
 AZURE_OPENAI_EMBEDDING_BATCH_SIZE = 32
 DEFAULT_CHAT_TOP_K = 30
@@ -154,7 +154,10 @@ DEFAULT_CHAT_FINAL_K = 10
 DEFAULT_CHAT_TEMPERATURE = 0.3
 DEFAULT_SEARCH_KEYWORD_VECTOR_WEIGHT = 0.3
 DEFAULT_CHAT_TOP_P = 0.9
-DEFAULT_CHAT_MAX_TOKENS = 700
+DEFAULT_CHAT_MAX_TOKENS = 1400
+DEFAULT_ANSWER_CONTEXT_HIT_LIMIT = 3
+DEFAULT_ANSWER_CONTEXT_CONTENT_CHARS = 500
+DEFAULT_ANSWER_SPEC_MAX_CHARS = 500
 DEFAULT_QUERY_REWRITE_TIMEOUT_SEC = 120
 QUERY_REWRITE_RESPONSE_LOG_PREVIEW_CHARS = 800
 STREAM_DELTA_MIN_CHARS = 10
@@ -238,7 +241,7 @@ DOCUMENT_HINT_TO_DOCUMENT_TYPE: dict[str, str] = {
 YEAR_TOKEN_PATTERN = re.compile(r"(?<!\\d)((?:19|20)\\d{2})\\s*년?")
 PROCEDURE_TOKEN_PATTERN = re.compile(r"([0-9A-Za-z가-힣]+(?:\\s*[0-9A-Za-z가-힣]+){0,2}\\s*수술)")
 PRODUCT_QUERY_CANDIDATE_PATTERN = re.compile(r"([0-9A-Za-z가-힣()_-]{4,80}?)(?:에서|의|은|는|이|가|도|를|을|과|와|로|으로)")
-PRODUCT_SUFFIX_CANDIDATE_PATTERN = re.compile(r"([0-9A-Za-z가-힣()_-]{4,80}?(?:보험|공제|플랜|케어))")
+PRODUCT_SUFFIX_CANDIDATE_PATTERN = re.compile(r"([0-9A-Za-z가-힣()_-]{4,80}?(?:보험|공제|플랜|케어|종신))")
 QUOTED_PRODUCT_PATTERN = re.compile(r"[\"'“”‘’]([^\"'“”‘’]{4,80})[\"'“”‘’]")
 PRODUCT_DOC_STOPWORDS: tuple[str, ...] = (
     "약관",
@@ -310,6 +313,13 @@ def load_answer_generation_spec() -> str:
     if not ANSWER_GENERATION_SPEC_PATH.is_file():
         return ""
     return ANSWER_GENERATION_SPEC_PATH.read_text(encoding="utf-8").strip()
+
+
+def truncate_for_prompt(text: str, *, max_chars: int) -> str:
+    normalized = text.strip()
+    if len(normalized) <= max_chars:
+        return normalized
+    return f"{normalized[:max_chars].rstrip()}..."
 
 
 def summarize_llm_response_preview(text: str, *, limit: int = QUERY_REWRITE_RESPONSE_LOG_PREVIEW_CHARS) -> str:
@@ -2213,6 +2223,7 @@ class ChatRequest(BaseModel):
     answer_base_url: str | None = None
     answer_custom_model: str | None = None
     answer_api_key: str | None = None
+    answer_system_prompt: str | None = None
     stream: bool = False
     conversation_context: list[ConversationTurn] = Field(default_factory=list)
     metadata: ChatMetadata | None = None
@@ -3218,18 +3229,22 @@ def is_strong_product_candidate(text: str) -> bool:
 
 
 def extract_product_name_candidates(*texts: str) -> list[str]:
-    raw_candidates: list[str] = []
+    scored_candidates: list[tuple[int, int, int, str]] = []
     for text in texts:
         normalized = normalize_chat_text(text)
         if not normalized:
             continue
 
         for pattern in (QUOTED_PRODUCT_PATTERN, PRODUCT_QUERY_CANDIDATE_PATTERN, PRODUCT_SUFFIX_CANDIDATE_PATTERN):
-            raw_candidates.extend(match.group(1).strip() for match in pattern.finditer(normalized) if match.group(1).strip())
+            for match in pattern.finditer(normalized):
+                candidate = match.group(1).strip()
+                if not candidate:
+                    continue
+                scored_candidates.append((len(candidate), len(normalize_product_comparison_text(candidate)), -match.start(1), candidate))
 
     unique_candidates: list[str] = []
     seen: set[str] = set()
-    for candidate in raw_candidates:
+    for _, _, _, candidate in sorted(scored_candidates, reverse=True):
         normalized_candidate = normalize_product_comparison_text(candidate)
         if not normalized_candidate or normalized_candidate in seen:
             continue
@@ -3803,7 +3818,10 @@ def format_chat_context(hits: list[dict[str, object]]) -> str:
     for index, hit in enumerate(hits, start=1):
         document_name = get_hit_document_name(hit)
         header_path = get_hit_header_path(hit)
-        text = get_hit_contents(hit)
+        text = truncate_for_prompt(
+            get_hit_contents(hit),
+            max_chars=DEFAULT_ANSWER_CONTEXT_CONTENT_CHARS,
+        )
         sections.append(
             f"[Context {index}]\n"
             f"document_name={document_name}\n"
@@ -4790,29 +4808,38 @@ def build_answer_generation_messages(
     original_query: str,
     rewritten_query: str,
     hits: list[dict[str, object]],
+    system_prompt_override: str | None = None,
 ) -> list[dict[str, str]]:
+    answer_generation_spec = truncate_for_prompt(
+        load_answer_generation_spec() or "answer generation spec is unavailable.",
+        max_chars=DEFAULT_ANSWER_SPEC_MAX_CHARS,
+    )
     system_prompt = (
-        "You answer questions using only the provided document context.\n"
-        "Do not use outside knowledge.\n"
-        "If the context is insufficient, say so.\n"
-        "If the original question is in Korean, answer in Korean.\n"
-        "Use each context item's document_name, header_path, and content together when judging evidence.\n"
-        "Use document titles and section paths as part of your grounding, not just the content body.\n"
-        "When the context includes conditional requirements, keep common requirements and conditional requirements separate.\n"
-        "Never present conditional requirements as unconditional facts.\n"
-        "If multiple documents or sections conflict, explicitly describe the difference or separate common points from conditional differences.\n"
-        "If information is conditional, explain it as conditional.\n"
-        "Do not guess anything not stated in the metadata or content.\n"
-        "Use this exact format:\n"
-        "STATUS: grounded or insufficient\n"
-        "ANSWER: <final answer>"
+        system_prompt_override.strip()
+        if isinstance(system_prompt_override, str) and system_prompt_override.strip()
+        else (
+            "You answer questions using only the provided document context.\n"
+            "Do not use outside knowledge.\n"
+            "If the context is insufficient, say so.\n"
+            "If the original question is in Korean, answer in Korean.\n"
+            "Use each context item's document_name, header_path, and content together when judging evidence.\n"
+            "Use document titles and section paths as part of your grounding, not just the content body.\n"
+            "When the context includes conditional requirements, keep common requirements and conditional requirements separate.\n"
+            "Never present conditional requirements as unconditional facts.\n"
+            "If multiple documents or sections conflict, explicitly describe the difference or separate common points from conditional differences.\n"
+            "If information is conditional, explain it as conditional.\n"
+            "Do not guess anything not stated in the metadata or content.\n"
+            "Use this exact format:\n"
+            "STATUS: grounded or insufficient\n"
+            "ANSWER: <final answer>"
+        )
     )
     user_prompt = (
         f"Original Question:\n{original_query}\n\n"
         f"Interpreted Retrieval Query:\n{rewritten_query}\n\n"
         f"Context:\n{format_chat_context(hits)}\n\n"
         "Answer generation spec (from docs/answer-generation-spec.md):\n"
-        f"{load_answer_generation_spec() or 'answer generation spec is unavailable.'}\n\n"
+        f"{answer_generation_spec}\n\n"
         "Rules:\n"
         "- Answer only from the context.\n"
         "- If the context does not support a clear answer, return STATUS: insufficient.\n"
@@ -4851,7 +4878,7 @@ def select_hits_for_answer_prompt(
             len(hits),
             len(selected_hits),
         )
-    return selected_hits
+    return selected_hits[:DEFAULT_ANSWER_CONTEXT_HIT_LIMIT]
 
 
 def format_sse_event(event: str, payload: dict[str, object]) -> str:
@@ -5125,6 +5152,7 @@ def generate_grounded_answer_stream(payload: ChatRequest) -> StreamingResponse:
         original_query=original_query,
         rewritten_query=rewrite_result.rewritten_query,
         hits=answer_context_hits,
+        system_prompt_override=payload.answer_system_prompt,
     )
 
     def stream_events():
@@ -5280,6 +5308,7 @@ def generate_grounded_answer_stream(payload: ChatRequest) -> StreamingResponse:
                         original_query=original_query,
                         rewritten_query=str(retry_search_result["query"] or rewrite_result.rewritten_query),
                         hits=retry_answer_context_hits,
+                        system_prompt_override=payload.answer_system_prompt,
                     )
                     retry_response_text, retry_answer_model_id = build_answer_chat_completion(payload, retry_messages)
                     retry_insufficient_context, retry_answer = parse_chat_completion(retry_response_text)
@@ -5484,6 +5513,7 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
         original_query=original_query,
         rewritten_query=rewrite_result.rewritten_query,
         hits=answer_context_hits,
+        system_prompt_override=payload.answer_system_prompt,
     )
     response_text, answer_model_id = build_answer_chat_completion(
         payload,
@@ -5517,6 +5547,7 @@ def generate_grounded_answer(payload: ChatRequest) -> dict[str, object]:
                         original_query=original_query,
                         rewritten_query=str(retry_search_result["query"] or rewrite_result.rewritten_query),
                         hits=retry_answer_context_hits,
+                        system_prompt_override=payload.answer_system_prompt,
                     )
                     retry_response_text, answer_model_id = build_answer_chat_completion(
                         payload,
